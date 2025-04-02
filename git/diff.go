@@ -6,9 +6,9 @@ import (
 	"os/exec"
 )
 
-func GetFileDiff(repoPath, filePath string) (string, error) {
+func GetFileDiff(filePath string) (string, error) {
 	// `git diff` を実行
-	cmd := exec.Command("git", "diff", "--unified=0", "--", filePath)
+	cmd := exec.Command("git", "diff", filePath)
 	output, err := cmd.Output()
 	if err != nil {
 		log.Fatalf("Failed to execute git diff: %v", err)

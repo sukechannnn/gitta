@@ -2,15 +2,24 @@ package ui
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"github.com/sukechannnn/gitta/git"
 )
 
-func ShowFileDiffText(app *tview.Application, diffText string, onExit func()) {
+func ShowFileDiffText(app *tview.Application, filePath string, onExit func()) {
+	// ファイル内容を取得して表示
+	diffText, err := git.GetFileDiff(filePath)
+	if err != nil {
+		log.Fatalf("Failed to get file diff: %v", err)
+	}
+
 	coloredDiff := colorizeDiff(diffText)
 
 	textView := tview.NewTextView().
@@ -42,7 +51,7 @@ func ShowFileDiffText(app *tview.Application, diffText string, onExit func()) {
 	flex := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(textView, 0, 1, true).
-		AddItem(debugView, 10, 1, false)
+		AddItem(debugView, 20, 1, false)
 
 	textView.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEscape {
@@ -50,12 +59,19 @@ func ShowFileDiffText(app *tview.Application, diffText string, onExit func()) {
 		}
 	})
 
-	// 現在のカーソル位置
 	cursorY := 0
 	selectStart := -1
 	selectEnd := -1
 	isSelecting := false
 	currentFocus := 0
+
+	resetCursor := func() {
+		cursorY = 0
+		selectStart = -1
+		selectEnd = -1
+		isSelecting = false
+		currentFocus = 0
+	}
 
 	// テキストを描画する関数
 	updateTextView := func() {
@@ -119,9 +135,12 @@ func ShowFileDiffText(app *tview.Application, diffText string, onExit func()) {
 				}
 			case 'U':
 				if selectStart != -1 && selectEnd != -1 {
+					mapping := mapDisplayIndexToOriginalIndex(diffText)
+					start := mapping[selectStart]
+					end := mapping[selectEnd]
 					// パッチを抽出
-					fileHeader := extractFileHeader(diffText, selectStart)
-					patch := generateMinimalPatch(diffText, selectStart, selectEnd, fileHeader)
+					fileHeader := extractFileHeader(diffText, start)
+					patch := generateMinimalPatch(diffText, start, end, fileHeader)
 					updateDebug("Generated Patch:\n" + patch)
 
 					// パッチを一時ファイルに保存
@@ -138,16 +157,25 @@ func ShowFileDiffText(app *tview.Application, diffText string, onExit func()) {
 						updateDebug(fmt.Sprintf("Failed to apply patch:\n%s", string(output)))
 					} else {
 						updateDebug("Patch applied successfully!")
+						diffText, err = git.GetFileDiff(filePath)
+						if err != nil {
+							log.Fatalf("Failed to get file diff: %v", err)
+						}
+						coloredDiff = colorizeDiff(diffText)
+						resetCursor()
+						updateTextView()
 					}
-					// os.Remove(patchFile) // 処理後に削除
+					os.Remove(patchFile) // 処理後にパッチファイルを削除
 
-					isSelecting = false
-					selectStart = -1
-					selectEnd = -1
+					resetCursor()
 				}
 			case 'w': // 'w' でファイル一覧に戻る
 				onExit() // ファイル一覧に戻る
 			case 'q': // 'q' でアプリ終了
+				go func() {
+					time.Sleep(100 * time.Millisecond)
+					os.Exit(0)
+				}()
 				app.Stop()
 			}
 		}
@@ -188,15 +216,25 @@ func ShowFileDiffText(app *tview.Application, diffText string, onExit func()) {
 // colorizeDiff は Diff を色付けします
 func colorizeDiff(diff string) string {
 	var result string
-	lines := splitLines(diff) // 複数行に分割
+	lines := splitLines(diff)
 	for _, line := range lines {
+		// 🎯 ここでスキップしたいヘッダー行を除外
+		if strings.HasPrefix(line, "diff --git") ||
+			strings.HasPrefix(line, "index ") ||
+			strings.HasPrefix(line, "--- ") ||
+			strings.HasPrefix(line, "+++ ") ||
+			strings.HasPrefix(line, "@@") {
+			continue // ← 表示しない
+		}
+
+		// 色付け処理（+/-）
 		if len(line) > 0 {
 			switch line[0] {
-			case '-': // 赤色
+			case '-':
 				result += "[red]" + line + "[-]\n"
-			case '+': // 緑色
+			case '+':
 				result += "[green]" + line + "[-]\n"
-			default: // 通常の色
+			default:
 				result += line + "\n"
 			}
 		} else {
@@ -204,6 +242,27 @@ func colorizeDiff(diff string) string {
 		}
 	}
 	return result
+}
+
+func mapDisplayIndexToOriginalIndex(diff string) map[int]int {
+	lines := splitLines(diff)
+	displayIndex := 0
+	mapping := make(map[int]int) // displayIndex -> originalIndex
+
+	for i, line := range lines {
+		if strings.HasPrefix(line, "diff --git") ||
+			strings.HasPrefix(line, "index ") ||
+			strings.HasPrefix(line, "--- ") ||
+			strings.HasPrefix(line, "+++ ") ||
+			strings.HasPrefix(line, "@@") {
+			continue // 表示に含めない
+		}
+
+		mapping[displayIndex] = i
+		displayIndex++
+	}
+
+	return mapping
 }
 
 // splitLines は文字列を改行で分割します
@@ -258,37 +317,112 @@ func extractFileHeader(diff string, startLine int) string {
 	return strings.Join(header, "\n")
 }
 
-func extractAddedLines(diff string, selectStart, selectEnd int) ([]string, int) {
-	lines := strings.Split(diff, "\n")
-	var addedLines []string
-	startLine := -1
+type PatchLine struct {
+	Line     string
+	Original int
+}
 
-	for i := selectStart; i <= selectEnd && i < len(lines); i++ {
-		line := lines[i]
-		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
-			if startLine == -1 {
-				startLine = i
-			}
-			addedLines = append(addedLines, line)
+// 選択行の上下に最大3行ずつ context (" ") 行を含めてパッチ化する
+func extractSelectedLinesWithContext(diff string, selectStart, selectEnd int) ([]PatchLine, int) {
+	lines := strings.Split(diff, "\n")
+	var result []PatchLine
+	firstLine := -1
+	seen := make(map[int]bool) // 重複防止
+
+	// 上方向の context 行（最大3行）
+	contextLines := 3
+	count := 0
+	for i := selectStart - 1; i >= 0 && count < contextLines; i-- {
+		if strings.HasPrefix(lines[i], " ") {
+			result = append([]PatchLine{{Line: lines[i], Original: i}}, result...) // 先頭に追加
+			seen[i] = true
+			firstLine = i
+			count++
+		} else if strings.HasPrefix(lines[i], "@@") || strings.HasPrefix(lines[i], "diff --git") {
+			break // hunk 跨ぎ禁止
 		}
 	}
 
-	return addedLines, startLine
+	// 選択された範囲の + / - 行
+	for i := selectStart; i <= selectEnd && i < len(lines); i++ {
+		if strings.HasPrefix(lines[i], "+") && !strings.HasPrefix(lines[i], "+++") ||
+			strings.HasPrefix(lines[i], "-") && !strings.HasPrefix(lines[i], "---") {
+			result = append(result, PatchLine{Line: lines[i], Original: i})
+			seen[i] = true
+			if firstLine == -1 {
+				firstLine = i
+			}
+		}
+	}
+
+	// 下方向の context 行（最大3行）
+	count = 0
+	for i := selectEnd + 1; i < len(lines) && count < contextLines; i++ {
+		if strings.HasPrefix(lines[i], " ") {
+			if seen[i] {
+				continue
+			}
+			result = append(result, PatchLine{Line: lines[i], Original: i})
+			count++
+		} else if strings.HasPrefix(lines[i], "@@") || strings.HasPrefix(lines[i], "diff --git") {
+			break
+		}
+	}
+
+	return result, firstLine
 }
 
-func generateMinimalHunkHeader(addedStartLineInDiff int, addedLineCount int) string {
-	// 元ファイルの行は変わらないので -N,0
-	// 新ファイルの行数が必要
-	return fmt.Sprintf("@@ -%d,0 +%d,%d @@", addedStartLineInDiff, addedStartLineInDiff, addedLineCount)
+func extractSelectedLines(diff string, selectStart, selectEnd int) ([]PatchLine, int) {
+	lines := strings.Split(diff, "\n")
+	var result []PatchLine
+	firstLine := -1
+
+	for i := selectStart; i <= selectEnd && i < len(lines); i++ {
+		line := lines[i]
+
+		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") ||
+			strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---") {
+			if firstLine == -1 {
+				firstLine = i
+			}
+			result = append(result, PatchLine{Line: line, Original: i})
+		}
+	}
+
+	return result, firstLine
+}
+
+func generateFullHunkHeader(startLine int, selected []PatchLine) string {
+	delCount := 0
+	addCount := 0
+
+	for _, pl := range selected {
+		switch {
+		case strings.HasPrefix(pl.Line, "-"):
+			delCount++
+		case strings.HasPrefix(pl.Line, "+"):
+			addCount++
+		case strings.HasPrefix(pl.Line, " "):
+			delCount++
+			addCount++
+		}
+	}
+
+	return fmt.Sprintf("@@ -%d,%d +%d,%d @@", startLine, delCount, startLine, addCount)
 }
 
 func generateMinimalPatch(diffText string, selectStart, selectEnd int, fileHeader string) string {
-	addedLines, addedStart := extractAddedLines(diffText, selectStart, selectEnd)
-	if len(addedLines) == 0 || addedStart == -1 {
+	lines, start := extractSelectedLinesWithContext(diffText, selectStart, selectEnd)
+	if len(lines) == 0 || start == -1 {
 		return ""
 	}
 
-	header := generateMinimalHunkHeader(addedStart, len(addedLines))
-	body := strings.Join(addedLines, "\n")
-	return fileHeader + "\n" + header + "\n" + body + "\n"
+	header := generateFullHunkHeader(start, lines)
+
+	var body strings.Builder
+	for _, pl := range lines {
+		body.WriteString(pl.Line + "\n")
+	}
+
+	return fileHeader + "\n" + header + "\n" + body.String()
 }

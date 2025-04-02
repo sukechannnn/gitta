@@ -19,15 +19,9 @@ func main() {
 	}
 
 	// ファイル選択時の処理を定義（再帰的に使用するため関数として定義）
-	var showFileDiff func(file string)
-	showFileDiff = func(file string) {
-		// ファイル内容を取得して表示
-		content, err := git.GetFileDiff(repoPath, file)
-		if err != nil {
-			log.Fatalf("Failed to get file diff: %v", err)
-		}
-
-		ui.ShowFileDiffText(app, content, func() {
+	var showFileDiff func(filePath string)
+	showFileDiff = func(filePath string) {
+		ui.ShowFileDiffText(app, filePath, func() {
 			// ファイル一覧に戻る（同じコールバック関数を渡す）
 			ui.ShowFileList(app, modifiedFiles, untrackedFiles, showFileDiff)
 		})
