@@ -2,7 +2,9 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -100,6 +102,12 @@ func ShowFileList(app *tview.Application, modifiedFiles, untrackedFiles []string
 					textView.ScrollToHighlight()
 				}
 				return nil
+			case 'q': // 'q' でアプリ終了
+				go func() {
+					time.Sleep(100 * time.Millisecond)
+					os.Exit(0)
+				}()
+				app.Stop()
 			}
 		}
 		return event

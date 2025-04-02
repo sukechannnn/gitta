@@ -5,6 +5,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -140,7 +142,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, onExit func()) {
 					end := mapping[selectEnd]
 					// パッチを抽出
 					fileHeader := extractFileHeader(diffText, start)
-					patch := generateMinimalPatch(diffText, start, end, fileHeader)
+					patch := generateMinimalPatch(diffText, start, end, fileHeader, updateDebug)
 					updateDebug("Generated Patch:\n" + patch)
 
 					// パッチを一時ファイルに保存
@@ -165,7 +167,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, onExit func()) {
 						resetCursor()
 						updateTextView()
 					}
-					os.Remove(patchFile) // 処理後にパッチファイルを削除
+					// os.Remove(patchFile) // 処理後にパッチファイルを削除
 
 					resetCursor()
 				}
@@ -322,9 +324,32 @@ type PatchLine struct {
 	Original int
 }
 
+func generateMinimalPatch(diffText string, selectStart, selectEnd int, fileHeader string, updateDebug func(message string)) string {
+	lines, start := extractSelectedLinesWithContext(diffText, selectStart, selectEnd)
+	if len(lines) == 0 || start == -1 {
+		return ""
+	}
+
+	allLines := splitLines(diffText)
+	startLine := findHunkStartLineInFile(allLines, start)
+	if startLine == -1 {
+		updateDebug("Could not find hunk header for selected lines")
+		return ""
+	}
+
+	header := generateFullHunkHeader(startLine, lines)
+
+	var body strings.Builder
+	for _, pl := range lines {
+		body.WriteString(pl.Line + "\n")
+	}
+
+	return fileHeader + "\n" + header + "\n" + body.String()
+}
+
 // 選択行の上下に最大3行ずつ context (" ") 行を含めてパッチ化する
 func extractSelectedLinesWithContext(diff string, selectStart, selectEnd int) ([]PatchLine, int) {
-	lines := strings.Split(diff, "\n")
+	lines := splitLines(diff)
 	var result []PatchLine
 	firstLine := -1
 	seen := make(map[int]bool) // 重複防止
@@ -333,7 +358,7 @@ func extractSelectedLinesWithContext(diff string, selectStart, selectEnd int) ([
 	contextLines := 3
 	count := 0
 	for i := selectStart - 1; i >= 0 && count < contextLines; i-- {
-		if strings.HasPrefix(lines[i], " ") {
+		if strings.HasPrefix(lines[i], " ") || lines[i] == "" {
 			result = append([]PatchLine{{Line: lines[i], Original: i}}, result...) // 先頭に追加
 			seen[i] = true
 			firstLine = i
@@ -345,20 +370,17 @@ func extractSelectedLinesWithContext(diff string, selectStart, selectEnd int) ([
 
 	// 選択された範囲の + / - 行
 	for i := selectStart; i <= selectEnd && i < len(lines); i++ {
-		if strings.HasPrefix(lines[i], "+") && !strings.HasPrefix(lines[i], "+++") ||
-			strings.HasPrefix(lines[i], "-") && !strings.HasPrefix(lines[i], "---") {
-			result = append(result, PatchLine{Line: lines[i], Original: i})
-			seen[i] = true
-			if firstLine == -1 {
-				firstLine = i
-			}
+		result = append(result, PatchLine{Line: lines[i], Original: i})
+		seen[i] = true
+		if firstLine == -1 {
+			firstLine = i
 		}
 	}
 
 	// 下方向の context 行（最大3行）
 	count = 0
 	for i := selectEnd + 1; i < len(lines) && count < contextLines; i++ {
-		if strings.HasPrefix(lines[i], " ") {
+		if strings.HasPrefix(lines[i], " ") || lines[i] == "" {
 			if seen[i] {
 				continue
 			}
@@ -372,37 +394,17 @@ func extractSelectedLinesWithContext(diff string, selectStart, selectEnd int) ([
 	return result, firstLine
 }
 
-func extractSelectedLines(diff string, selectStart, selectEnd int) ([]PatchLine, int) {
-	lines := strings.Split(diff, "\n")
-	var result []PatchLine
-	firstLine := -1
-
-	for i := selectStart; i <= selectEnd && i < len(lines); i++ {
-		line := lines[i]
-
-		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") ||
-			strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---") {
-			if firstLine == -1 {
-				firstLine = i
-			}
-			result = append(result, PatchLine{Line: line, Original: i})
-		}
-	}
-
-	return result, firstLine
-}
-
 func generateFullHunkHeader(startLine int, selected []PatchLine) string {
 	delCount := 0
 	addCount := 0
 
 	for _, pl := range selected {
 		switch {
-		case strings.HasPrefix(pl.Line, "-"):
+		case strings.HasPrefix(pl.Line, "-") && !strings.HasPrefix(pl.Line, "---"):
 			delCount++
-		case strings.HasPrefix(pl.Line, "+"):
+		case strings.HasPrefix(pl.Line, "+") && !strings.HasPrefix(pl.Line, "+++"):
 			addCount++
-		case strings.HasPrefix(pl.Line, " "):
+		case strings.HasPrefix(pl.Line, " ") || pl.Line == "":
 			delCount++
 			addCount++
 		}
@@ -411,18 +413,19 @@ func generateFullHunkHeader(startLine int, selected []PatchLine) string {
 	return fmt.Sprintf("@@ -%d,%d +%d,%d @@", startLine, delCount, startLine, addCount)
 }
 
-func generateMinimalPatch(diffText string, selectStart, selectEnd int, fileHeader string) string {
-	lines, start := extractSelectedLinesWithContext(diffText, selectStart, selectEnd)
-	if len(lines) == 0 || start == -1 {
-		return ""
+func findHunkStartLineInFile(diffLines []string, targetIndex int) int {
+	hunkRegex := regexp.MustCompile(`@@ -(\d+),\d+ \+\d+,\d+ @@`)
+
+	for i := targetIndex; i >= 0; i-- {
+		if strings.HasPrefix(diffLines[i], "@@") {
+			match := hunkRegex.FindStringSubmatch(diffLines[i])
+			if len(match) == 2 {
+				if line, err := strconv.Atoi(match[1]); err == nil {
+					return line
+				}
+			}
+			break
+		}
 	}
-
-	header := generateFullHunkHeader(start, lines)
-
-	var body strings.Builder
-	for _, pl := range lines {
-		body.WriteString(pl.Line + "\n")
-	}
-
-	return fileHeader + "\n" + header + "\n" + body.String()
+	return -1
 }
