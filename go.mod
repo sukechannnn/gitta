@@ -1,4 +1,4 @@
-module github.com/sukechannnn/gitadd
+module github.com/sukechannnn/gitta
 
 go 1.23.5
 

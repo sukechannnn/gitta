@@ -4,8 +4,8 @@ import (
 	"log"
 
 	"github.com/rivo/tview"
-	"github.com/sukechannnn/gitadd/git"
-	"github.com/sukechannnn/gitadd/ui"
+	"github.com/sukechannnn/gitta/git"
+	"github.com/sukechannnn/gitta/ui"
 )
 
 func main() {
