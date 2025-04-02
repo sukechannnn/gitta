@@ -126,7 +126,7 @@ func ShowFileDiffText(app *tview.Application, diffText string, onExit func()) {
 					patchFile := "selected.patch"
 					if err := os.WriteFile(patchFile, []byte(patch), 0644); err != nil {
 						fmt.Println("Failed to write patch file:", err)
-						app.Stop()
+						onExit() // ファイル一覧に戻る
 					}
 
 					// git apply を実行
@@ -144,7 +144,9 @@ func ShowFileDiffText(app *tview.Application, diffText string, onExit func()) {
 					selectStart = -1
 					selectEnd = -1
 				}
-			case 'q': // 'q' で終了
+			case 'w': // 'w' でファイル一覧に戻る
+				onExit() // ファイル一覧に戻る
+			case 'q': // 'q' でアプリ終了
 				app.Stop()
 			}
 		}

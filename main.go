@@ -18,8 +18,9 @@ func main() {
 		log.Fatalf("Failed to get modified files: %v", err)
 	}
 
-	// ファイル一覧を表示
-	ui.ShowFileList(app, modifiedFiles, untrackedFiles, func(file string) {
+	// ファイル選択時の処理を定義（再帰的に使用するため関数として定義）
+	var showFileDiff func(file string)
+	showFileDiff = func(file string) {
 		// ファイル内容を取得して表示
 		content, err := git.GetFileDiff(repoPath, file)
 		if err != nil {
@@ -27,8 +28,11 @@ func main() {
 		}
 
 		ui.ShowFileDiffText(app, content, func() {
-			// ファイル一覧に戻る
-			ui.ShowFileList(app, modifiedFiles, untrackedFiles, nil)
+			// ファイル一覧に戻る（同じコールバック関数を渡す）
+			ui.ShowFileList(app, modifiedFiles, untrackedFiles, showFileDiff)
 		})
-	})
+	}
+
+	// ファイル一覧を表示（初期表示）
+	ui.ShowFileList(app, modifiedFiles, untrackedFiles, showFileDiff)
 }
