@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -119,7 +120,14 @@ func ShowFileDiffText(app *tview.Application, diffText string, onExit func()) {
 			case 'U':
 				if selectStart != -1 && selectEnd != -1 {
 					// パッチを抽出
-					patch := extractPatch(diffText, selectStart, selectEnd, updateDebug)
+					fileHeader := extractFileHeader(diffText, selectStart)
+					// patchBody := extractPatch(diffText, selectStart+1, selectEnd+1, updateDebug)
+
+					// patch := ""
+					// if patchBody != "" && fileHeader != "" {
+					// 	patch = fileHeader + "\n" + patchBody
+					// }
+					patch := generateMinimalPatch(diffText, selectStart, selectEnd, fileHeader)
 					updateDebug("Generated Patch:\n" + patch)
 
 					// パッチを一時ファイルに保存
@@ -130,14 +138,13 @@ func ShowFileDiffText(app *tview.Application, diffText string, onExit func()) {
 					}
 
 					// git apply を実行
-					// cmd := exec.Command("git", "apply", "--cached", patchFile)
-					// cmd.Stdout = os.Stdout
-					// cmd.Stderr = os.Stderr
-					// if err := cmd.Run(); err != nil {
-					// 	fmt.Println("Failed to apply patch:", err)
-					// } else {
-					// 	fmt.Println("Patch applied successfully!")
-					// }
+					cmd := exec.Command("git", "apply", "--cached", patchFile)
+					output, err := cmd.CombinedOutput()
+					if err != nil {
+						updateDebug(fmt.Sprintf("Failed to apply patch:\n%s", string(output)))
+					} else {
+						updateDebug("Patch applied successfully!")
+					}
 					// os.Remove(patchFile) // 処理後に削除
 
 					isSelecting = false
@@ -234,89 +241,168 @@ func isSelected(line, start, end int) bool {
 	return line >= start && line <= end
 }
 
+func extractFileHeader(diff string, startLine int) string {
+	lines := strings.Split(diff, "\n")
+	var header []string
+
+	// 対象行より前を逆順にたどって、diff ヘッダーを見つける
+	for i := startLine; i >= 0; i-- {
+		line := lines[i]
+		if strings.HasPrefix(line, "diff --git ") {
+			// ヘッダーの先頭見つけたら、そこから3〜4行分取り出す
+			for j := 0; j < 5 && i+j < len(lines); j++ {
+				hline := lines[i+j]
+				if strings.HasPrefix(hline, "index ") || strings.HasPrefix(hline, "--- ") || strings.HasPrefix(hline, "+++ ") || strings.HasPrefix(hline, "diff --git ") {
+					header = append(header, hline)
+				} else {
+					break
+				}
+			}
+			break
+		}
+	}
+	return strings.Join(header, "\n")
+}
+
+func extractAddedLines(diff string, selectStart, selectEnd int) ([]string, int) {
+	lines := strings.Split(diff, "\n")
+	var addedLines []string
+	startLine := -1
+
+	for i := selectStart; i <= selectEnd && i < len(lines); i++ {
+		line := lines[i]
+		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+			if startLine == -1 {
+				startLine = i
+			}
+			addedLines = append(addedLines, line)
+		}
+	}
+
+	return addedLines, startLine
+}
+
+func generateMinimalHunkHeader(addedStartLineInDiff int, addedLineCount int) string {
+	// 元ファイルの行は変わらないので -N,0
+	// 新ファイルの行数が必要
+	return fmt.Sprintf("@@ -%d,0 +%d,%d @@", addedStartLineInDiff, addedStartLineInDiff, addedLineCount)
+}
+
+func generateMinimalPatch(diffText string, selectStart, selectEnd int, fileHeader string) string {
+	addedLines, addedStart := extractAddedLines(diffText, selectStart, selectEnd)
+	if len(addedLines) == 0 || addedStart == -1 {
+		return ""
+	}
+
+	header := generateMinimalHunkHeader(addedStart, len(addedLines))
+	body := strings.Join(addedLines, "\n")
+	return fileHeader + "\n" + header + "\n" + body + "\n"
+}
+
 // extractPatch は選択範囲に対応するパッチを抽出します
 func extractPatch(diff string, start, end int, updateDebug func(message string)) string {
 	lines := strings.Split(diff, "\n")
-	var result []string
 	hunkActive := false
 	currentLine := 0
+	contextBefore := 3
 
-	for _, line := range lines {
+	var hunkLines []string
+	var addedLines []string
+
+	for i, line := range lines {
 		currentLine++
 
 		if strings.HasPrefix(line, "@@") {
-			// Hunk の開始
 			hunkActive = true
-			hunkHeader := calculateHunkHeader(lines)
-			result = append(result, hunkHeader)
+			hunkLines = []string{line}
 			continue
 		}
 
 		if hunkActive {
 			if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "+") || strings.HasPrefix(line, "-") {
-				// 実際の行番号にマッピング
-				// if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "-") {
-				// }
+				hunkLines = append(hunkLines, line)
 
-				// 選択範囲内の行を追加
-				if currentLine >= start && currentLine <= end {
-					result = append(result, line)
+				if currentLine >= start-contextBefore && currentLine <= end {
+					addedLines = append(addedLines, line)
 				}
-			} else {
-				// Hunk の終了
+			}
+
+			// hunk の終了条件
+			if i+1 == len(lines) || strings.HasPrefix(lines[i+1], "@@") || strings.HasPrefix(lines[i+1], "diff --git") {
 				hunkActive = false
+
+				if len(addedLines) > 0 {
+					// 選択された範囲がこの hunk にある → 出力
+					hunkHeader := calculateHunkHeaderWithContext(addedLines, start)
+					return hunkHeader + "\n" + strings.Join(addedLines, "\n")
+				}
 			}
 		}
 	}
 
-	return strings.Join(result, "\n")
+	updateDebug("No valid patch found in hunk")
+	return ""
 }
 
-func calculateHunkHeader(diffLines []string) string {
-	contextLines := 3
-	startOld, startNew := -1, -1
-	lengthOld, lengthNew := 0, 0
-	currentOld, currentNew := 1, 1 // 行番号の初期値
-
-	for _, line := range diffLines {
-		switch {
-		case strings.HasPrefix(line, "-"): // 元ファイルで削除された行
-			if startOld == -1 {
-				startOld = max(1, currentOld-contextLines)
-				startNew = max(1, currentNew-contextLines)
-
-				if startOld != 1 {
-					startOld--
-				}
-				if startNew != 1 {
-					startNew--
-				}
-			}
-			lengthOld++
-			currentOld++
-		case strings.HasPrefix(line, "+"): // 新ファイルで追加された行
-			if startOld == -1 {
-				startOld = max(1, currentOld-contextLines)
-				startNew = max(1, currentNew-contextLines)
-			}
-			lengthNew++
-			currentNew++
-		default: // 共通行
-			currentOld++
-			currentNew++
+func calculateHunkHeaderWithContext(addedLines []string, originalStartLine int) string {
+	addCount := 0
+	for _, line := range addedLines {
+		if strings.HasPrefix(line, "+") {
+			addCount++
 		}
 	}
 
-	// Hunk ヘッダーを生成
-	if lengthOld == 0 {
-		lengthOld = 1
+	if addCount == 0 {
+		addCount = 1
 	}
-	if lengthNew == 0 {
-		lengthNew = 1
-	}
-
-	return fmt.Sprintf("@@ -%d,%d +%d,%d @@", startOld, lengthOld+contextLines, startNew, lengthNew+contextLines)
+	return fmt.Sprintf("@@ -%d,0 +%d,%d @@", originalStartLine, originalStartLine, addCount)
 }
+
+// func calculateHunkHeader(diffLines []string) string {
+// 	contextLines := 3
+// 	startOld, startNew := -1, -1
+// 	lengthOld, lengthNew := 0, 0
+// 	currentOld, currentNew := 1, 1 // 行番号の初期値
+
+// 	for _, line := range diffLines {
+// 		switch {
+// 		case strings.HasPrefix(line, "-"): // 元ファイルで削除された行
+// 			if startOld == -1 {
+// 				startOld = max(1, currentOld-contextLines)
+// 				startNew = max(1, currentNew-contextLines)
+
+// 				if startOld != 1 {
+// 					startOld--
+// 				}
+// 				if startNew != 1 {
+// 					startNew--
+// 				}
+// 			}
+// 			lengthOld++
+// 			currentOld++
+// 		case strings.HasPrefix(line, "+"): // 新ファイルで追加された行
+// 			if startOld == -1 {
+// 				startOld = max(1, currentOld-contextLines)
+// 				startNew = max(1, currentNew-contextLines)
+// 			}
+// 			lengthNew++
+// 			currentNew++
+// 		default: // 共通行
+// 			currentOld++
+// 			currentNew++
+// 		}
+// 	}
+
+// 	// Hunk ヘッダーを生成
+// 	if lengthOld == 0 {
+// 		lengthOld = 1
+// 	}
+// 	if lengthNew == 0 {
+// 		lengthNew = 1
+// 	}
+
+// 	return fmt.Sprintf("@@ -%d,%d +%d,%d @@", startOld, lengthOld+contextLines, startNew, lengthNew+contextLines)
+// }
 
 func max(a, b int) int {
 	if a > b {
