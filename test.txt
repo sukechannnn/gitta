@@ -1,0 +1,9 @@
+package main
+
+import (
+	"log"
+
+	"github.com/rivo/tview"
+	"github.com/sukechannnn/gitta/git"
+	"github.com/sukechannnn/gitta/ui"
+)
