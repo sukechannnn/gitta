@@ -15,7 +15,15 @@ import (
 	"github.com/sukechannnn/gitta/git"
 )
 
-func ShowFileDiffText(app *tview.Application, filePath string, onExit func()) {
+var statusView *tview.TextView
+
+func updateStatus(message string, color string) {
+	if statusView != nil {
+		statusView.SetText(fmt.Sprintf("[%s]%s[-]", color, message))
+	}
+}
+
+func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExit func()) {
 	// ファイル内容を取得して表示
 	diffText, err := git.GetFileDiff(filePath)
 	if err != nil {
@@ -31,7 +39,12 @@ func ShowFileDiffText(app *tview.Application, filePath string, onExit func()) {
 		SetScrollable(true).
 		SetRegions(true)
 
-		// デバッグ用ウィジェット
+	statusView = tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignLeft)
+	statusView.SetBorder(false)
+
+	// デバッグ用ウィジェット
 	debugView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
@@ -54,6 +67,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, onExit func()) {
 		SetDirection(tview.FlexRow).
 		AddItem(textView, 0, 1, true).
 		AddItem(debugView, 20, 1, false)
+		AddItem(statusView, 5, 0, false)
 
 	textView.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEscape {
