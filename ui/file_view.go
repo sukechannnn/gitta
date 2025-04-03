@@ -48,26 +48,27 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 	debugView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
-
-	views := []*tview.TextView{
-		textView,
-		debugView,
-	}
-
 	debugView.SetBorder(true).
 		SetTitle("Debug view").
 		SetTitleAlign(tview.AlignLeft)
 
-	// デバッグ情報を更新する関数
+	views := []*tview.TextView{textView}
+	if debug {
+		views = append(views, debugView)
+	}
+
 	updateDebug := func(message string) {
 		debugView.SetText(debugView.GetText(false) + message + "\n")
 	}
 
 	flex := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(textView, 0, 1, true).
-		AddItem(debugView, 20, 1, false)
-		AddItem(statusView, 5, 0, false)
+		AddItem(statusView, 5, 0, false).
+		AddItem(textView, 0, 1, true)
+
+	if debug {
+		flex.AddItem(debugView, 20, 1, false)
+	}
 
 	textView.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEscape {

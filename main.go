@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 
 	"github.com/rivo/tview"
@@ -9,6 +10,10 @@ import (
 )
 
 func main() {
+	var debug bool
+	flag.BoolVar(&debug, "debug", false, "Enable debug mode")
+	flag.Parse()
+
 	repoPath := "." // 現在のディレクトリにリポジトリがあると仮定
 	app := tview.NewApplication()
 
@@ -21,7 +26,7 @@ func main() {
 	// ファイル選択時の処理を定義（再帰的に使用するため関数として定義）
 	var showFileDiff func(filePath string)
 	showFileDiff = func(filePath string) {
-		ui.ShowFileDiffText(app, filePath, func() {
+		ui.ShowFileDiffText(app, filePath, debug, func() {
 			// ファイル一覧に戻る（同じコールバック関数を渡す）
 			ui.ShowFileList(app, modifiedFiles, untrackedFiles, showFileDiff)
 		})
