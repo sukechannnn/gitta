@@ -16,10 +16,15 @@ import (
 )
 
 var statusView *tview.TextView
+var keyBindingMessage = "Press 'w' to go back to the file list, 'q' to quit, 'u' to undo, 'U' to apply patch, 'V' to select lines, and 'j/k' to scroll up/down."
 
 func updateStatus(message string, color string) {
 	if statusView != nil {
 		statusView.SetText(fmt.Sprintf("[%s]%s[-]", color, message))
+		go func() {
+			time.Sleep(5 * time.Second)
+			statusView.SetText(keyBindingMessage)
+		}()
 	}
 }
 
@@ -42,9 +47,8 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 	statusView = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
-	statusView.SetBorder(false)
+	statusView.SetBorder(true)
 
-	// デバッグ用ウィジェット
 	debugView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
@@ -76,6 +80,8 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 		}
 	})
 
+	statusView.SetText(keyBindingMessage)
+
 	cursorY := 0
 	selectStart := -1
 	selectEnd := -1
@@ -89,6 +95,9 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 		isSelecting = false
 		currentFocus = 0
 	}
+
+	// Patch file name
+	patchFile := "selected.patch"
 
 	// テキストを描画する関数
 	updateTextView := func() {
@@ -160,8 +169,6 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 					patch := generateMinimalPatch(diffText, start, end, fileHeader, updateDebug)
 					updateDebug("Generated Patch:\n" + patch)
 
-					// パッチを一時ファイルに保存
-					patchFile := "selected.patch"
 					if err := os.WriteFile(patchFile, []byte(patch), 0644); err != nil {
 						fmt.Println("Failed to write patch file:", err)
 						onExit() // ファイル一覧に戻る
@@ -182,13 +189,14 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 						resetCursor()
 						updateTextView()
 					}
-					// os.Remove(patchFile) // 処理後にパッチファイルを削除
 
 					resetCursor()
 				}
 			case 'w': // 'w' でファイル一覧に戻る
 				onExit() // ファイル一覧に戻る
+				os.Remove(patchFile)
 			case 'q': // 'q' でアプリ終了
+				os.Remove(patchFile)
 				go func() {
 					time.Sleep(100 * time.Millisecond)
 					os.Exit(0)
