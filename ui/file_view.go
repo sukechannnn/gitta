@@ -83,13 +83,17 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 	statusView.SetText(keyBindingMessage)
 
 	cursorY := 0
+	scrollY := 0
 	selectStart := -1
 	selectEnd := -1
 	isSelecting := false
 	currentFocus := 0
 
 	resetCursor := func() {
-		cursorY = 0
+		if cursorY > lineLength {
+			cursorY = lineLength - 1
+			scrollY = scrollY - (cursorY - lineLength + 1)
+		}
 		selectStart = -1
 		selectEnd = -1
 		isSelecting = false
@@ -115,6 +119,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 			}
 			textView.Write([]byte(line + "\n"))
 		}
+		lineLength = len(lines)
 	}
 
 	// キー入力の処理
@@ -186,8 +191,8 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 							log.Fatalf("Failed to get file diff: %v", err)
 						}
 						coloredDiff = colorizeDiff(diffText)
-						resetCursor()
 						updateTextView()
+						resetCursor()
 					}
 
 					resetCursor()
@@ -375,6 +380,7 @@ func extractSelectedLinesWithContext(diff string, selectStart, selectEnd int) ([
 	lines := splitLines(diff)
 	var result []PatchLine
 	firstLine := -1
+
 	seen := make(map[int]bool) // 重複防止
 
 	// 上方向の context 行（最大3行）
