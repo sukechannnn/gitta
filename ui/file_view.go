@@ -151,6 +151,12 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 						selectEnd = cursorY
 					}
 				}
+
+				_, _, _, height := textView.GetInnerRect()
+				if cursorY >= scrollY+height-1 {
+					scrollY = cursorY - height + 2 // 1〜2 行余裕をもたせる
+				}
+				textView.ScrollTo(scrollY, 0)
 			case 'k': // 上移動
 				if cursorY > 0 {
 					cursorY--
@@ -158,6 +164,11 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 						selectEnd = cursorY
 					}
 				}
+
+				if cursorY < scrollY {
+					scrollY = cursorY
+				}
+				textView.ScrollTo(scrollY, 0)
 			case 'V': // Shift + V で選択モード切り替え
 				if !isSelecting {
 					isSelecting = true
