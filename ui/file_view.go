@@ -175,6 +175,26 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 					selectStart = cursorY
 					selectEnd = cursorY
 				}
+			case 'u':
+				cmd := exec.Command("git", "apply", "-R", "--cached", patchFile)
+				output, err := cmd.CombinedOutput()
+				if err != nil {
+					message := "Undo failed!" + "\n" + "Please use debug mode to see more details: gitta --debug"
+					updateStatus(message, "firebrick")
+					updateDebug(fmt.Sprintf("[firebrick]Failed to undo patch:\n%s[-]", string(output)))
+				} else {
+					updateStatus("Undo successful!", "gold")
+
+					// 再描画用に diff 更新
+					diffText, err = git.GetFileDiff(filePath)
+					if err != nil {
+						updateDebug("Failed to get file diff after undo: " + err.Error())
+					} else {
+						coloredDiff = colorizeDiff(diffText)
+						updateTextView()
+						resetCursor()
+					}
+				}
 			case 'U':
 				if selectStart != -1 && selectEnd != -1 {
 					mapping := mapDisplayIndexToOriginalIndex(diffText)
