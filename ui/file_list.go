@@ -8,6 +8,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"github.com/sukechannnn/gitta/util"
 )
 
 // ファイル一覧を表示
@@ -17,6 +18,7 @@ func ShowFileList(app *tview.Application, modifiedFiles, untrackedFiles []string
 		SetDynamicColors(true).
 		SetRegions(true).
 		SetWrap(false)
+	textView.SetBackgroundColor(util.MyColor.BackgroundColor)
 
 	// ファイル一覧を構築
 	var content strings.Builder

@@ -13,7 +13,11 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/sukechannnn/gitta/git"
+	"github.com/sukechannnn/gitta/util"
 )
+
+var gPressed bool
+var lastGTime time.Time
 
 var statusView *tview.TextView
 var keyBindingMessage = "Press 'w' to go back to the file list, 'q' to quit, 'u' to undo, 'U' to apply patch, 'V' to select lines, and 'j/k' to scroll up/down."
@@ -35,7 +39,9 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 		log.Fatalf("Failed to get file diff: %v", err)
 	}
 
-	coloredDiff := colorizeDiff(diffText)
+	coloredDiff := ColorizeDiff(diffText)
+	lines := splitLines(diffText)
+	lineLength := len(lines)
 
 	textView := tview.NewTextView().
 		SetText(coloredDiff).
@@ -43,11 +49,13 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 		SetTextAlign(tview.AlignLeft).
 		SetScrollable(true).
 		SetRegions(true)
+	textView.SetBackgroundColor(util.MyColor.BackgroundColor)
 
 	statusView = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
 	statusView.SetBorder(true)
+	statusView.SetBackgroundColor(util.MyColor.BackgroundColor)
 
 	debugView := tview.NewTextView().
 		SetDynamicColors(true).
@@ -169,6 +177,27 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 					scrollY = cursorY
 				}
 				textView.ScrollTo(scrollY, 0)
+			case 'g':
+				now := time.Now()
+				if gPressed && now.Sub(lastGTime) < 500*time.Millisecond {
+					// gg → 最上部
+					cursorY = 0
+					scrollY = 0
+					textView.ScrollTo(scrollY, 0)
+					gPressed = false
+				} else {
+					// 1回目のg
+					gPressed = true
+					lastGTime = now
+				}
+			case 'G': // 大文字G → 最下部へ
+				cursorY = len(splitLines(coloredDiff)) - 1
+				_, _, _, height := textView.GetInnerRect()
+				scrollY = cursorY - height + 2
+				if scrollY < 0 {
+					scrollY = 0
+				}
+				textView.ScrollTo(scrollY, 0)
 			case 'V': // Shift + V で選択モード切り替え
 				if !isSelecting {
 					isSelecting = true
@@ -190,7 +219,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 					if err != nil {
 						updateDebug("Failed to get file diff after undo: " + err.Error())
 					} else {
-						coloredDiff = colorizeDiff(diffText)
+						coloredDiff = ColorizeDiff(diffText)
 						updateTextView()
 						resetCursor()
 					}
@@ -214,20 +243,26 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 					cmd := exec.Command("git", "apply", "--cached", patchFile)
 					output, err := cmd.CombinedOutput()
 					if err != nil {
+						message := fmt.Sprintf("Failed to apply patch:\n%s", string(output)+"\n"+"Please use debug mode to see more details: gitta --debug")
+						updateStatus(message, "firebrick")
 						updateDebug(fmt.Sprintf("Failed to apply patch:\n%s", string(output)))
 					} else {
-						updateDebug("Patch applied successfully!")
+						updateStatus("Patch applied successfully!", "gold")
 						diffText, err = git.GetFileDiff(filePath)
 						if err != nil {
 							log.Fatalf("Failed to get file diff: %v", err)
 						}
-						coloredDiff = colorizeDiff(diffText)
+						coloredDiff = ColorizeDiff(diffText)
 						updateTextView()
 						resetCursor()
 					}
-
 					resetCursor()
 				}
+			// case 'C': // Shift + c
+			// 	ShowCommitScreen(app, filePath, func() {
+			// 		onExit() // ファイル一覧に戻る
+			// 		os.Remove(patchFile)
+			// 	})
 			case 'w': // 'w' でファイル一覧に戻る
 				onExit() // ファイル一覧に戻る
 				os.Remove(patchFile)
@@ -272,37 +307,6 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 	// 初期描画
 	updateTextView()
 	app.SetRoot(flex, true).Run()
-}
-
-// colorizeDiff は Diff を色付けします
-func colorizeDiff(diff string) string {
-	var result string
-	lines := splitLines(diff)
-	for _, line := range lines {
-		// 🎯 ここでスキップしたいヘッダー行を除外
-		if strings.HasPrefix(line, "diff --git") ||
-			strings.HasPrefix(line, "index ") ||
-			strings.HasPrefix(line, "--- ") ||
-			strings.HasPrefix(line, "+++ ") ||
-			strings.HasPrefix(line, "@@") {
-			continue // ← 表示しない
-		}
-
-		// 色付け処理（+/-）
-		if len(line) > 0 {
-			switch line[0] {
-			case '-':
-				result += "[red]" + line + "[-]\n"
-			case '+':
-				result += "[green]" + line + "[-]\n"
-			default:
-				result += line + "\n"
-			}
-		} else {
-			result += "\n"
-		}
-	}
-	return result
 }
 
 func mapDisplayIndexToOriginalIndex(diff string) map[int]int {
