@@ -32,7 +32,7 @@ func updateStatus(message string, color string) {
 	}
 }
 
-func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExit func()) tview.Primitive {
+func ShowFileDiffText(app *tview.Application, filePath string, debug bool, patchFilePath string, onExit func()) tview.Primitive {
 	// ファイル内容を取得して表示
 	diffText, err := git.GetFileDiff(filePath)
 	if err != nil {
@@ -107,9 +107,6 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 		isSelecting = false
 		currentFocus = 0
 	}
-
-	// Patch file name
-	patchFile := "selected.patch"
 
 	// テキストを描画する関数
 	updateTextView := func() {
@@ -205,7 +202,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 					selectEnd = cursorY
 				}
 			case 'u':
-				cmd := exec.Command("git", "apply", "-R", "--cached", patchFile)
+				cmd := exec.Command("git", "apply", "-R", "--cached", patchFilePath)
 				output, err := cmd.CombinedOutput()
 				if err != nil {
 					message := "Undo failed!" + "\n" + "Please use debug mode to see more details: gitta --debug"
@@ -224,7 +221,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 						resetCursor()
 					}
 				}
-			case 'U':
+			case 'i':
 				if selectStart != -1 && selectEnd != -1 {
 					mapping := mapDisplayIndexToOriginalIndex(diffText)
 					start := mapping[selectStart]
@@ -234,13 +231,13 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 					patch := generateMinimalPatch(diffText, start, end, fileHeader, updateDebug)
 					updateDebug("Generated Patch:\n" + patch)
 
-					if err := os.WriteFile(patchFile, []byte(patch), 0644); err != nil {
+					if err := os.WriteFile(patchFilePath, []byte(patch), 0644); err != nil {
 						fmt.Println("Failed to write patch file:", err)
 						onExit() // ファイル一覧に戻る
 					}
 
 					// git apply を実行
-					cmd := exec.Command("git", "apply", "--cached", patchFile)
+					cmd := exec.Command("git", "apply", "--cached", patchFilePath)
 					output, err := cmd.CombinedOutput()
 					if err != nil {
 						message := fmt.Sprintf("Failed to apply patch:\n%s", string(output)+"\n"+"Please use debug mode to see more details: gitta --debug")
@@ -261,13 +258,13 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 			// case 'C': // Shift + c
 			// 	ShowCommitScreen(app, filePath, func() {
 			// 		onExit() // ファイル一覧に戻る
-			// 		os.Remove(patchFile)
+			// 		os.Remove(patchFilePath)
 			// 	})
 			case 'w': // 'w' でファイル一覧に戻る
 				onExit() // ファイル一覧に戻る
-				os.Remove(patchFile)
+				os.Remove(patchFilePath)
 			case 'q': // 'q' でアプリ終了
-				os.Remove(patchFile)
+				os.Remove(patchFilePath)
 				app.Stop() // tview アプリケーションを停止
 				os.Exit(0) // プロセスを終了
 			}
