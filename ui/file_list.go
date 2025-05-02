@@ -12,7 +12,7 @@ import (
 )
 
 // ファイル一覧を表示
-func ShowFileList(app *tview.Application, modifiedFiles, untrackedFiles []string, onSelect func(file string)) {
+func ShowFileList(app *tview.Application, modifiedFiles, untrackedFiles []string, onSelect func(file string)) tview.Primitive {
 	// テキストビューを作成
 	textView := tview.NewTextView().
 		SetDynamicColors(true).
@@ -115,6 +115,5 @@ func ShowFileList(app *tview.Application, modifiedFiles, untrackedFiles []string
 		return event
 	})
 
-	// アプリケーションのルートに設定
-	app.SetRoot(textView, true).Run()
+	return textView
 }

@@ -32,7 +32,7 @@ func updateStatus(message string, color string) {
 	}
 }
 
-func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExit func()) {
+func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExit func()) tview.Primitive {
 	// ファイル内容を取得して表示
 	diffText, err := git.GetFileDiff(filePath)
 	if err != nil {
@@ -268,11 +268,8 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 				os.Remove(patchFile)
 			case 'q': // 'q' でアプリ終了
 				os.Remove(patchFile)
-				go func() {
-					time.Sleep(100 * time.Millisecond)
-					os.Exit(0)
-				}()
-				app.Stop()
+				app.Stop() // tview アプリケーションを停止
+				os.Exit(0) // プロセスを終了
 			}
 		}
 
@@ -306,7 +303,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, onExi
 
 	// 初期描画
 	updateTextView()
-	app.SetRoot(flex, true).Run()
+	return textView
 }
 
 func mapDisplayIndexToOriginalIndex(diff string) map[int]int {
