@@ -20,7 +20,7 @@ var gPressed bool
 var lastGTime time.Time
 
 var statusView *tview.TextView
-var keyBindingMessage = "Press 'w' to go back to the file list, 'q' to quit, 'u' to undo, 'U' to apply patch, 'V' to select lines, and 'j/k' to scroll up/down."
+var keyBindingMessage = "Press 'w' to go back to the file list, 'q' to quit, 'u' to undo, 'a' to apply patch, 'A' to apply all changes, 'V' to select lines, and 'j/k' to scroll up/down."
 
 func updateStatus(message string, color string) {
 	if statusView != nil {
@@ -221,7 +221,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, patch
 						resetCursor()
 					}
 				}
-			case 'i':
+			case 'a':
 				if selectStart != -1 && selectEnd != -1 {
 					mapping := mapDisplayIndexToOriginalIndex(diffText)
 					start := mapping[selectStart]
@@ -254,6 +254,20 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, patch
 						resetCursor()
 					}
 					resetCursor()
+				}
+			case 'A':
+				// Apply all changes for this file
+				cmd := exec.Command("git", "add", filePath)
+				output, err := cmd.CombinedOutput()
+				if err != nil {
+					message := fmt.Sprintf("Failed to apply all changes:\n%s", string(output))
+					updateStatus(message, "firebrick")
+					updateDebug(fmt.Sprintf("Failed to apply all changes:\n%s", string(output)))
+				} else {
+					updateStatus("All changes applied successfully!", "gold")
+					// ファイル一覧に戻る
+					onExit()
+					os.Remove(patchFilePath)
 				}
 			// case 'C': // Shift + c
 			// 	ShowCommitScreen(app, filePath, func() {

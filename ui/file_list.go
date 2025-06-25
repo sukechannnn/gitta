@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -102,6 +103,23 @@ func ShowFileList(app *tview.Application, modifiedFiles, untrackedFiles []string
 					currentSelection++
 					textView.Highlight(regions[currentSelection])
 					textView.ScrollToHighlight()
+				}
+				return nil
+			case 'A': // 'A' で現在のファイルを git add
+				if currentSelection >= 0 && currentSelection < len(regions) {
+					regionID := regions[currentSelection]
+					file := fileMap[regionID]
+
+					cmd := exec.Command("git", "add", file)
+					err := cmd.Run()
+					if err != nil {
+						// エラーハンドリング（ここでは簡単にスキップ）
+						return nil
+					}
+
+					// ファイルリストを更新するため、アプリを再描画
+					// この実装では単純にファイルが追加されたことを示すために何もしない
+					// 実際の更新はメインループで行われる
 				}
 				return nil
 			case 'q': // 'q' でアプリ終了

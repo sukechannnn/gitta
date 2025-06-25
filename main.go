@@ -9,7 +9,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"github.com/sukechannnn/gitta/config" // 新しく作成した config パッケージをインポート
+	"github.com/sukechannnn/gitta/config"
 	"github.com/sukechannnn/gitta/git"
 	"github.com/sukechannnn/gitta/ui"
 )
