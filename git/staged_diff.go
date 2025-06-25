@@ -2,18 +2,17 @@ package git
 
 import (
 	"fmt"
-	"log"
 	"os/exec"
 )
 
 func GetStagedDiff(filePath string) (string, error) {
-	// `git diff` を実行
-	cmd := exec.Command("git", "diff", "--cached", filePath)
+	// `git diff` を実行（削除されたファイルでも動作するように -- を追加）
+	cmd := exec.Command("git", "diff", "--cached", "--", filePath)
 	output, err := cmd.Output()
 	if err != nil {
-		log.Fatalf("Failed to execute git diff: %v", err)
+		return "", fmt.Errorf("failed to execute git diff --cached: %w", err)
 	}
 
 	// 差分を表示
-	return fmt.Sprint(string(output)), err
+	return string(output), nil
 }

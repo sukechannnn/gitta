@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"regexp"
@@ -32,11 +31,22 @@ func updateStatus(message string, color string) {
 	}
 }
 
-func ShowFileDiffText(app *tview.Application, filePath string, debug bool, patchFilePath string, onExit func()) tview.Primitive {
+func ShowFileDiffText(app *tview.Application, filePath string, status string, debug bool, patchFilePath string, onExit func()) tview.Primitive {
 	// ファイル内容を取得して表示
-	diffText, err := git.GetFileDiff(filePath)
+	var diffText string
+	var err error
+
+	if status == "staged" {
+		// stagedファイルの場合はstaged差分を取得
+		diffText, err = git.GetStagedDiff(filePath)
+	} else {
+		// unstagedファイルの場合は通常の差分を取得
+		diffText, err = git.GetFileDiff(filePath)
+	}
+
 	if err != nil {
-		log.Fatalf("Failed to get file diff: %v", err)
+		// エラーが発生した場合でも適切なメッセージを表示
+		diffText = fmt.Sprintf("Error getting diff for %s: %v\n\nThis might be a deleted file or there might be an issue with git.", filePath, err)
 	}
 
 	coloredDiff := ColorizeDiff(diffText)
@@ -53,7 +63,8 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, patch
 
 	statusView = tview.NewTextView().
 		SetDynamicColors(true).
-		SetTextAlign(tview.AlignLeft)
+		SetTextAlign(tview.AlignLeft).
+		SetWrap(true)
 	statusView.SetBorder(true)
 	statusView.SetBackgroundColor(util.MyColor.BackgroundColor)
 
@@ -222,52 +233,78 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, patch
 					}
 				}
 			case 'a':
-				if selectStart != -1 && selectEnd != -1 {
-					mapping := mapDisplayIndexToOriginalIndex(diffText)
-					start := mapping[selectStart]
-					end := mapping[selectEnd]
-					// パッチを抽出
-					fileHeader := extractFileHeader(diffText, start)
-					patch := generateMinimalPatch(diffText, start, end, fileHeader, updateDebug)
-					updateDebug("Generated Patch:\n" + patch)
+				if status == "staged" {
+					// Staged ファイルでは行単位のunstageは複雑なため、現在未対応
+					updateStatus("Line-by-line unstaging not supported for staged files. Use 'A' to unstage entire file.", "firebrick")
+				} else {
+					// Unstaged ファイルでは通常の行単位ステージング
+					if selectStart != -1 && selectEnd != -1 {
+						mapping := mapDisplayIndexToOriginalIndex(diffText)
+						start := mapping[selectStart]
+						end := mapping[selectEnd]
+						// パッチを抽出
+						fileHeader := extractFileHeader(diffText, start)
+						patch := generateMinimalPatch(diffText, start, end, fileHeader, updateDebug)
+						updateDebug("Generated Patch:\n" + patch)
 
-					if err := os.WriteFile(patchFilePath, []byte(patch), 0644); err != nil {
-						fmt.Println("Failed to write patch file:", err)
-						onExit() // ファイル一覧に戻る
-					}
-
-					// git apply を実行
-					cmd := exec.Command("git", "apply", "--cached", patchFilePath)
-					output, err := cmd.CombinedOutput()
-					if err != nil {
-						message := fmt.Sprintf("Failed to apply patch:\n%s", string(output)+"\n"+"Please use debug mode to see more details: gitta --debug")
-						updateStatus(message, "firebrick")
-						updateDebug(fmt.Sprintf("Failed to apply patch:\n%s", string(output)))
-					} else {
-						updateStatus("Patch applied successfully!", "gold")
-						diffText, err = git.GetFileDiff(filePath)
-						if err != nil {
-							log.Fatalf("Failed to get file diff: %v", err)
+						if err := os.WriteFile(patchFilePath, []byte(patch), 0644); err != nil {
+							fmt.Println("Failed to write patch file:", err)
+							onExit() // ファイル一覧に戻る
 						}
-						coloredDiff = ColorizeDiff(diffText)
-						updateTextView()
+
+						// git apply を実行
+						cmd := exec.Command("git", "apply", "--cached", patchFilePath)
+						output, err := cmd.CombinedOutput()
+						if err != nil {
+							message := fmt.Sprintf("Failed to apply patch:\n%s", string(output)+"\n"+"Please use debug mode to see more details: gitta --debug")
+							updateStatus(message, "firebrick")
+							updateDebug(fmt.Sprintf("Failed to apply patch:\n%s", string(output)))
+						} else {
+							updateStatus("Patch applied successfully!", "gold")
+							if status == "staged" {
+								diffText, err = git.GetStagedDiff(filePath)
+							} else {
+								diffText, err = git.GetFileDiff(filePath)
+							}
+							if err != nil {
+								diffText = fmt.Sprintf("Error getting updated diff for %s: %v", filePath, err)
+							}
+							coloredDiff = ColorizeDiff(diffText)
+							updateTextView()
+							resetCursor()
+						}
 						resetCursor()
 					}
-					resetCursor()
 				}
 			case 'A':
-				// Apply all changes for this file
-				cmd := exec.Command("git", "add", filePath)
-				output, err := cmd.CombinedOutput()
-				if err != nil {
-					message := fmt.Sprintf("Failed to apply all changes:\n%s", string(output))
-					updateStatus(message, "firebrick")
-					updateDebug(fmt.Sprintf("Failed to apply all changes:\n%s", string(output)))
+				if status == "staged" {
+					// Staged ファイルの場合はunstageする
+					cmd := exec.Command("git", "reset", "HEAD", filePath)
+					output, err := cmd.CombinedOutput()
+					if err != nil {
+						message := fmt.Sprintf("Failed to unstage file:\n%s", string(output))
+						updateStatus(message, "firebrick")
+						updateDebug(fmt.Sprintf("Failed to unstage file:\n%s", string(output)))
+					} else {
+						updateStatus("File unstaged successfully!", "gold")
+						// ファイル一覧に戻る
+						onExit()
+						os.Remove(patchFilePath)
+					}
 				} else {
-					updateStatus("All changes applied successfully!", "gold")
-					// ファイル一覧に戻る
-					onExit()
-					os.Remove(patchFilePath)
+					// Unstaged ファイルの場合はstageする
+					cmd := exec.Command("git", "add", filePath)
+					output, err := cmd.CombinedOutput()
+					if err != nil {
+						message := fmt.Sprintf("Failed to apply all changes:\n%s", string(output))
+						updateStatus(message, "firebrick")
+						updateDebug(fmt.Sprintf("Failed to apply all changes:\n%s", string(output)))
+					} else {
+						updateStatus("All changes applied successfully!", "gold")
+						// ファイル一覧に戻る
+						onExit()
+						os.Remove(patchFilePath)
+					}
 				}
 			// case 'C': // Shift + c
 			// 	ShowCommitScreen(app, filePath, func() {
@@ -314,7 +351,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, debug bool, patch
 
 	// 初期描画
 	updateTextView()
-	return textView
+	return flex
 }
 
 func mapDisplayIndexToOriginalIndex(diff string) map[int]int {
