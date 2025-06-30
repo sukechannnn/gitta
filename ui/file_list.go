@@ -13,7 +13,7 @@ import (
 )
 
 // ファイル一覧を表示
-func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []string, onSelect func(file string, status string)) tview.Primitive {
+func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []string, onSelect func(file string, status string), onUpdate func()) tview.Primitive {
 	// テキストビューを作成
 	textView := tview.NewTextView().
 		SetDynamicColors(true).
@@ -147,9 +147,10 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 						return nil
 					}
 
-					// ファイルリストを更新するため、アプリを再描画
-					// この実装では単純にファイルが追加されたことを示すために何もしない
-					// 実際の更新はメインループで行われる
+					// ファイルリストを更新
+					if onUpdate != nil {
+						onUpdate()
+					}
 				}
 				return nil
 			case 'q': // 'q' でアプリ終了

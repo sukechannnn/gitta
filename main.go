@@ -81,20 +81,29 @@ func main() {
 
 	// ファイル選択時の処理を定義（再帰的に使用するため関数として定義）
 	var showFileDiff func(filePath string, status string)
+	var updateFileList func()
+
+	updateFileList = func() {
+		updatedStagedFiles, updatedModifiedFiles, updatedUntrackedFiles, err := git.GetChangedFiles(repoPath)
+		if err != nil {
+			log.Fatalf("Failed to get updated files: %v", err)
+		}
+		fileListView := ui.ShowFileList(gittaApp.App, updatedStagedFiles, updatedModifiedFiles, updatedUntrackedFiles, showFileDiff, updateFileList)
+		gittaApp.App.SetRoot(fileListView, true)
+	}
+
 	showFileDiff = func(filePath string, status string) {
 		// ファイル差分ビューを作成し、ルートに設定
 		// ShowFileDiffText に PatchFilePath を渡すように変更
 		diffView := ui.ShowFileDiffText(gittaApp.App, filePath, status, debug, gittaApp.Config.PatchFilePath, func() {
-			// 差分ビューから戻る際のコールバック
-			// ファイル一覧ビューを作成し、ルートに設定
-			fileListView := ui.ShowFileList(gittaApp.App, stagedFiles, modifiedFiles, untrackedFiles, showFileDiff)
-			gittaApp.App.SetRoot(fileListView, true)
+			// 差分ビューから戻る際のコールバック - ファイル一覧を更新
+			updateFileList()
 		})
 		gittaApp.App.SetRoot(diffView, true)
 	}
 
 	// 初期ビュー（ファイル一覧）を作成し、ルートに設定
-	initialView := ui.ShowFileList(gittaApp.App, stagedFiles, modifiedFiles, untrackedFiles, showFileDiff)
+	initialView := ui.ShowFileList(gittaApp.App, stagedFiles, modifiedFiles, untrackedFiles, showFileDiff, updateFileList)
 	gittaApp.App.SetRoot(initialView, true)
 
 	// アプリケーションの実行は main で一度だけ
