@@ -26,7 +26,11 @@ func main() {
 	flag.BoolVar(&debug, "debug", false, "Enable debug mode")
 	flag.Parse()
 
-	repoPath := "." // 現在のディレクトリにリポジトリがあると仮定
+	// Git リポジトリのルートを検出
+	repoPath, err := git.FindGitRoot(".")
+	if err != nil {
+		log.Fatalf("Git repository not found: %v", err)
+	}
 
 	// 設定の読み込み
 	cfg, err := config.LoadConfig()
@@ -88,14 +92,14 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to get updated files: %v", err)
 		}
-		fileListView := ui.ShowFileList(gittaApp.App, updatedStagedFiles, updatedModifiedFiles, updatedUntrackedFiles, showFileDiff, updateFileList)
+		fileListView := ui.ShowFileList(gittaApp.App, updatedStagedFiles, updatedModifiedFiles, updatedUntrackedFiles, repoPath, showFileDiff, updateFileList)
 		gittaApp.App.SetRoot(fileListView, true)
 	}
 
 	showFileDiff = func(filePath string, status string) {
 		// ファイル差分ビューを作成し、ルートに設定
 		// ShowFileDiffText に PatchFilePath を渡すように変更
-		diffView := ui.ShowFileDiffText(gittaApp.App, filePath, status, debug, gittaApp.Config.PatchFilePath, func() {
+		diffView := ui.ShowFileDiffText(gittaApp.App, filePath, status, debug, gittaApp.Config.PatchFilePath, repoPath, func() {
 			// 差分ビューから戻る際のコールバック - ファイル一覧を更新
 			updateFileList()
 		})
@@ -103,7 +107,7 @@ func main() {
 	}
 
 	// 初期ビュー（ファイル一覧）を作成し、ルートに設定
-	initialView := ui.ShowFileList(gittaApp.App, stagedFiles, modifiedFiles, untrackedFiles, showFileDiff, updateFileList)
+	initialView := ui.ShowFileList(gittaApp.App, stagedFiles, modifiedFiles, untrackedFiles, repoPath, showFileDiff, updateFileList)
 	gittaApp.App.SetRoot(initialView, true)
 
 	// アプリケーションの実行は main で一度だけ

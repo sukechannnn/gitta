@@ -1,19 +1,49 @@
 package git
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
+// FindGitRoot は現在のディレクトリから上位階層へ遡って .git ディレクトリを探します
+func FindGitRoot(startPath string) (string, error) {
+	dir, err := filepath.Abs(startPath)
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		gitDir := filepath.Join(dir, ".git")
+		if _, err := os.Stat(gitDir); err == nil {
+			return dir, nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// ルートディレクトリに達した
+			break
+		}
+		dir = parent
+	}
+
+	return "", os.ErrNotExist
+}
+
 func GetChangedFiles(repoPath string) ([]string, []string, []string, error) {
+	// Git リポジトリのルートを検索
+	gitRoot, err := FindGitRoot(repoPath)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	// Git status --porcelain を実行してstaged/unstagedの両方のファイルを取得
 	cmd := exec.Command("git", "status", "--porcelain")
-	cmd.Dir = repoPath
+	cmd.Dir = gitRoot
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, nil, nil, err
 	}
-
 
 	var stagedFiles []string
 	var modifiedFiles []string

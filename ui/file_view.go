@@ -31,17 +31,17 @@ func updateStatus(message string, color string) {
 	}
 }
 
-func ShowFileDiffText(app *tview.Application, filePath string, status string, debug bool, patchFilePath string, onExit func()) tview.Primitive {
+func ShowFileDiffText(app *tview.Application, filePath string, status string, debug bool, patchFilePath string, repoRoot string, onExit func()) tview.Primitive {
 	// ファイル内容を取得して表示
 	var diffText string
 	var err error
 
 	if status == "staged" {
 		// stagedファイルの場合はstaged差分を取得
-		diffText, err = git.GetStagedDiff(filePath)
+		diffText, err = git.GetStagedDiff(filePath, repoRoot)
 	} else {
 		// unstagedファイルの場合は通常の差分を取得
-		diffText, err = git.GetFileDiff(filePath)
+		diffText, err = git.GetFileDiff(filePath, repoRoot)
 	}
 
 	if err != nil {
@@ -214,6 +214,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, status string, de
 				}
 			case 'u':
 				cmd := exec.Command("git", "apply", "-R", "--cached", patchFilePath)
+				cmd.Dir = repoRoot
 				output, err := cmd.CombinedOutput()
 				if err != nil {
 					message := "Undo failed!" + "\n" + "Please use debug mode to see more details: gitta --debug"
@@ -223,7 +224,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, status string, de
 					updateStatus("Undo successful!", "gold")
 
 					// 再描画用に diff 更新
-					diffText, err = git.GetFileDiff(filePath)
+					diffText, err = git.GetFileDiff(filePath, repoRoot)
 					if err != nil {
 						updateDebug("Failed to get file diff after undo: " + err.Error())
 					} else {
@@ -254,6 +255,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, status string, de
 
 						// git apply を実行
 						cmd := exec.Command("git", "apply", "--cached", patchFilePath)
+						cmd.Dir = repoRoot
 						output, err := cmd.CombinedOutput()
 						if err != nil {
 							message := fmt.Sprintf("Failed to apply patch:\n%s", string(output)+"\n"+"Please use debug mode to see more details: gitta --debug")
@@ -262,9 +264,9 @@ func ShowFileDiffText(app *tview.Application, filePath string, status string, de
 						} else {
 							updateStatus("Patch applied successfully!", "gold")
 							if status == "staged" {
-								diffText, err = git.GetStagedDiff(filePath)
+								diffText, err = git.GetStagedDiff(filePath, repoRoot)
 							} else {
-								diffText, err = git.GetFileDiff(filePath)
+								diffText, err = git.GetFileDiff(filePath, repoRoot)
 							}
 							if err != nil {
 								diffText = fmt.Sprintf("Error getting updated diff for %s: %v", filePath, err)
@@ -280,6 +282,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, status string, de
 				if status == "staged" {
 					// Staged ファイルの場合はunstageする
 					cmd := exec.Command("git", "reset", "HEAD", filePath)
+					cmd.Dir = repoRoot
 					output, err := cmd.CombinedOutput()
 					if err != nil {
 						message := fmt.Sprintf("Failed to unstage file:\n%s", string(output))
@@ -294,6 +297,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, status string, de
 				} else {
 					// Unstaged ファイルの場合はstageする
 					cmd := exec.Command("git", "add", filePath)
+					cmd.Dir = repoRoot
 					output, err := cmd.CombinedOutput()
 					if err != nil {
 						message := fmt.Sprintf("Failed to apply all changes:\n%s", string(output))

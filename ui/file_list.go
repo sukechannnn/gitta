@@ -13,7 +13,7 @@ import (
 )
 
 // ファイル一覧を表示
-func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []string, onSelect func(file string, status string), onUpdate func()) tview.Primitive {
+func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []string, repoRoot string, onSelect func(file string, status string), onUpdate func()) tview.Primitive {
 	// テキストビューを作成
 	textView := tview.NewTextView().
 		SetDynamicColors(true).
@@ -136,9 +136,11 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					if status == "staged" {
 						// stagedファイルをunstageする
 						cmd = exec.Command("git", "reset", "HEAD", file)
+						cmd.Dir = repoRoot
 					} else {
 						// unstaged/untrackedファイルをstageする
 						cmd = exec.Command("git", "add", file)
+						cmd.Dir = repoRoot
 					}
 					
 					err := cmd.Run()
