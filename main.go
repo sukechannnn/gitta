@@ -92,7 +92,15 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to get updated files: %v", err)
 		}
-		fileListView := ui.ShowFileList(gittaApp.App, updatedStagedFiles, updatedModifiedFiles, updatedUntrackedFiles, repoPath, showFileDiff, updateFileList)
+		fileListView := ui.ShowFileList(
+			gittaApp.App,
+			updatedStagedFiles,
+			updatedModifiedFiles,
+			updatedUntrackedFiles,
+			repoPath,
+			showFileDiff,
+			updateFileList,
+		)
 		gittaApp.App.SetRoot(fileListView, true)
 	}
 

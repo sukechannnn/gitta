@@ -13,40 +13,99 @@ import (
 	"github.com/sukechannnn/gitta/util"
 )
 
+// 保持するカーソル情報
+var savedCursorPosition int = -1
+var savedTargetFile string = ""
+var preferUnstagedSection bool = false
+
 // ファイル一覧を表示
 func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []string, repoRoot string, onSelect func(file string, status string), onUpdate func()) tview.Primitive {
+	// ファイルリストを更新するための参照を保持
+	stagedFilesPtr := &stagedFiles
+	modifiedFilesPtr := &modifiedFiles
+	untrackedFilesPtr := &untrackedFiles
 	// フレックスレイアウトを作成（左右分割）
 	flex := tview.NewFlex()
-	
+
 	// 左ペイン（ファイルリスト）のテキストビューを作成
 	textView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetRegions(true).
 		SetWrap(false)
 	textView.SetBackgroundColor(util.MyColor.BackgroundColor)
-	
+
 	// 右ペイン（差分表示）のテキストビューを作成
 	diffView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetRegions(true).
 		SetWrap(false)
 	diffView.SetBackgroundColor(util.MyColor.BackgroundColor)
-	
+
 	// 現在のファイル情報を保持
 	var currentFile string
 	var currentStatus string
 	var diffLines []string
-	var currentDiffText string  // 生の差分テキストを保持
+	var currentDiffText string // 生の差分テキストを保持
 	var cursorY int = 0
 	var selectStart int = -1
 	var selectEnd int = -1
 	var isSelecting bool = false
 	var currentSelection int = 0
 	var leftPaneFocused bool = true
-	
+
+	// 保存されたカーソル位置を復元
+	if preferUnstagedSection || savedTargetFile != "" {
+		// カーソル位置を計算
+		targetSelection := 0
+		foundTarget := false
+
+		// 全ファイルを走査
+		for _, file := range *stagedFilesPtr {
+			if strings.TrimSpace(file) != "" {
+				if !preferUnstagedSection && file == savedTargetFile {
+					currentSelection = targetSelection
+					foundTarget = true
+					break
+				}
+				targetSelection++
+			}
+		}
+
+		if !foundTarget {
+			// unstagedセクションの開始位置
+			unstagedStart := targetSelection
+
+			for _, file := range *modifiedFilesPtr {
+				if strings.TrimSpace(file) != "" {
+					if preferUnstagedSection && targetSelection == unstagedStart {
+						// unstagedセクションの最初のファイル
+						currentSelection = targetSelection
+						foundTarget = true
+						break
+					} else if !preferUnstagedSection && file == savedTargetFile {
+						currentSelection = targetSelection
+						foundTarget = true
+						break
+					}
+					targetSelection++
+				}
+			}
+		}
+
+		// カーソル情報をリセット
+		preferUnstagedSection = false
+		savedTargetFile = ""
+	}
+
 	// 表示更新関数の宣言
 	var updateFileListView func()
-	
+	var refreshFileList func()
+
+	// ファイル一覧を構築するための変数
+	var regions []string
+	var fileMap = make(map[string]string)
+	var fileStatusMap = make(map[string]string)
+
 	// 右ペインのキー入力処理を設定（file_view.goと同じ動作）
 	diffView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
@@ -113,18 +172,18 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 						// Staged ファイルでは行単位のunstageは未対応
 						return nil
 					}
-					
+
 					// パッチファイルのパスを生成
 					patchPath := "/tmp/gitta_selected.patch"
-					
+
 					// パッチを生成（file_view.goと同じロジック）
 					mapping := mapDisplayToOriginalIdx(currentDiffText)
 					start := mapping[selectStart]
 					end := mapping[selectEnd]
-					
+
 					fileHeader := extractFileHdr(currentDiffText, start)
 					patch := GenerateMinimalPatch(currentDiffText, start, end, fileHeader, nil)
-					
+
 					// パッチファイルに書き込む
 					if err := os.WriteFile(patchPath, []byte(patch), 0644); err == nil {
 						// git applyを実行
@@ -140,23 +199,73 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 								newDiffText, _ = git.GetFileDiff(currentFile, repoRoot)
 							}
 							currentDiffText = newDiffText
-							
+
 							// ColorizeDiffで色付け
 							coloredDiff := ColorizeDiff(currentDiffText)
 							diffLines = SplitLines(coloredDiff)
-							
+
 							// 選択を解除してカーソルリセット
 							isSelecting = false
 							selectStart = -1
 							selectEnd = -1
 							cursorY = 0
-							
+
 							// 再描画
 							updateDiffView(diffView, diffLines, cursorY)
-							
-							// 最後にファイルリストを更新
-							if onUpdate != nil {
-								onUpdate()
+
+							// 現在のファイルを保存
+							savedFile := currentFile
+
+							// ファイルリストを内部的に更新
+							refreshFileList()
+
+							// 差分が残っている場合
+							if len(strings.TrimSpace(newDiffText)) > 0 {
+								// 同じファイルのインデックスを探す
+								foundIndex := -1
+								allFiles := []string{}
+
+								// 全ファイルリストを作成
+								for _, file := range *stagedFilesPtr {
+									file = strings.TrimSpace(file)
+									if file != "" {
+										allFiles = append(allFiles, file)
+										if file == savedFile {
+											foundIndex = len(allFiles) - 1
+										}
+									}
+								}
+								for _, file := range *modifiedFilesPtr {
+									file = strings.TrimSpace(file)
+									if file != "" {
+										allFiles = append(allFiles, file)
+										if file == savedFile {
+											foundIndex = len(allFiles) - 1
+										}
+									}
+								}
+								for _, file := range *untrackedFilesPtr {
+									file = strings.TrimSpace(file)
+									if file != "" {
+										allFiles = append(allFiles, file)
+										if file == savedFile {
+											foundIndex = len(allFiles) - 1
+										}
+									}
+								}
+
+								// ファイルが見つかった場合はカーソルを設定
+								if foundIndex != -1 {
+									currentSelection = foundIndex
+								}
+
+								// ファイルリストを再描画
+								updateFileListView()
+							} else {
+								// 差分がなくなった場合は、完全に更新
+								if onUpdate != nil {
+									onUpdate()
+								}
 							}
 						} else if err != nil {
 							// エラーの場合でもパッチファイルは削除（エラーは表示しない）
@@ -175,11 +284,55 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 						cmd = exec.Command("git", "add", currentFile)
 					}
 					cmd.Dir = repoRoot
-					
+
 					err := cmd.Run()
-					if err == nil && onUpdate != nil {
+					if err == nil {
+						wasStaged := (currentStatus == "staged")
+
+						if currentStatus == "staged" {
+							// unstagedになったファイルの差分を表示
+							currentStatus = "unstaged"
+							newDiffText, _ := git.GetFileDiff(currentFile, repoRoot)
+							currentDiffText = newDiffText
+						} else {
+							// stagedになったファイルの差分を表示
+							currentStatus = "staged"
+							newDiffText, _ := git.GetStagedDiff(currentFile, repoRoot)
+							currentDiffText = newDiffText
+						}
+
+						// 差分を更新して表示
+						coloredDiff := ColorizeDiff(currentDiffText)
+						diffLines = SplitLines(coloredDiff)
+
+						// カーソルと選択をリセット
+						isSelecting = false
+						selectStart = -1
+						selectEnd = -1
+						cursorY = 0
+
+						// 再描画
+						updateDiffView(diffView, diffLines, cursorY)
+
+						// refreshFileListを呼んで最新の状態を取得
+						refreshFileList()
+
+						// カーソル位置を保存
+						if wasStaged || len(*modifiedFilesPtr) > 0 {
+							// staged -> unstaged の場合、または unstaged ファイルが残っている場合
+							// unstagedセクションの先頭を選択するように設定
+							preferUnstagedSection = true
+							savedTargetFile = ""
+						} else {
+							// unstagedファイルがない場合は、通常の動作
+							preferUnstagedSection = false
+							savedTargetFile = ""
+						}
+
 						// ファイルリストを更新
-						onUpdate()
+						if onUpdate != nil {
+							onUpdate()
+						}
 					}
 				}
 				return nil
@@ -195,7 +348,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 		}
 		return event
 	})
-	
+
 	// 縦線を作成
 	border := tview.NewBox().
 		SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
@@ -206,7 +359,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 			return x, y, width, height
 		})
 	border.SetBackgroundColor(util.MyColor.BackgroundColor)
-	
+
 	// 左右のペインをフレックスに追加（左:縦線:右 = 1:0:2）
 	flex.AddItem(textView, 0, 1, true).
 		AddItem(border, 1, 0, false).
@@ -214,14 +367,11 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 
 	// ファイル一覧を構築
 	var content strings.Builder
-	var regions []string
-	var fileMap = make(map[string]string)
-	var fileStatusMap = make(map[string]string) // ファイルの状態を保存
 
 	// Staged ファイル
-	if len(stagedFiles) > 0 {
+	if len(*stagedFilesPtr) > 0 {
 		content.WriteString("[green]Changes to be committed:[white]\n")
-		for _, file := range stagedFiles {
+		for _, file := range *stagedFilesPtr {
 			file = strings.TrimSpace(file)
 			if file != "" {
 				regionID := fmt.Sprintf("file-%d", len(regions))
@@ -235,9 +385,9 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 	}
 
 	// 変更されたファイル（unstaged）
-	if len(modifiedFiles) > 0 {
+	if len(*modifiedFilesPtr) > 0 {
 		content.WriteString("[yellow]Changes not staged for commit:[white]\n")
-		for _, file := range modifiedFiles {
+		for _, file := range *modifiedFilesPtr {
 			file = strings.TrimSpace(file)
 			if file != "" {
 				regionID := fmt.Sprintf("file-%d", len(regions))
@@ -251,9 +401,9 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 	}
 
 	// 未追跡ファイル
-	if len(untrackedFiles) > 0 {
+	if len(*untrackedFilesPtr) > 0 {
 		content.WriteString("[red]Untracked files:[white]\n")
-		for _, file := range untrackedFiles {
+		for _, file := range *untrackedFilesPtr {
 			file = strings.TrimSpace(file)
 			if file != "" {
 				regionID := fmt.Sprintf("file-%d", len(regions))
@@ -267,15 +417,25 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 
 	// ファイル一覧の内容を構築（色付き）
 	buildFileListContent := func(focusedPane bool) string {
+		// regions と fileMap を再構築
+		regions = []string{}
+		fileMap = make(map[string]string)
+		fileStatusMap = make(map[string]string)
+
 		var coloredContent strings.Builder
 		regionIndex := 0
-		
+
 		// Staged ファイル
-		if len(stagedFiles) > 0 {
+		if len(*stagedFilesPtr) > 0 {
 			coloredContent.WriteString("[green]Changes to be committed:[white]\n")
-			for _, file := range stagedFiles {
+			for _, file := range *stagedFilesPtr {
 				file = strings.TrimSpace(file)
 				if file != "" {
+					regionID := fmt.Sprintf("file-%d", regionIndex)
+					regions = append(regions, regionID)
+					fileMap[regionID] = file
+					fileStatusMap[regionID] = "staged"
+
 					if focusedPane && regionIndex == currentSelection {
 						// フォーカス時は青色ハイライト
 						coloredContent.WriteString(fmt.Sprintf(`[white:blue]["file-%d"]  %s[""][-:-]`+"\n", regionIndex, file))
@@ -290,13 +450,18 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 			}
 			coloredContent.WriteString("\n")
 		}
-		
+
 		// 変更されたファイル（unstaged）
-		if len(modifiedFiles) > 0 {
+		if len(*modifiedFilesPtr) > 0 {
 			coloredContent.WriteString("[yellow]Changes not staged for commit:[white]\n")
-			for _, file := range modifiedFiles {
+			for _, file := range *modifiedFilesPtr {
 				file = strings.TrimSpace(file)
 				if file != "" {
+					regionID := fmt.Sprintf("file-%d", regionIndex)
+					regions = append(regions, regionID)
+					fileMap[regionID] = file
+					fileStatusMap[regionID] = "unstaged"
+
 					if focusedPane && regionIndex == currentSelection {
 						coloredContent.WriteString(fmt.Sprintf(`[white:blue]["file-%d"]  %s[""][-:-]`+"\n", regionIndex, file))
 					} else if !focusedPane && regionIndex == currentSelection {
@@ -309,13 +474,18 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 			}
 			coloredContent.WriteString("\n")
 		}
-		
+
 		// 未追跡ファイル
-		if len(untrackedFiles) > 0 {
+		if len(*untrackedFilesPtr) > 0 {
 			coloredContent.WriteString("[red]Untracked files:[white]\n")
-			for _, file := range untrackedFiles {
+			for _, file := range *untrackedFilesPtr {
 				file = strings.TrimSpace(file)
 				if file != "" {
+					regionID := fmt.Sprintf("file-%d", regionIndex)
+					regions = append(regions, regionID)
+					fileMap[regionID] = file
+					fileStatusMap[regionID] = "untracked"
+
 					if focusedPane && regionIndex == currentSelection {
 						coloredContent.WriteString(fmt.Sprintf(`[white:blue]["file-%d"]  %s[""][-:-]`+"\n", regionIndex, file))
 					} else if !focusedPane && regionIndex == currentSelection {
@@ -327,7 +497,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				}
 			}
 		}
-		
+
 		return coloredContent.String()
 	}
 
@@ -336,7 +506,18 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 		textView.Clear()
 		textView.SetText(buildFileListContent(leftPaneFocused))
 	}
-	
+
+	// ファイルリストを内部的に更新する関数
+	refreshFileList = func() {
+		// 新しいファイルリストを取得
+		newStaged, newModified, newUntracked, err := git.GetChangedFiles(repoRoot)
+		if err == nil {
+			*stagedFilesPtr = newStaged
+			*modifiedFilesPtr = newModified
+			*untrackedFilesPtr = newUntracked
+		}
+	}
+
 	updateFileListView()
 
 	// キー入力の処理
@@ -359,20 +540,20 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				regionID := regions[currentSelection]
 				file := fileMap[regionID]
 				status := fileStatusMap[regionID]
-				
+
 				// 現在のファイル情報を更新
 				currentFile = file
 				currentStatus = status
-				
+
 				// カーソルと選択をリセット
 				cursorY = 0
 				isSelecting = false
 				selectStart = -1
 				selectEnd = -1
-				
+
 				// 右ペインに差分を表示
 				diffLines = ShowDiffInPane(diffView, file, status, repoRoot, cursorY, &currentDiffText)
-				
+
 				// フォーカスを右ペインに移動
 				leftPaneFocused = false
 				updateFileListView()
@@ -409,7 +590,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 						cmd = exec.Command("git", "add", file)
 						cmd.Dir = repoRoot
 					}
-					
+
 					err := cmd.Run()
 					if err != nil {
 						// エラーハンドリング（ここでは簡単にスキップ）
@@ -441,7 +622,7 @@ func ShowDiffInPane(diffView *tview.TextView, filePath string, status string, re
 	// ファイルの差分を取得
 	var diffText string
 	var err error
-	
+
 	if status == "staged" {
 		// stagedファイルの場合はstaged差分を取得
 		diffText, err = git.GetStagedDiff(filePath, repoRoot)
@@ -449,26 +630,26 @@ func ShowDiffInPane(diffView *tview.TextView, filePath string, status string, re
 		// unstagedファイルの場合は通常の差分を取得
 		diffText, err = git.GetFileDiff(filePath, repoRoot)
 	}
-	
+
 	if err != nil {
 		// エラーが発生した場合でも適切なメッセージを表示
 		diffText = fmt.Sprintf("Error getting diff for %s: %v\n\nThis might be a deleted file or there might be an issue with git.", filePath, err)
 	}
-	
+
 	// 生の差分テキストを保存
 	if diffTextPtr != nil {
 		*diffTextPtr = diffText
 	}
-	
+
 	// ColorizeDiffを使って色付けとヘッダー除外
 	coloredDiff := ColorizeDiff(diffText)
-	
+
 	// 表示用の行を返す（カーソル表示のため）- file_view.goと同じsplitLinesを使用
 	lines := SplitLines(coloredDiff)
-	
+
 	// カーソル付きで表示（SetTextは不要、updateDiffViewが処理する）
 	updateDiffView(diffView, lines, cursorY)
-	
+
 	return lines
 }
 
@@ -480,7 +661,7 @@ func updateDiffView(diffView *tview.TextView, lines []string, cursorY int) {
 // 選択範囲付きで差分ビューを更新する関数
 func updateDiffViewWithSelection(diffView *tview.TextView, lines []string, cursorY int, selectStart int, selectEnd int, isSelecting bool) {
 	diffView.Clear()
-	
+
 	for i, line := range lines {
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
 			// 選択行を黄色でハイライト
@@ -492,14 +673,14 @@ func updateDiffViewWithSelection(diffView *tview.TextView, lines []string, curso
 			diffView.Write([]byte(line + "\n"))
 		}
 	}
-	
+
 	// スクロール位置を調整（カーソルが見える範囲に）
 	_, _, _, height := diffView.GetInnerRect()
 	currentRow, _ := diffView.GetScrollOffset()
-	
+
 	// カーソルが画面より下にある場合
-	if cursorY >= currentRow + height - 1 {
-		diffView.ScrollTo(cursorY - height + 2, 0)
+	if cursorY >= currentRow+height-1 {
+		diffView.ScrollTo(cursorY-height+2, 0)
 	}
 	// カーソルが画面より上にある場合
 	if cursorY < currentRow {
@@ -510,11 +691,11 @@ func updateDiffViewWithSelection(diffView *tview.TextView, lines []string, curso
 // カーソルなしで差分ビューを更新する関数
 func updateDiffViewWithoutCursor(diffView *tview.TextView, lines []string) {
 	diffView.Clear()
-	
+
 	for _, line := range lines {
 		diffView.Write([]byte(line + "\n"))
 	}
-	
+
 	// スクロール位置を先頭に
 	diffView.ScrollTo(0, 0)
 }
@@ -532,14 +713,12 @@ func isLineSelected(index, start, end int) bool {
 	return index >= min && index <= max
 }
 
-
-
 // file_view.goから必要な関数を移植（名前を変更して重複を回避）
 func mapDisplayToOriginalIdx(diff string) map[int]int {
 	lines := SplitLines(diff)
 	displayIndex := 0
 	mapping := make(map[int]int)
-	
+
 	for i, line := range lines {
 		if strings.HasPrefix(line, "diff --git") ||
 			strings.HasPrefix(line, "index ") ||
@@ -548,18 +727,18 @@ func mapDisplayToOriginalIdx(diff string) map[int]int {
 			strings.HasPrefix(line, "@@") {
 			continue
 		}
-		
+
 		mapping[displayIndex] = i
 		displayIndex++
 	}
-	
+
 	return mapping
 }
 
 func extractFileHdr(diff string, startLine int) string {
 	lines := SplitLines(diff)
 	var header []string
-	
+
 	for i := startLine; i >= 0; i-- {
 		line := lines[i]
 		if strings.HasPrefix(line, "diff --git ") {
@@ -576,4 +755,3 @@ func extractFileHdr(diff string, startLine int) string {
 	}
 	return strings.Join(header, "\n")
 }
-
