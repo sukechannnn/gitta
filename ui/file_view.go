@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -50,7 +48,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, status string, de
 	}
 
 	coloredDiff := ColorizeDiff(diffText)
-	lines := splitLines(diffText)
+	lines := SplitLines(diffText)
 	lineLength := len(lines)
 
 	textView := tview.NewTextView().
@@ -122,7 +120,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, status string, de
 	// テキストを描画する関数
 	updateTextView := func() {
 		// テキストを行ごとに分割
-		lines := splitLines(coloredDiff)
+		lines := SplitLines(coloredDiff)
 		textView.Clear()
 
 		for i, line := range lines {
@@ -151,7 +149,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, status string, de
 				cursorY--
 			}
 		case tcell.KeyDown: // 下矢印キー
-			if cursorY < len(splitLines(coloredDiff))-1 {
+			if cursorY < len(SplitLines(coloredDiff))-1 {
 				cursorY++
 			}
 		case tcell.KeyEscape: // Esc で選択モード解除
@@ -161,7 +159,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, status string, de
 		case tcell.KeyRune: // その他のキー
 			switch event.Rune() {
 			case 'j': // 下移動
-				if cursorY < len(splitLines(coloredDiff))-1 {
+				if cursorY < len(SplitLines(coloredDiff))-1 {
 					cursorY++
 					if isSelecting {
 						selectEnd = cursorY
@@ -199,7 +197,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, status string, de
 					lastGTime = now
 				}
 			case 'G': // 大文字G → 最下部へ
-				cursorY = len(splitLines(coloredDiff)) - 1
+				cursorY = len(SplitLines(coloredDiff)) - 1
 				_, _, _, height := textView.GetInnerRect()
 				scrollY = cursorY - height + 2
 				if scrollY < 0 {
@@ -245,7 +243,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, status string, de
 						end := mapping[selectEnd]
 						// パッチを抽出
 						fileHeader := extractFileHeader(diffText, start)
-						patch := generateMinimalPatch(diffText, start, end, fileHeader, updateDebug)
+						patch := GenerateMinimalPatch(diffText, start, end, fileHeader, updateDebug)
 						updateDebug("Generated Patch:\n" + patch)
 
 						if err := os.WriteFile(patchFilePath, []byte(patch), 0644); err != nil {
@@ -359,7 +357,7 @@ func ShowFileDiffText(app *tview.Application, filePath string, status string, de
 }
 
 func mapDisplayIndexToOriginalIndex(diff string) map[int]int {
-	lines := splitLines(diff)
+	lines := SplitLines(diff)
 	displayIndex := 0
 	mapping := make(map[int]int) // displayIndex -> originalIndex
 
@@ -377,24 +375,6 @@ func mapDisplayIndexToOriginalIndex(diff string) map[int]int {
 	}
 
 	return mapping
-}
-
-// splitLines は文字列を改行で分割します
-func splitLines(input string) []string {
-	lines := []string{}
-	currentLine := ""
-	for _, r := range input {
-		if r == '\n' {
-			lines = append(lines, currentLine)
-			currentLine = ""
-		} else {
-			currentLine += string(r)
-		}
-	}
-	if currentLine != "" {
-		lines = append(lines, currentLine)
-	}
-	return lines
 }
 
 // isSelected は指定した行が選択範囲内かどうかを判定します
@@ -431,114 +411,3 @@ func extractFileHeader(diff string, startLine int) string {
 	return strings.Join(header, "\n")
 }
 
-type PatchLine struct {
-	Line     string
-	Original int
-}
-
-func generateMinimalPatch(diffText string, selectStart, selectEnd int, fileHeader string, updateDebug func(message string)) string {
-	lines, start := extractSelectedLinesWithContext(diffText, selectStart, selectEnd)
-	if len(lines) == 0 || start == -1 {
-		return ""
-	}
-
-	allLines := splitLines(diffText)
-	startLine := findHunkStartLineInFile(allLines, start)
-	if startLine == -1 {
-		updateDebug("Could not find hunk header for selected lines")
-		return ""
-	}
-
-	header := generateFullHunkHeader(startLine, lines)
-
-	var body strings.Builder
-	for _, pl := range lines {
-		body.WriteString(pl.Line + "\n")
-	}
-
-	return fileHeader + "\n" + header + "\n" + body.String()
-}
-
-// 選択行の上下に最大3行ずつ context (" ") 行を含めてパッチ化する
-func extractSelectedLinesWithContext(diff string, selectStart, selectEnd int) ([]PatchLine, int) {
-	lines := splitLines(diff)
-	var result []PatchLine
-	firstLine := -1
-
-	seen := make(map[int]bool) // 重複防止
-
-	// 上方向の context 行（最大3行）
-	contextLines := 3
-	count := 0
-	for i := selectStart - 1; i >= 0 && count < contextLines; i-- {
-		if strings.HasPrefix(lines[i], " ") || lines[i] == "" {
-			result = append([]PatchLine{{Line: lines[i], Original: i}}, result...) // 先頭に追加
-			seen[i] = true
-			firstLine = i
-			count++
-		} else if strings.HasPrefix(lines[i], "@@") || strings.HasPrefix(lines[i], "diff --git") {
-			break // hunk 跨ぎ禁止
-		}
-	}
-
-	// 選択された範囲の + / - 行
-	for i := selectStart; i <= selectEnd && i < len(lines); i++ {
-		result = append(result, PatchLine{Line: lines[i], Original: i})
-		seen[i] = true
-		if firstLine == -1 {
-			firstLine = i
-		}
-	}
-
-	// 下方向の context 行（最大3行）
-	count = 0
-	for i := selectEnd + 1; i < len(lines) && count < contextLines; i++ {
-		if strings.HasPrefix(lines[i], " ") || lines[i] == "" {
-			if seen[i] {
-				continue
-			}
-			result = append(result, PatchLine{Line: lines[i], Original: i})
-			count++
-		} else if strings.HasPrefix(lines[i], "@@") || strings.HasPrefix(lines[i], "diff --git") {
-			break
-		}
-	}
-
-	return result, firstLine
-}
-
-func generateFullHunkHeader(startLine int, selected []PatchLine) string {
-	delCount := 0
-	addCount := 0
-
-	for _, pl := range selected {
-		switch {
-		case strings.HasPrefix(pl.Line, "-") && !strings.HasPrefix(pl.Line, "---"):
-			delCount++
-		case strings.HasPrefix(pl.Line, "+") && !strings.HasPrefix(pl.Line, "+++"):
-			addCount++
-		case strings.HasPrefix(pl.Line, " ") || pl.Line == "":
-			delCount++
-			addCount++
-		}
-	}
-
-	return fmt.Sprintf("@@ -%d,%d +%d,%d @@", startLine, delCount, startLine, addCount)
-}
-
-func findHunkStartLineInFile(diffLines []string, targetIndex int) int {
-	hunkRegex := regexp.MustCompile(`@@ -(\d+),\d+ \+\d+,\d+ @@`)
-
-	for i := targetIndex; i >= 0; i-- {
-		if strings.HasPrefix(diffLines[i], "@@") {
-			match := hunkRegex.FindStringSubmatch(diffLines[i])
-			if len(match) == 2 {
-				if line, err := strconv.Atoi(match[1]); err == nil {
-					return line
-				}
-			}
-			break
-		}
-	}
-	return -1
-}

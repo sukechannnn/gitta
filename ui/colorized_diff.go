@@ -5,7 +5,7 @@ import "strings"
 // colorizeDiff は Diff を色付けします
 func ColorizeDiff(diff string) string {
 	var result string
-	lines := splitLines(diff)
+	lines := SplitLines(diff)
 	for _, line := range lines {
 		// 🎯 ここでスキップしたいヘッダー行を除外
 		if strings.HasPrefix(line, "diff --git") ||
