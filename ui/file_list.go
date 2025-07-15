@@ -14,7 +14,6 @@ import (
 )
 
 // 保持するカーソル情報
-var savedCursorPosition int = -1
 var savedTargetFile string = ""
 var preferUnstagedSection bool = false
 
@@ -357,7 +356,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 									onUpdate()
 								}
 							}
-						} else if err != nil {
+						} else {
 							// エラーの場合でもパッチファイルは削除
 							updateListStatus("Failed to apply patch", "firebrick")
 						}
