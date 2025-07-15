@@ -18,6 +18,9 @@ var savedCursorPosition int = -1
 var savedTargetFile string = ""
 var preferUnstagedSection bool = false
 
+// パッチファイルのパス
+var patchPath = "/tmp/gitta_selected.patch"
+
 // listStatusView をグローバルに定義
 var listStatusView *tview.TextView
 var listKeyBindingMessage = "Press 'w' to switch panes, 'q' to quit, 'a' to stage selected lines, 'A' to stage/unstage file, 'V' to select lines, and 'j/k' to navigate."
@@ -80,6 +83,8 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 	var isSelecting bool = false
 	var currentSelection int = 0
 	var leftPaneFocused bool = true
+	var gPressed bool = false
+	var lastGTime time.Time
 
 	// 保存されたカーソル位置を復元
 	if preferUnstagedSection || savedTargetFile != "" {
@@ -164,6 +169,28 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				updateFileListView()
 				app.SetFocus(textView)
 				return nil
+			case 'g':
+				now := time.Now()
+				if gPressed && now.Sub(lastGTime) < 500*time.Millisecond {
+					// gg → 最上部
+					cursorY = 0
+					if isSelecting {
+						selectEnd = cursorY
+					}
+					updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+					gPressed = false
+				} else {
+					// 1回目のg
+					gPressed = true
+					lastGTime = now
+				}
+			case 'G': // 大文字G → 最下部へ
+				coloredDiff := ColorizeDiff(currentDiffText)
+				cursorY = len(SplitLines(coloredDiff)) - 1
+				if isSelecting {
+					selectEnd = cursorY
+				}
+				updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
 			case 'j':
 				// 下移動
 				if cursorY < len(diffLines)-1 {
@@ -193,6 +220,41 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
 				}
 				return nil
+			case 'u':
+				// パッチファイルが存在するか確認
+				if _, err := os.Stat(patchPath); os.IsNotExist(err) {
+					updateListStatus("No patch to undo", "yellow")
+					return nil
+				}
+
+				cmd := exec.Command("git", "apply", "-R", "--cached", patchPath)
+				cmd.Dir = repoRoot
+				_, err := cmd.CombinedOutput()
+				if err != nil {
+					updateListStatus("Undo failed!", "firebrick")
+				} else {
+					updateListStatus("Undo successful!", "gold")
+
+					// 差分を再取得
+					var newDiffText string
+					if currentStatus == "staged" {
+						newDiffText, _ = git.GetStagedDiff(currentFile, repoRoot)
+					} else {
+						newDiffText, _ = git.GetFileDiff(currentFile, repoRoot)
+					}
+					currentDiffText = newDiffText
+
+					// ColorizeDiffで色付け
+					coloredDiff := ColorizeDiff(currentDiffText)
+					diffLines = SplitLines(coloredDiff)
+
+					// 再描画
+					updateDiffView(diffView, diffLines, cursorY)
+
+					// ファイルリストを更新
+					refreshFileList()
+					updateFileListView()
+				}
 			case 'a':
 				// 選択した行をステージング
 				if selectStart != -1 && selectEnd != -1 && currentFile != "" && currentDiffText != "" {
@@ -200,9 +262,6 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 						// Staged ファイルでは行単位のunstageは未対応
 						return nil
 					}
-
-					// パッチファイルのパスを生成
-					patchPath := "/tmp/gitta_selected.patch"
 
 					// パッチを生成（file_view.goと同じロジック）
 					mapping := mapDisplayToOriginalIdx(currentDiffText)
@@ -302,7 +361,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 							// エラーの場合でもパッチファイルは削除
 							updateListStatus("Failed to apply patch", "firebrick")
 						}
-						os.Remove(patchPath)
+						// os.Remove(patchPath) // uコマンドのために削除しない
 					}
 				}
 				return nil
