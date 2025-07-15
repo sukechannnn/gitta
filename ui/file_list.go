@@ -18,14 +18,42 @@ var savedCursorPosition int = -1
 var savedTargetFile string = ""
 var preferUnstagedSection bool = false
 
+// listStatusView をグローバルに定義
+var listStatusView *tview.TextView
+var listKeyBindingMessage = "Press 'w' to switch panes, 'q' to quit, 'a' to stage selected lines, 'A' to stage/unstage file, 'V' to select lines, and 'j/k' to navigate."
+
+func updateListStatus(message string, color string) {
+	if listStatusView != nil {
+		listStatusView.SetText(fmt.Sprintf("[%s]%s[-]", color, message))
+		go func() {
+			time.Sleep(5 * time.Second)
+			listStatusView.SetText(listKeyBindingMessage)
+		}()
+	}
+}
+
 // ファイル一覧を表示
 func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []string, repoRoot string, onSelect func(file string, status string), onUpdate func()) tview.Primitive {
 	// ファイルリストを更新するための参照を保持
 	stagedFilesPtr := &stagedFiles
 	modifiedFilesPtr := &modifiedFiles
 	untrackedFilesPtr := &untrackedFiles
-	// フレックスレイアウトを作成（左右分割）
-	flex := tview.NewFlex()
+
+	// listStatusView を作成
+	listStatusView = tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignLeft).
+		SetWrap(true)
+	listStatusView.SetBorder(true)
+	listStatusView.SetBackgroundColor(util.MyColor.BackgroundColor)
+
+	// フレックスレイアウトを作成（上下分割、その下に左右分割）
+	mainFlex := tview.NewFlex().SetDirection(tview.FlexRow)
+
+	// 左右分割のフレックス
+	contentFlex := tview.NewFlex()
+	// contentFlex.SetBorder(true)
+	contentFlex.SetBackgroundColor(util.MyColor.BackgroundColor)
 
 	// 左ペイン（ファイルリスト）のテキストビューを作成
 	textView := tview.NewTextView().
@@ -213,6 +241,9 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 							// 再描画
 							updateDiffView(diffView, diffLines, cursorY)
 
+							// ステータスを更新
+							updateListStatus("Patch applied successfully!", "gold")
+
 							// 現在のファイルを保存
 							savedFile := currentFile
 
@@ -268,7 +299,8 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 								}
 							}
 						} else if err != nil {
-							// エラーの場合でもパッチファイルは削除（エラーは表示しない）
+							// エラーの場合でもパッチファイルは削除
+							updateListStatus("Failed to apply patch", "firebrick")
 						}
 						os.Remove(patchPath)
 					}
@@ -314,6 +346,13 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 						// 再描画
 						updateDiffView(diffView, diffLines, cursorY)
 
+						// ステータスを更新
+						if wasStaged {
+							updateListStatus("File unstaged successfully!", "gold")
+						} else {
+							updateListStatus("File staged successfully!", "gold")
+						}
+
 						// refreshFileListを呼んで最新の状態を取得
 						refreshFileList()
 
@@ -332,6 +371,13 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 						// ファイルリストを更新
 						if onUpdate != nil {
 							onUpdate()
+						}
+					} else {
+						// エラーの場合
+						if currentStatus == "staged" {
+							updateListStatus("Failed to unstage file", "firebrick")
+						} else {
+							updateListStatus("Failed to stage file", "firebrick")
 						}
 					}
 				}
@@ -614,7 +660,16 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 		return event
 	})
 
-	return flex
+	// 初期メッセージを設定
+	listStatusView.SetText(listKeyBindingMessage)
+
+	// mainFlex にステータスビューとコンテンツを追加
+	mainFlex.AddItem(listStatusView, 5, 0, false).
+		AddItem(horizontalTopBorder, 1, 0, false).
+		AddItem(contentFlex, 0, 1, true).
+		AddItem(horizontalBottomBorder, 1, 0, false)
+
+	return mainFlex
 }
 
 // 右ペインに差分を表示する関数
