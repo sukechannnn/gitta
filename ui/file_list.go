@@ -395,21 +395,18 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 		return event
 	})
 
-	// 縦線を作成
-	border := tview.NewBox().
-		SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-			// 縦線を描画
-			for i := y; i < y+height; i++ {
-				screen.SetContent(x, i, '│', nil, tcell.StyleDefault.Foreground(tcell.ColorWhite))
-			}
-			return x, y, width, height
-		})
-	border.SetBackgroundColor(util.MyColor.BackgroundColor)
+	// ボーダーを作成
+	verticalBorder := CreateVerticalBorder()
+	horizontalTopBorder := CreateHorizontalTopBorder()
+	horizontalBottomBorder := CreateHorizontalBottomBorder()
 
 	// 左右のペインをフレックスに追加（左:縦線:右 = 1:0:2）
-	flex.AddItem(textView, 0, 1, true).
-		AddItem(border, 1, 0, false).
-		AddItem(diffView, 0, 2, false)
+	contentFlex.
+		AddItem(verticalBorder, 1, 0, false).
+		AddItem(textView, 0, 1, true).
+		AddItem(verticalBorder, 1, 0, false).
+		AddItem(diffView, 0, 2, false).
+		AddItem(verticalBorder, 1, 0, false)
 
 	// ファイル一覧を構築
 	var content strings.Builder
