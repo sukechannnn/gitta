@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 
@@ -20,6 +21,130 @@ var preferUnstagedSection bool = false
 
 // パッチファイルのパス
 var patchPath = "/tmp/gitta_selected.patch"
+
+// TreeNode represents a node in the file tree structure
+type TreeNode struct {
+	Name     string
+	IsFile   bool
+	Children map[string]*TreeNode
+	FullPath string // ファイルの場合のみ使用
+}
+
+// buildFileTree converts a list of file paths into a tree structure
+func buildFileTree(files []string) *TreeNode {
+	root := &TreeNode{
+		Name:     "",
+		IsFile:   false,
+		Children: make(map[string]*TreeNode),
+	}
+
+	for _, file := range files {
+		file = strings.TrimSpace(file)
+		if file == "" {
+			continue
+		}
+
+		parts := strings.Split(file, "/")
+		currentNode := root
+
+		for i, part := range parts {
+			isLastPart := i == len(parts)-1
+
+			if _, exists := currentNode.Children[part]; !exists {
+				newNode := &TreeNode{
+					Name:     part,
+					IsFile:   isLastPart,
+					Children: make(map[string]*TreeNode),
+				}
+				if isLastPart {
+					newNode.FullPath = file
+				}
+				currentNode.Children[part] = newNode
+			}
+
+			currentNode = currentNode.Children[part]
+		}
+	}
+
+	return root
+}
+
+// renderFileTree recursively renders the tree structure with proper indentation
+func renderFileTree(node *TreeNode, depth int, sb *strings.Builder,
+	regions *[]string, fileMap map[string]string, fileStatusMap map[string]string,
+	status string, regionIndex *int, currentSelection int, focusedPane bool) {
+
+	renderFileTreeWithPrefix(node, depth, "", sb, regions, fileMap, fileStatusMap,
+		status, regionIndex, currentSelection, focusedPane)
+}
+
+// renderFileTreeWithPrefix renders the tree with proper line prefixes
+func renderFileTreeWithPrefix(node *TreeNode, depth int, prefix string, sb *strings.Builder,
+	regions *[]string, fileMap map[string]string, fileStatusMap map[string]string,
+	status string, regionIndex *int, currentSelection int, focusedPane bool) {
+
+	// Sort children for consistent ordering
+	var sortedKeys []string
+	for key := range node.Children {
+		sortedKeys = append(sortedKeys, key)
+	}
+	sort.Strings(sortedKeys)
+
+	// ディレクトリとファイルを分離
+	var directories []string
+	var files []string
+
+	for _, key := range sortedKeys {
+		child := node.Children[key]
+		if child.IsFile {
+			files = append(files, key)
+		} else {
+			directories = append(directories, key)
+		}
+	}
+
+	// 全ての要素（ディレクトリ＋ファイル）を処理
+	allItems := append(directories, files...)
+
+	for i, key := range allItems {
+		isLast := i == len(allItems)-1
+		child := node.Children[key]
+
+		// 現在の要素の接続記号
+		connector := "├── "
+		if isLast {
+			connector = "└── "
+		}
+
+		// 次の階層のためのプレフィックス
+		childPrefix := prefix + "│   "
+		if isLast {
+			childPrefix = prefix + "    "
+		}
+
+		if child.IsFile {
+			// ファイルの場合
+			regionID := fmt.Sprintf("file-%d", *regionIndex)
+			*regions = append(*regions, regionID)
+			fileMap[regionID] = child.FullPath
+			fileStatusMap[regionID] = status
+
+			if focusedPane && *regionIndex == currentSelection {
+				sb.WriteString(fmt.Sprintf(`%s[white:blue]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, child.Name))
+			} else if !focusedPane && *regionIndex == currentSelection {
+				sb.WriteString(fmt.Sprintf(`%s[black:white]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, child.Name))
+			} else {
+				sb.WriteString(fmt.Sprintf(`%s[white:%s]["file-%d"]%s%s[""][-:-]`+"\n", prefix, util.NotSelectedFileLineColor, *regionIndex, connector, child.Name))
+			}
+			(*regionIndex)++
+		} else {
+			// ディレクトリの場合
+			sb.WriteString(fmt.Sprintf("%s%s%s/\n", prefix, connector, child.Name))
+			renderFileTreeWithPrefix(child, depth+1, childPrefix, sb, regions, fileMap, fileStatusMap,
+				status, regionIndex, currentSelection, focusedPane)
+		}
+	}
+}
 
 // listStatusView をグローバルに定義
 var listStatusView *tview.TextView
@@ -48,7 +173,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 		SetTextAlign(tview.AlignLeft).
 		SetWrap(true)
 	listStatusView.SetBorder(true)
-	listStatusView.SetBackgroundColor(util.MyColor.BackgroundColor)
+	listStatusView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// フレックスレイアウトを作成（上下分割、その下に左右分割）
 	mainFlex := tview.NewFlex().SetDirection(tview.FlexRow)
@@ -56,21 +181,21 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 	// 左右分割のフレックス
 	contentFlex := tview.NewFlex()
 	// contentFlex.SetBorder(true)
-	contentFlex.SetBackgroundColor(util.MyColor.BackgroundColor)
+	contentFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// 左ペイン（ファイルリスト）のテキストビューを作成
 	textView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetRegions(true).
 		SetWrap(false)
-	textView.SetBackgroundColor(util.MyColor.BackgroundColor)
+	textView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// 右ペイン（差分表示）のテキストビューを作成
 	diffView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetRegions(true).
 		SetWrap(false)
-	diffView.SetBackgroundColor(util.MyColor.BackgroundColor)
+	diffView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// 現在のファイル情報を保持
 	var currentFile string
@@ -290,52 +415,13 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				// 再描画
 				updateDiffView(diffView, diffLines, cursorY)
 
-				// 現在のファイルを保存
-				savedFile := currentFile
-
 				// ファイルリストを内部的に更新
 				refreshFileList()
 
 				// 差分が残っている場合
 				if !result.ShouldUpdate {
-					// 同じファイルのインデックスを探す
-					foundIndex := -1
-					allFiles := []string{}
-
-					// 全ファイルリストを作成
-					for _, file := range *stagedFilesPtr {
-						file = strings.TrimSpace(file)
-						if file != "" {
-							allFiles = append(allFiles, file)
-							if file == savedFile {
-								foundIndex = len(allFiles) - 1
-							}
-						}
-					}
-					for _, file := range *modifiedFilesPtr {
-						file = strings.TrimSpace(file)
-						if file != "" {
-							allFiles = append(allFiles, file)
-							if file == savedFile {
-								foundIndex = len(allFiles) - 1
-							}
-						}
-					}
-					for _, file := range *untrackedFilesPtr {
-						file = strings.TrimSpace(file)
-						if file != "" {
-							allFiles = append(allFiles, file)
-							if file == savedFile {
-								foundIndex = len(allFiles) - 1
-							}
-						}
-					}
-
-					// ファイルが見つかった場合はカーソルを設定
-					if foundIndex != -1 {
-						currentSelection = foundIndex
-					}
-
+					// 現在のファイルの位置を維持するため、savedTargetFileを設定
+					savedTargetFile = currentFile
 					// ファイルリストを再描画
 					updateFileListView()
 				} else {
@@ -396,16 +482,9 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 						refreshFileList()
 
 						// カーソル位置を保存
-						if wasStaged || len(*modifiedFilesPtr) > 0 {
-							// staged -> unstaged の場合、または unstaged ファイルが残っている場合
-							// unstagedセクションの先頭を選択するように設定
-							preferUnstagedSection = true
-							savedTargetFile = ""
-						} else {
-							// unstagedファイルがない場合は、通常の動作
-							preferUnstagedSection = false
-							savedTargetFile = ""
-						}
+						// 常にunstagedセクションの先頭を選択するように設定
+						preferUnstagedSection = true
+						savedTargetFile = ""
 
 						// ファイルリストを更新
 						if onUpdate != nil {
@@ -510,74 +589,27 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 		// Staged ファイル
 		if len(*stagedFilesPtr) > 0 {
 			coloredContent.WriteString("[green]Changes to be committed:[white]\n")
-			for _, file := range *stagedFilesPtr {
-				file = strings.TrimSpace(file)
-				if file != "" {
-					regionID := fmt.Sprintf("file-%d", regionIndex)
-					regions = append(regions, regionID)
-					fileMap[regionID] = file
-					fileStatusMap[regionID] = "staged"
-
-					if focusedPane && regionIndex == currentSelection {
-						// フォーカス時は青色ハイライト
-						coloredContent.WriteString(fmt.Sprintf(`[white:blue]["file-%d"]  %s[""][-:-]`+"\n", regionIndex, file))
-					} else if !focusedPane && regionIndex == currentSelection {
-						// 非フォーカス時は白色ハイライト
-						coloredContent.WriteString(fmt.Sprintf(`[black:white]["file-%d"]  %s[""][-:-]`+"\n", regionIndex, file))
-					} else {
-						coloredContent.WriteString(fmt.Sprintf(`["file-%d"]  %s[""]`+"\n", regionIndex, file))
-					}
-					regionIndex++
-				}
-			}
+			tree := buildFileTree(*stagedFilesPtr)
+			renderFileTree(tree, 1, &coloredContent, &regions, fileMap, fileStatusMap,
+				"staged", &regionIndex, currentSelection, focusedPane)
 			coloredContent.WriteString("\n")
 		}
 
 		// 変更されたファイル（unstaged）
 		if len(*modifiedFilesPtr) > 0 {
 			coloredContent.WriteString("[yellow]Changes not staged for commit:[white]\n")
-			for _, file := range *modifiedFilesPtr {
-				file = strings.TrimSpace(file)
-				if file != "" {
-					regionID := fmt.Sprintf("file-%d", regionIndex)
-					regions = append(regions, regionID)
-					fileMap[regionID] = file
-					fileStatusMap[regionID] = "unstaged"
-
-					if focusedPane && regionIndex == currentSelection {
-						coloredContent.WriteString(fmt.Sprintf(`[white:blue]["file-%d"]  %s[""][-:-]`+"\n", regionIndex, file))
-					} else if !focusedPane && regionIndex == currentSelection {
-						coloredContent.WriteString(fmt.Sprintf(`[black:white]["file-%d"]  %s[""][-:-]`+"\n", regionIndex, file))
-					} else {
-						coloredContent.WriteString(fmt.Sprintf(`["file-%d"]  %s[""]`+"\n", regionIndex, file))
-					}
-					regionIndex++
-				}
-			}
+			tree := buildFileTree(*modifiedFilesPtr)
+			renderFileTree(tree, 1, &coloredContent, &regions, fileMap, fileStatusMap,
+				"unstaged", &regionIndex, currentSelection, focusedPane)
 			coloredContent.WriteString("\n")
 		}
 
 		// 未追跡ファイル
 		if len(*untrackedFilesPtr) > 0 {
 			coloredContent.WriteString("[red]Untracked files:[white]\n")
-			for _, file := range *untrackedFilesPtr {
-				file = strings.TrimSpace(file)
-				if file != "" {
-					regionID := fmt.Sprintf("file-%d", regionIndex)
-					regions = append(regions, regionID)
-					fileMap[regionID] = file
-					fileStatusMap[regionID] = "untracked"
-
-					if focusedPane && regionIndex == currentSelection {
-						coloredContent.WriteString(fmt.Sprintf(`[white:blue]["file-%d"]  %s[""][-:-]`+"\n", regionIndex, file))
-					} else if !focusedPane && regionIndex == currentSelection {
-						coloredContent.WriteString(fmt.Sprintf(`[black:white]["file-%d"]  %s[""][-:-]`+"\n", regionIndex, file))
-					} else {
-						coloredContent.WriteString(fmt.Sprintf(`["file-%d"]  %s[""]`+"\n", regionIndex, file))
-					}
-					regionIndex++
-				}
-			}
+			tree := buildFileTree(*untrackedFilesPtr)
+			renderFileTree(tree, 1, &coloredContent, &regions, fileMap, fileStatusMap,
+				"untracked", &regionIndex, currentSelection, focusedPane)
 		}
 
 		return coloredContent.String()
@@ -678,6 +710,11 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 						// エラーハンドリング（ここでは簡単にスキップ）
 						return nil
 					}
+
+					// カーソル位置を保存
+					// 常にunstagedセクションの先頭を選択するように設定
+					preferUnstagedSection = true
+					savedTargetFile = ""
 
 					// ファイルリストを更新
 					if onUpdate != nil {
@@ -802,25 +839,4 @@ func isLineSelected(index, start, end int) bool {
 		min, max = max, min
 	}
 	return index >= min && index <= max
-}
-
-func extractFileHdr(diff string, startLine int) string {
-	lines := util.SplitLines(diff)
-	var header []string
-
-	for i := startLine; i >= 0; i-- {
-		line := lines[i]
-		if strings.HasPrefix(line, "diff --git ") {
-			for j := 0; j < 5 && i+j < len(lines); j++ {
-				hline := lines[i+j]
-				if strings.HasPrefix(hline, "index ") || strings.HasPrefix(hline, "--- ") || strings.HasPrefix(hline, "+++ ") || strings.HasPrefix(hline, "diff --git ") {
-					header = append(header, hline)
-				} else {
-					break
-				}
-			}
-			break
-		}
-	}
-	return strings.Join(header, "\n")
 }

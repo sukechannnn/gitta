@@ -13,13 +13,13 @@ func CreateVerticalBorder() *tview.Box {
 			// 縦線を描画
 			style := tcell.StyleDefault.
 				Foreground(tcell.ColorWhite).
-				Background(util.MyColor.BackgroundColor)
+				Background(util.BackgroundColor.ToTcellColor())
 			for i := y; i < y+height; i++ {
 				screen.SetContent(x, i, '│', nil, style)
 			}
 			return x, y, width, height
 		})
-	verticalBorder.SetBackgroundColor(util.MyColor.BackgroundColor)
+	verticalBorder.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 	return verticalBorder
 }
 
@@ -31,7 +31,7 @@ func CreateHorizontalTopBorder() *tview.Box {
 			// 横線を描画
 			style := tcell.StyleDefault.
 				Foreground(tcell.ColorWhite).
-				Background(util.MyColor.BackgroundColor)
+				Background(util.BackgroundColor.ToTcellColor())
 
 			// まず横線を全体に描画
 			for i := x; i < x+width; i++ {
@@ -55,7 +55,7 @@ func CreateHorizontalTopBorder() *tview.Box {
 
 			return x, y, width, height
 		})
-	horizontalBorder.SetBackgroundColor(util.MyColor.BackgroundColor)
+	horizontalBorder.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 	return horizontalBorder
 }
 
@@ -66,7 +66,7 @@ func CreateHorizontalBottomBorder() *tview.Box {
 			// 横線を描画
 			style := tcell.StyleDefault.
 				Foreground(tcell.ColorWhite).
-				Background(util.MyColor.BackgroundColor)
+				Background(util.BackgroundColor.ToTcellColor())
 
 			// まず横線を全体に描画
 			for i := x; i < x+width; i++ {
@@ -90,6 +90,6 @@ func CreateHorizontalBottomBorder() *tview.Box {
 
 			return x, y, width, height
 		})
-	horizontalBorder.SetBackgroundColor(util.MyColor.BackgroundColor)
+	horizontalBorder.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 	return horizontalBorder
 }
