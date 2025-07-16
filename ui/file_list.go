@@ -664,7 +664,33 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 		}
 	}
 
+	// 選択されているファイルの差分を更新する関数
+	updateSelectedFileDiff := func() {
+		if currentSelection >= 0 && currentSelection < len(regions) {
+			regionID := regions[currentSelection]
+			file := fileMap[regionID]
+			status := fileStatusMap[regionID]
+
+			// 現在のファイル情報を更新
+			currentFile = file
+			currentStatus = status
+
+			// カーソルと選択をリセット
+			cursorY = 0
+			isSelecting = false
+			selectStart = -1
+			selectEnd = -1
+
+			// 右ペインに差分を表示（カーソルなし）
+			diffLines = ShowDiffInPane(diffView, file, status, repoRoot, cursorY, &currentDiffText)
+			updateDiffViewWithoutCursor(diffView, diffLines)
+		}
+	}
+
 	updateFileListView()
+
+	// 初期表示時に最初のファイルの差分を表示
+	updateSelectedFileDiff()
 
 	// キー入力の処理
 	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -673,12 +699,14 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 			if currentSelection > 0 {
 				currentSelection--
 				updateFileListView()
+				updateSelectedFileDiff()
 			}
 			return nil
 		case tcell.KeyDown:
 			if currentSelection < len(regions)-1 {
 				currentSelection++
 				updateFileListView()
+				updateSelectedFileDiff()
 			}
 			return nil
 		case tcell.KeyEnter:
@@ -712,12 +740,14 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				if currentSelection > 0 {
 					currentSelection--
 					updateFileListView()
+					updateSelectedFileDiff()
 				}
 				return nil
 			case 'j':
 				if currentSelection < len(regions)-1 {
 					currentSelection++
 					updateFileListView()
+					updateSelectedFileDiff()
 				}
 				return nil
 			case 'A': // 'A' で現在のファイルを git add/reset
