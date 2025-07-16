@@ -410,4 +410,3 @@ func extractFileHeader(diff string, startLine int) string {
 	}
 	return strings.Join(header, "\n")
 }
-

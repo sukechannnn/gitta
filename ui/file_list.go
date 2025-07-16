@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -183,6 +184,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					gPressed = true
 					lastGTime = now
 				}
+				return nil
 			case 'G': // 大文字G → 最下部へ
 				coloredDiff := ColorizeDiff(currentDiffText)
 				cursorY = len(SplitLines(coloredDiff)) - 1
@@ -190,6 +192,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					selectEnd = cursorY
 				}
 				updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+				return nil
 			case 'j':
 				// 下移動
 				if cursorY < len(diffLines)-1 {
@@ -262,105 +265,129 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 						return nil
 					}
 
-					// パッチを生成（file_view.goと同じロジック）
+					// ファイルパスを構築
+					filePath := filepath.Join(repoRoot, currentFile)
+
+					// 現在のファイル内容を保存
+					originalContent, err := os.ReadFile(filePath)
+					if err != nil {
+						updateListStatus("Failed to read file", "firebrick")
+						return nil
+					}
+
+					// 選択した変更のみを適用したファイル内容を取得
 					mapping := mapDisplayToOriginalIdx(currentDiffText)
 					start := mapping[selectStart]
 					end := mapping[selectEnd]
 
-					fileHeader := extractFileHdr(currentDiffText, start)
-					patch := GenerateMinimalPatch(currentDiffText, start, end, fileHeader, nil)
+					modifiedContent, _, err := git.ApplySelectedChangesToFile(currentFile, repoRoot, currentDiffText, start, end)
+					if err != nil {
+						updateListStatus("Failed to process changes", "firebrick")
+						return nil
+					}
 
-					// パッチファイルに書き込む
-					if err := os.WriteFile(patchPath, []byte(patch), 0644); err == nil {
-						// git applyを実行
-						cmd := exec.Command("git", "apply", "--cached", patchPath)
-						cmd.Dir = repoRoot
-						_, err := cmd.CombinedOutput()
-						if err == nil {
-							// 差分を再取得
-							var newDiffText string
-							if currentStatus == "staged" {
-								newDiffText, _ = git.GetStagedDiff(currentFile, repoRoot)
-							} else {
-								newDiffText, _ = git.GetFileDiff(currentFile, repoRoot)
-							}
-							currentDiffText = newDiffText
+					// 一時的に選択した変更のみのファイルに書き換え
+					err = os.WriteFile(filePath, []byte(modifiedContent), 0644)
+					if err != nil {
+						updateListStatus("Failed to write file", "firebrick")
+						return nil
+					}
 
-							// ColorizeDiffで色付け
-							coloredDiff := ColorizeDiff(currentDiffText)
-							diffLines = SplitLines(coloredDiff)
+					// git add を実行
+					cmd := exec.Command("git", "add", currentFile)
+					cmd.Dir = repoRoot
+					_, err = cmd.CombinedOutput()
 
-							// 選択を解除してカーソルリセット
-							isSelecting = false
-							selectStart = -1
-							selectEnd = -1
-							cursorY = 0
+					// 元のファイル内容に戻す（選択されなかった変更も含む）
+					restoreErr := os.WriteFile(filePath, originalContent, 0644)
 
-							// 再描画
-							updateDiffView(diffView, diffLines, cursorY)
-
-							// ステータスを更新
-							updateListStatus("Patch applied successfully!", "gold")
-
-							// 現在のファイルを保存
-							savedFile := currentFile
-
-							// ファイルリストを内部的に更新
-							refreshFileList()
-
-							// 差分が残っている場合
-							if len(strings.TrimSpace(newDiffText)) > 0 {
-								// 同じファイルのインデックスを探す
-								foundIndex := -1
-								allFiles := []string{}
-
-								// 全ファイルリストを作成
-								for _, file := range *stagedFilesPtr {
-									file = strings.TrimSpace(file)
-									if file != "" {
-										allFiles = append(allFiles, file)
-										if file == savedFile {
-											foundIndex = len(allFiles) - 1
-										}
-									}
-								}
-								for _, file := range *modifiedFilesPtr {
-									file = strings.TrimSpace(file)
-									if file != "" {
-										allFiles = append(allFiles, file)
-										if file == savedFile {
-											foundIndex = len(allFiles) - 1
-										}
-									}
-								}
-								for _, file := range *untrackedFilesPtr {
-									file = strings.TrimSpace(file)
-									if file != "" {
-										allFiles = append(allFiles, file)
-										if file == savedFile {
-											foundIndex = len(allFiles) - 1
-										}
-									}
-								}
-
-								// ファイルが見つかった場合はカーソルを設定
-								if foundIndex != -1 {
-									currentSelection = foundIndex
-								}
-
-								// ファイルリストを再描画
-								updateFileListView()
-							} else {
-								// 差分がなくなった場合は、完全に更新
-								if onUpdate != nil {
-									onUpdate()
-								}
-							}
-						} else {
-							// エラーの場合でもパッチファイルは削除
-							updateListStatus("Failed to apply patch", "firebrick")
+					if err != nil {
+						updateListStatus("Failed to stage changes", "firebrick")
+						if restoreErr != nil {
+							updateListStatus("Critical: Failed to restore file!", "firebrick")
 						}
-						// os.Remove(patchPath) // uコマンドのために削除しない
+						return nil
+					}
+
+					if restoreErr != nil {
+						updateListStatus("Warning: Failed to restore unstaged changes", "yellow")
+						return nil
+					}
+
+					// 成功した場合の処理
+					updateListStatus("Selected lines staged successfully!", "gold")
+
+					// 差分を再取得
+					var newDiffText string
+					newDiffText, _ = git.GetFileDiff(currentFile, repoRoot)
+					currentDiffText = newDiffText
+
+					// ColorizeDiffで色付け
+					coloredDiff := ColorizeDiff(currentDiffText)
+					diffLines = SplitLines(coloredDiff)
+
+					// 選択を解除してカーソルリセット
+					isSelecting = false
+					selectStart = -1
+					selectEnd = -1
+					cursorY = 0
+
+					// 再描画
+					updateDiffView(diffView, diffLines, cursorY)
+
+					// 現在のファイルを保存
+					savedFile := currentFile
+
+					// ファイルリストを内部的に更新
+					refreshFileList()
+
+					// 差分が残っている場合
+					if len(strings.TrimSpace(newDiffText)) > 0 {
+						// 同じファイルのインデックスを探す
+						foundIndex := -1
+						allFiles := []string{}
+
+						// 全ファイルリストを作成
+						for _, file := range *stagedFilesPtr {
+							file = strings.TrimSpace(file)
+							if file != "" {
+								allFiles = append(allFiles, file)
+								if file == savedFile {
+									foundIndex = len(allFiles) - 1
+								}
+							}
+						}
+						for _, file := range *modifiedFilesPtr {
+							file = strings.TrimSpace(file)
+							if file != "" {
+								allFiles = append(allFiles, file)
+								if file == savedFile {
+									foundIndex = len(allFiles) - 1
+								}
+							}
+						}
+						for _, file := range *untrackedFilesPtr {
+							file = strings.TrimSpace(file)
+							if file != "" {
+								allFiles = append(allFiles, file)
+								if file == savedFile {
+									foundIndex = len(allFiles) - 1
+								}
+							}
+						}
+
+						// ファイルが見つかった場合はカーソルを設定
+						if foundIndex != -1 {
+							currentSelection = foundIndex
+						}
+
+						// ファイルリストを再描画
+						updateFileListView()
+					} else {
+						// 差分がなくなった場合は、完全に更新
+						if onUpdate != nil {
+							onUpdate()
+						}
 					}
 				}
 				return nil
