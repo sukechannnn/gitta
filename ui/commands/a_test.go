@@ -1,4 +1,4 @@
-package ui
+package commands
 
 import (
 	"os"
@@ -14,7 +14,7 @@ func TestCommandA(t *testing.T) {
 			SelectStart: -1,
 			SelectEnd:   5,
 		}
-		result, err := commandA(params)
+		result, err := CommandA(params)
 		if result != nil || err != nil {
 			t.Errorf("Expected nil result and nil error, got result=%v, err=%v", result, err)
 		}
@@ -27,7 +27,7 @@ func TestCommandA(t *testing.T) {
 			CurrentFile:     "",
 			CurrentDiffText: "some diff",
 		}
-		result, err := commandA(params)
+		result, err := CommandA(params)
 		if result != nil || err != nil {
 			t.Errorf("Expected nil result and nil error, got result=%v, err=%v", result, err)
 		}
@@ -41,7 +41,7 @@ func TestCommandA(t *testing.T) {
 			CurrentStatus:   "staged",
 			CurrentDiffText: "some diff",
 		}
-		result, err := commandA(params)
+		result, err := CommandA(params)
 		if result != nil || err != nil {
 			t.Errorf("Expected nil result and nil error for staged file, got result=%v, err=%v", result, err)
 		}
@@ -60,7 +60,7 @@ func TestCommandA(t *testing.T) {
 				statusMessages = append(statusMessages, msg)
 			},
 		}
-		result, err := commandA(params)
+		result, err := CommandA(params)
 		if result != nil {
 			t.Errorf("Expected nil result for file read error, got %v", result)
 		}
@@ -146,7 +146,7 @@ func TestCommandA_Integration(t *testing.T) {
 			},
 		}
 
-		result, err := commandA(params)
+		result, err := CommandA(params)
 		if err != nil {
 			t.Errorf("Expected no error, got %v", err)
 		}
@@ -183,7 +183,7 @@ func TestCommandA_Integration(t *testing.T) {
 			},
 		}
 
-		result, err := commandA(params)
+		result, err := CommandA(params)
 		if err != nil {
 			t.Errorf("Expected no error, got %v", err)
 		}
@@ -278,7 +278,7 @@ func TestCommandA_Integration(t *testing.T) {
 			UpdateListStatus: func(msg, color string) {},
 		}
 
-		result, err := commandA(params)
+		result, err := CommandA(params)
 		if err != nil {
 			t.Fatalf("commandA failed: %v", err)
 		}

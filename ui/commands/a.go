@@ -1,4 +1,4 @@
-package ui
+package commands
 
 import (
 	"os"
@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sukechannnn/gitta/git"
+	"github.com/sukechannnn/gitta/util"
 )
 
 // CommandAParams contains parameters for commandA function
@@ -29,8 +30,8 @@ type CommandAResult struct {
 	ShouldUpdate bool
 }
 
-// commandA handles the 'a' command for staging selected lines
-func commandA(params CommandAParams) (*CommandAResult, error) {
+// CommandA handles the 'a' command for staging selected lines
+func CommandA(params CommandAParams) (*CommandAResult, error) {
 	// Validate inputs
 	if params.SelectStart == -1 || params.SelectEnd == -1 || params.CurrentFile == "" || params.CurrentDiffText == "" {
 		return nil, nil
@@ -54,14 +55,14 @@ func commandA(params CommandAParams) (*CommandAResult, error) {
 	}
 
 	// 選択した変更のみを適用したファイル内容を取得
-	mapping := mapDisplayToOriginalIdx(params.CurrentDiffText)
+	mapping := MapDisplayToOriginalIdx(params.CurrentDiffText)
 	start := mapping[params.SelectStart]
 	end := mapping[params.SelectEnd]
 
 	// 選択範囲に実際の変更が含まれているかチェック
 	// 表示されている行を作成（ヘッダーを除外）
 	coloredDiff := ColorizeDiff(params.CurrentDiffText)
-	displayLines := SplitLines(coloredDiff)
+	displayLines := util.SplitLines(coloredDiff)
 
 	hasChanges := false
 	diffLines := strings.Split(params.CurrentDiffText, "\n")
@@ -147,7 +148,7 @@ func commandA(params CommandAParams) (*CommandAResult, error) {
 
 	// ColorizeDiffで色付け
 	newColoredDiff := ColorizeDiff(newDiffText)
-	newDiffLines := SplitLines(newColoredDiff)
+	newDiffLines := util.SplitLines(newColoredDiff)
 
 	// 結果を返す
 	result := &CommandAResult{

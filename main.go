@@ -84,7 +84,6 @@ func main() {
 	}
 
 	// ファイル選択時の処理を定義（再帰的に使用するため関数として定義）
-	var showFileDiff func(filePath string, status string)
 	var updateFileList func()
 
 	updateFileList = func() {
@@ -98,24 +97,15 @@ func main() {
 			updatedModifiedFiles,
 			updatedUntrackedFiles,
 			repoPath,
-			showFileDiff,
+			nil, // onSelect は使用されていない
 			updateFileList,
 		)
 		gittaApp.App.SetRoot(fileListView, true)
 	}
 
-	showFileDiff = func(filePath string, status string) {
-		// ファイル差分ビューを作成し、ルートに設定
-		// ShowFileDiffText に PatchFilePath を渡すように変更
-		diffView := ui.ShowFileDiffText(gittaApp.App, filePath, status, debug, gittaApp.Config.PatchFilePath, repoPath, func() {
-			// 差分ビューから戻る際のコールバック - ファイル一覧を更新
-			updateFileList()
-		})
-		gittaApp.App.SetRoot(diffView, true)
-	}
-
 	// 初期ビュー（ファイル一覧）を作成し、ルートに設定
-	initialView := ui.ShowFileList(gittaApp.App, stagedFiles, modifiedFiles, untrackedFiles, repoPath, showFileDiff, updateFileList)
+	// onSelect パラメータは現在使用されていないため nil を渡す
+	initialView := ui.ShowFileList(gittaApp.App, stagedFiles, modifiedFiles, untrackedFiles, repoPath, nil, updateFileList)
 	gittaApp.App.SetRoot(initialView, true)
 
 	// アプリケーションの実行は main で一度だけ

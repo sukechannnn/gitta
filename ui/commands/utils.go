@@ -1,4 +1,4 @@
-package ui
+package commands
 
 import (
 	"strings"
@@ -6,7 +6,7 @@ import (
 	"github.com/sukechannnn/gitta/util"
 )
 
-// colorizeDiff は Diff を色付けします
+// ColorizeDiff は Diff を色付けします
 func ColorizeDiff(diff string) string {
 	var result string
 	lines := util.SplitLines(diff)
@@ -35,4 +35,26 @@ func ColorizeDiff(diff string) string {
 		}
 	}
 	return result
+}
+
+// MapDisplayToOriginalIdx maps display indices to original diff line indices
+func MapDisplayToOriginalIdx(diff string) map[int]int {
+	lines := util.SplitLines(diff)
+	displayIndex := 0
+	mapping := make(map[int]int)
+
+	for i, line := range lines {
+		if strings.HasPrefix(line, "diff --git") ||
+			strings.HasPrefix(line, "index ") ||
+			strings.HasPrefix(line, "--- ") ||
+			strings.HasPrefix(line, "+++ ") ||
+			strings.HasPrefix(line, "@@") {
+			continue
+		}
+
+		mapping[displayIndex] = i
+		displayIndex++
+	}
+
+	return mapping
 }

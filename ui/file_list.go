@@ -10,6 +10,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/sukechannnn/gitta/git"
+	"github.com/sukechannnn/gitta/ui/commands"
 	"github.com/sukechannnn/gitta/util"
 )
 
@@ -186,7 +187,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				return nil
 			case 'G': // 大文字G → 最下部へ
 				coloredDiff := ColorizeDiff(currentDiffText)
-				cursorY = len(SplitLines(coloredDiff)) - 1
+				cursorY = len(util.SplitLines(coloredDiff)) - 1
 				if isSelecting {
 					selectEnd = cursorY
 				}
@@ -247,7 +248,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 
 					// ColorizeDiffで色付け
 					coloredDiff := ColorizeDiff(currentDiffText)
-					diffLines = SplitLines(coloredDiff)
+					diffLines = util.SplitLines(coloredDiff)
 
 					// 再描画
 					updateDiffView(diffView, diffLines, cursorY)
@@ -258,7 +259,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				}
 			case 'a':
 				// commandA関数を呼び出す
-				params := CommandAParams{
+				params := commands.CommandAParams{
 					SelectStart:      selectStart,
 					SelectEnd:        selectEnd,
 					CurrentFile:      currentFile,
@@ -268,7 +269,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					UpdateListStatus: updateListStatus,
 				}
 
-				result, err := commandA(params)
+				result, err := commands.CommandA(params)
 				if err != nil {
 					return nil
 				}
@@ -373,7 +374,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 
 						// 差分を更新して表示
 						coloredDiff := ColorizeDiff(currentDiffText)
-						diffLines = SplitLines(coloredDiff)
+						diffLines = util.SplitLines(coloredDiff)
 
 						// カーソルと選択をリセット
 						isSelecting = false
@@ -734,8 +735,8 @@ func ShowDiffInPane(diffView *tview.TextView, filePath string, status string, re
 	// ColorizeDiffを使って色付けとヘッダー除外
 	coloredDiff := ColorizeDiff(diffText)
 
-	// 表示用の行を返す（カーソル表示のため）- file_view.goと同じsplitLinesを使用
-	lines := SplitLines(coloredDiff)
+	// 表示用の行を返す（カーソル表示のため）- file_view.goと同じutil.splitLinesを使用
+	lines := util.SplitLines(coloredDiff)
 
 	// カーソル付きで表示（SetTextは不要、updateDiffViewが処理する）
 	updateDiffView(diffView, lines, cursorY)
@@ -803,30 +804,8 @@ func isLineSelected(index, start, end int) bool {
 	return index >= min && index <= max
 }
 
-// file_view.goから必要な関数を移植（名前を変更して重複を回避）
-func mapDisplayToOriginalIdx(diff string) map[int]int {
-	lines := SplitLines(diff)
-	displayIndex := 0
-	mapping := make(map[int]int)
-
-	for i, line := range lines {
-		if strings.HasPrefix(line, "diff --git") ||
-			strings.HasPrefix(line, "index ") ||
-			strings.HasPrefix(line, "--- ") ||
-			strings.HasPrefix(line, "+++ ") ||
-			strings.HasPrefix(line, "@@") {
-			continue
-		}
-
-		mapping[displayIndex] = i
-		displayIndex++
-	}
-
-	return mapping
-}
-
 func extractFileHdr(diff string, startLine int) string {
-	lines := SplitLines(diff)
+	lines := util.SplitLines(diff)
 	var header []string
 
 	for i := startLine; i >= 0; i-- {
