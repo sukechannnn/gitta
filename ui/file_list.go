@@ -72,16 +72,16 @@ func buildFileTree(files []string) *TreeNode {
 // renderFileTree recursively renders the tree structure with proper indentation
 func renderFileTree(node *TreeNode, depth int, sb *strings.Builder,
 	regions *[]string, fileMap map[string]string, fileStatusMap map[string]string,
-	status string, regionIndex *int, currentSelection int, focusedPane bool) {
+	status string, regionIndex *int, currentSelection int, focusedPane bool, lineNumberMap map[int]int, currentLine *int) {
 
 	renderFileTreeWithPrefix(node, depth, "", sb, regions, fileMap, fileStatusMap,
-		status, regionIndex, currentSelection, focusedPane)
+		status, regionIndex, currentSelection, focusedPane, lineNumberMap, currentLine)
 }
 
 // renderFileTreeWithPrefix renders the tree with proper line prefixes
 func renderFileTreeWithPrefix(node *TreeNode, depth int, prefix string, sb *strings.Builder,
 	regions *[]string, fileMap map[string]string, fileStatusMap map[string]string,
-	status string, regionIndex *int, currentSelection int, focusedPane bool) {
+	status string, regionIndex *int, currentSelection int, focusedPane bool, lineNumberMap map[int]int, currentLine *int) {
 
 	// Sort children for consistent ordering
 	var sortedKeys []string
@@ -136,12 +136,15 @@ func renderFileTreeWithPrefix(node *TreeNode, depth int, prefix string, sb *stri
 			} else {
 				sb.WriteString(fmt.Sprintf(`%s[white:%s]["file-%d"]%s%s[""][-:-]`+"\n", prefix, util.NotSelectedFileLineColor, *regionIndex, connector, child.Name))
 			}
+			lineNumberMap[*regionIndex] = *currentLine
 			(*regionIndex)++
+			(*currentLine)++
 		} else {
 			// ディレクトリの場合
 			sb.WriteString(fmt.Sprintf("%s%s%s/\n", prefix, connector, child.Name))
+			(*currentLine)++
 			renderFileTreeWithPrefix(child, depth+1, childPrefix, sb, regions, fileMap, fileStatusMap,
-				status, regionIndex, currentSelection, focusedPane)
+				status, regionIndex, currentSelection, focusedPane, lineNumberMap, currentLine)
 		}
 	}
 }
@@ -263,6 +266,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 	var regions []string
 	var fileMap = make(map[string]string)
 	var fileStatusMap = make(map[string]string)
+	var lineNumberMap = make(map[int]int)
 
 	// 右ペインのキー入力処理を設定（file_view.goと同じ動作）
 	diffView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -582,34 +586,41 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 		regions = []string{}
 		fileMap = make(map[string]string)
 		fileStatusMap = make(map[string]string)
+		lineNumberMap = make(map[int]int)
 
 		var coloredContent strings.Builder
 		regionIndex := 0
+		currentLine := 0
 
 		// Staged ファイル
 		if len(*stagedFilesPtr) > 0 {
 			coloredContent.WriteString("[green]Changes to be committed:[white]\n")
+			currentLine++
 			tree := buildFileTree(*stagedFilesPtr)
 			renderFileTree(tree, 1, &coloredContent, &regions, fileMap, fileStatusMap,
-				"staged", &regionIndex, currentSelection, focusedPane)
+				"staged", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine)
 			coloredContent.WriteString("\n")
+			currentLine++
 		}
 
 		// 変更されたファイル（unstaged）
 		if len(*modifiedFilesPtr) > 0 {
 			coloredContent.WriteString("[yellow]Changes not staged for commit:[white]\n")
+			currentLine++
 			tree := buildFileTree(*modifiedFilesPtr)
 			renderFileTree(tree, 1, &coloredContent, &regions, fileMap, fileStatusMap,
-				"unstaged", &regionIndex, currentSelection, focusedPane)
+				"unstaged", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine)
 			coloredContent.WriteString("\n")
+			currentLine++
 		}
 
 		// 未追跡ファイル
 		if len(*untrackedFilesPtr) > 0 {
 			coloredContent.WriteString("[red]Untracked files:[white]\n")
+			currentLine++
 			tree := buildFileTree(*untrackedFilesPtr)
 			renderFileTree(tree, 1, &coloredContent, &regions, fileMap, fileStatusMap,
-				"untracked", &regionIndex, currentSelection, focusedPane)
+				"untracked", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine)
 		}
 
 		return coloredContent.String()
@@ -619,6 +630,27 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 	updateFileListView = func() {
 		textView.Clear()
 		textView.SetText(buildFileListContent(leftPaneFocused))
+
+		// 最初のファイルが選択されている場合は一番上にスクロール
+		if currentSelection == 0 {
+			textView.ScrollTo(0, 0)
+			return
+		}
+
+		// スクロール位置を調整（選択行が見える範囲に）
+		if actualLine, exists := lineNumberMap[currentSelection]; exists {
+			_, _, _, height := textView.GetInnerRect()
+			currentRow, _ := textView.GetScrollOffset()
+
+			// 選択行が画面より下にある場合
+			if actualLine >= currentRow+height-1 {
+				textView.ScrollTo(actualLine-height+2, 0)
+			}
+			// 選択行が画面より上にある場合
+			if actualLine < currentRow {
+				textView.ScrollTo(actualLine, 0)
+			}
+		}
 	}
 
 	// ファイルリストを内部的に更新する関数
