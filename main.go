@@ -23,7 +23,9 @@ type Application struct {
 
 func main() {
 	var debug bool
+	var autoRefresh bool
 	flag.BoolVar(&debug, "debug", false, "Enable debug mode")
+	flag.BoolVar(&autoRefresh, "watch", false, "Watch for file changes and auto-refresh")
 	flag.Parse()
 
 	// Git リポジトリのルートを検出
@@ -99,13 +101,14 @@ func main() {
 			repoPath,
 			nil, // onSelect は使用されていない
 			updateFileList,
+			autoRefresh,
 		)
 		gittaApp.App.SetRoot(fileListView, true)
 	}
 
 	// 初期ビュー（ファイル一覧）を作成し、ルートに設定
 	// onSelect パラメータは現在使用されていないため nil を渡す
-	initialView := ui.ShowFileList(gittaApp.App, stagedFiles, modifiedFiles, untrackedFiles, repoPath, nil, updateFileList)
+	initialView := ui.ShowFileList(gittaApp.App, stagedFiles, modifiedFiles, untrackedFiles, repoPath, nil, updateFileList, autoRefresh)
 	gittaApp.App.SetRoot(initialView, true)
 
 	// アプリケーションの実行は main で一度だけ

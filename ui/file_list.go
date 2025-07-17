@@ -164,7 +164,7 @@ func updateListStatus(message string, color string) {
 }
 
 // ファイル一覧を表示
-func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []string, repoRoot string, onSelect func(file string, status string), onUpdate func()) tview.Primitive {
+func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []string, repoRoot string, onSelect func(file string, status string), onUpdate func(), enableAutoRefresh bool) tview.Primitive {
 	// ファイルリストを更新するための参照を保持
 	stagedFilesPtr := &stagedFiles
 	modifiedFilesPtr := &modifiedFiles
@@ -797,6 +797,91 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 
 	// 初期メッセージを設定
 	listStatusView.SetText(listKeyBindingMessage)
+
+	// 自動リフレッシュが有効な場合のみゴルーチンを開始
+	if enableAutoRefresh {
+		stopRefresh := make(chan bool)
+		go func() {
+			ticker := time.NewTicker(300 * time.Millisecond)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-ticker.C:
+					app.QueueUpdateDraw(func() {
+						// 現在の選択ファイルを保存
+						var currentlySelectedFile string
+						if currentSelection >= 0 && currentSelection < len(regions) {
+							currentlySelectedFile = fileMap[regions[currentSelection]]
+						}
+
+						// ファイルリストを更新
+						refreshFileList()
+
+						// 選択位置を復元
+						newSelection := -1
+						for i, regionID := range regions {
+							if fileMap[regionID] == currentlySelectedFile {
+								newSelection = i
+								break
+							}
+						}
+						if newSelection >= 0 {
+							currentSelection = newSelection
+						} else if currentSelection >= len(regions) {
+							currentSelection = len(regions) - 1
+						}
+
+						// 表示を更新
+						updateFileListView()
+
+						// 右ペインの差分も更新
+						if leftPaneFocused {
+							// 左ペインにフォーカスがある場合は通常の更新
+							updateSelectedFileDiff()
+						} else if currentFile != "" {
+							// 右ペインにフォーカスがある場合は現在のカーソル位置を保持して更新
+							var newDiffText string
+							if currentStatus == "staged" {
+								newDiffText, _ = git.GetStagedDiff(currentFile, repoRoot)
+							} else {
+								newDiffText, _ = git.GetFileDiff(currentFile, repoRoot)
+							}
+
+							// 差分が変更された場合のみ更新
+							if newDiffText != currentDiffText {
+								currentDiffText = newDiffText
+								coloredDiff := ColorizeDiff(currentDiffText)
+								diffLines = util.SplitLines(coloredDiff)
+
+								// カーソル位置を調整（差分の行数が減った場合）
+								if cursorY >= len(diffLines) {
+									cursorY = len(diffLines) - 1
+									if cursorY < 0 {
+										cursorY = 0
+									}
+								}
+
+								// 選択範囲も調整
+								if isSelecting {
+									if selectStart >= len(diffLines) {
+										selectStart = len(diffLines) - 1
+									}
+									if selectEnd >= len(diffLines) {
+										selectEnd = len(diffLines) - 1
+									}
+								}
+
+								updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+							}
+						}
+					})
+				case <-stopRefresh:
+					return
+				}
+			}
+		}()
+	}
 
 	// mainFlex にステータスビューとコンテンツを追加
 	mainFlex.AddItem(listStatusView, 5, 0, false).
