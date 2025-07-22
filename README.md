@@ -13,6 +13,8 @@ It's like `git add -p`, but better — with a keyboard-driven interface and visu
 - Interactive selection of lines/hunks using Vim-like keys (`j`, `k`, `V`, etc.)
 - Apply selected changes as minimal patches (`git apply --cached`)
 - Toggleable debug mode (`--debug`) to see patch output and apply results
+- Real-time file watching with `--watch` flag
+- Split view mode for side-by-side diff comparison
 - Fast, minimal, and works well with real Git repositories
 
 ---
@@ -26,17 +28,35 @@ gitta
 
 Use the arrow keys or `j` / `k` to move, `V` to start visual selection, and `U` to stage the selected diff.
 
-Press:
-- `V` — start/stop selecting
-- `U` — apply selected patch (`git add` equivalent)
-- `w` — go back to list page
+### Key Bindings
+
+Navigation:
+- `j` / `k` or arrow keys — move cursor up/down
+- `g` + `g` — go to top
+- `G` — go to bottom
+- `w` — switch between file list and diff view
+
+Actions:
+- `V` — start/stop line selection mode
+- `a` — stage selected lines
+- `A` — stage/unstage entire file
+- `s` — toggle split view (side-by-side diff)
+- `u` — undo last staging operation
 - `q` — quit
 
-Enable debug mode:
+### Command Line Options
 
+Enable debug mode to see patch details:
 ```bash
 gitta --debug
 ```
+
+Enable auto-refresh mode to watch for file changes:
+```bash
+gitta --watch
+```
+
+With `--watch` enabled, gitta will automatically refresh the file list and diff view every 300ms, allowing you to see changes in real-time as you edit files in your editor.
 
 ---
 
