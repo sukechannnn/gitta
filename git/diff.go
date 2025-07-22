@@ -7,7 +7,8 @@ import (
 
 func GetFileDiff(filePath string, repoRoot string) (string, error) {
 	// `git diff` を実行（削除されたファイルでも動作するように -- を追加）
-	cmd := exec.Command("git", "diff", "--", filePath)
+	// -c core.quotepath=false でマルチバイトファイル名をエスケープしないようにする
+	cmd := exec.Command("git", "-c", "core.quotepath=false", "diff", "--", filePath)
 	cmd.Dir = repoRoot
 	output, err := cmd.Output()
 	if err != nil {

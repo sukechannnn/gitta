@@ -35,7 +35,7 @@ func ApplySelectedChangesToFile(filePath string, repoRoot string, diffText strin
 // GetFileContentFromIndex returns file content from git index (staging area)
 func GetFileContentFromIndex(filePath string, repoRoot string) ([]byte, error) {
 	// First, check if there's a staged version
-	cmd := exec.Command("git", "show", ":"+filePath)
+	cmd := exec.Command("git", "-c", "core.quotepath=false", "show", ":"+filePath)
 	cmd.Dir = repoRoot
 	output, err := cmd.Output()
 	if err != nil {
@@ -48,7 +48,7 @@ func GetFileContentFromIndex(filePath string, repoRoot string) ([]byte, error) {
 // GetFileContentFromHEAD returns file content at HEAD
 func GetFileContentFromHEAD(filePath string, repoRoot string) ([]byte, error) {
 	// Try to read the file at HEAD
-	cmd := exec.Command("git", "show", "HEAD:"+filePath)
+	cmd := exec.Command("git", "-c", "core.quotepath=false", "show", "HEAD:"+filePath)
 	cmd.Dir = repoRoot
 	output, err := cmd.Output()
 	if err != nil {

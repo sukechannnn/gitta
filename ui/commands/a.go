@@ -114,7 +114,8 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 	}
 
 	// git add を実行
-	cmd := exec.Command("git", "add", params.CurrentFile)
+	// -c core.quotepath=false でマルチバイトファイル名をエスケープしないようにする
+	cmd := exec.Command("git", "-c", "core.quotepath=false", "add", params.CurrentFile)
 	cmd.Dir = params.RepoRoot
 	_, gitErr := cmd.CombinedOutput()
 

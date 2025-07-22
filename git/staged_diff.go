@@ -7,7 +7,8 @@ import (
 
 func GetStagedDiff(filePath string, repoRoot string) (string, error) {
 	// `git diff` を実行（削除されたファイルでも動作するように -- を追加）
-	cmd := exec.Command("git", "diff", "--cached", "--", filePath)
+	// -c core.quotepath=false でマルチバイトファイル名をエスケープしないようにする
+	cmd := exec.Command("git", "-c", "core.quotepath=false", "diff", "--cached", "--", filePath)
 	cmd.Dir = repoRoot
 	output, err := cmd.Output()
 	if err != nil {

@@ -38,7 +38,8 @@ func GetChangedFiles(repoPath string) ([]string, []string, []string, error) {
 		return nil, nil, nil, err
 	}
 	// Git status --porcelain を実行してstaged/unstagedの両方のファイルを取得
-	cmd := exec.Command("git", "status", "--porcelain")
+	// -c core.quotepath=false でマルチバイトファイル名をエスケープしないようにする
+	cmd := exec.Command("git", "-c", "core.quotepath=false", "status", "--porcelain")
 	cmd.Dir = gitRoot
 	output, err := cmd.Output()
 	if err != nil {
