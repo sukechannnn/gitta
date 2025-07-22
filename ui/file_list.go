@@ -200,6 +200,26 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 		SetWrap(false)
 	diffView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
+	// Split View用のテキストビューを作成
+	beforeView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetRegions(true).
+		SetWrap(false)
+	beforeView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+
+	afterView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetRegions(true).
+		SetWrap(false)
+	afterView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+
+	// Split View用のフレックスコンテナ
+	splitViewFlex := tview.NewFlex().
+		AddItem(beforeView, 0, 1, false).
+		AddItem(CreateVerticalBorder(), 1, 0, false).
+		AddItem(afterView, 0, 1, false)
+	splitViewFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+
 	// 現在のファイル情報を保持
 	var currentFile string
 	var currentStatus string
@@ -213,6 +233,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 	var leftPaneFocused bool = true
 	var gPressed bool = false
 	var lastGTime time.Time
+	var isSplitView bool = false // Split Viewモードのフラグ
 
 	// 保存されたカーソル位置を復元
 	if preferUnstagedSection || savedTargetFile != "" {
@@ -272,31 +293,68 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 	diffView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyEsc:
-			// 選択モードを解除するか、左ペインに戻る
-			if isSelecting {
-				isSelecting = false
-				selectStart = -1
-				selectEnd = -1
-				updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+			// 左ペインに戻る
+			// 選択モードをリセット（カーソル位置は保持）
+			isSelecting = false
+			selectStart = -1
+			selectEnd = -1
+			// 表示を更新（カーソルなし）
+			if isSplitView {
+				// Split Viewもカーソルなしで更新
+				updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
 			} else {
-				app.SetFocus(textView)
+				// 通常の差分表示もカーソルなし
+				updateDiffViewWithoutCursor(diffView, diffLines)
 			}
+			// 左ペインにフォーカスを戻す
+			leftPaneFocused = true
+			updateFileListView()
+			app.SetFocus(textView)
 			return nil
 		case tcell.KeyRune:
 			switch event.Rune() {
 			case 'w':
-				// 'w'キーで左ペインに戻る
-				// カーソルと選択モードをリセット
-				cursorY = 0
+				// 左ペインに戻る
+				// 選択モードをリセット（カーソル位置は保持）
 				isSelecting = false
 				selectStart = -1
 				selectEnd = -1
-				// 表示を更新（カーソルなし）
-				updateDiffViewWithoutCursor(diffView, diffLines)
+				// 表示を更新
+				if isSplitView {
+					// Split Viewはカーソル付きで更新
+					updateSplitViewWithCursor(beforeView, afterView, currentDiffText, cursorY)
+				} else {
+					// 通常の差分表示はカーソルなし
+					updateDiffViewWithoutCursor(diffView, diffLines)
+				}
 				// 左ペインにフォーカスを戻す
 				leftPaneFocused = true
 				updateFileListView()
 				app.SetFocus(textView)
+				return nil
+			case 's':
+				// Split Viewのトグル
+				isSplitView = !isSplitView
+
+				if isSplitView {
+					// Split Viewを表示（現在のカーソル位置を維持）
+					updateSplitViewWithCursor(beforeView, afterView, currentDiffText, cursorY)
+					contentFlex.RemoveItem(diffView)
+					contentFlex.AddItem(splitViewFlex, 0, 4, false)
+					// フォーカスがdiffViewにある場合、splitViewFlexに移動
+					if !leftPaneFocused {
+						app.SetFocus(splitViewFlex)
+					}
+				} else {
+					// 通常の差分表示に戻す
+					contentFlex.RemoveItem(splitViewFlex)
+					contentFlex.AddItem(diffView, 0, 4, false)
+					updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+					// フォーカスがsplitViewFlexにある場合、diffViewに移動
+					if !leftPaneFocused {
+						app.SetFocus(diffView)
+					}
+				}
 				return nil
 			case 'g':
 				now := time.Now()
@@ -306,7 +364,11 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					if isSelecting {
 						selectEnd = cursorY
 					}
-					updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+					if isSplitView {
+						updateSplitViewWithSelection(beforeView, afterView, currentDiffText, cursorY, selectStart, selectEnd, isSelecting)
+					} else {
+						updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+					}
 					gPressed = false
 				} else {
 					// 1回目のg
@@ -320,16 +382,35 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				if isSelecting {
 					selectEnd = cursorY
 				}
-				updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+				if isSplitView {
+					updateSplitViewWithCursor(beforeView, afterView, currentDiffText, cursorY)
+				} else {
+					updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+				}
 				return nil
 			case 'j':
 				// 下移動
-				if cursorY < len(diffLines)-1 {
+				maxLines := len(diffLines) - 1
+				if isSplitView {
+					// Split Viewの場合は有効な行数を取得
+					splitViewLines := getSplitViewLineCount(currentDiffText)
+					if splitViewLines > 0 {
+						maxLines = splitViewLines - 1
+					} else {
+						maxLines = 0
+					}
+				}
+
+				if cursorY < maxLines {
 					cursorY++
 					if isSelecting {
 						selectEnd = cursorY
 					}
-					updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+					if isSplitView {
+						updateSplitViewWithSelection(beforeView, afterView, currentDiffText, cursorY, selectStart, selectEnd, isSelecting)
+					} else {
+						updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+					}
 				}
 				return nil
 			case 'k':
@@ -339,7 +420,11 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					if isSelecting {
 						selectEnd = cursorY
 					}
-					updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+					if isSplitView {
+						updateSplitViewWithSelection(beforeView, afterView, currentDiffText, cursorY, selectStart, selectEnd, isSelecting)
+					} else {
+						updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+					}
 				}
 				return nil
 			case 'V':
@@ -348,7 +433,11 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					isSelecting = true
 					selectStart = cursorY
 					selectEnd = cursorY
-					updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+					if isSplitView {
+						updateSplitViewWithSelection(beforeView, afterView, currentDiffText, cursorY, selectStart, selectEnd, isSelecting)
+					} else {
+						updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+					}
 				}
 				return nil
 			case 'u':
@@ -358,7 +447,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					return nil
 				}
 
-				cmd := exec.Command("git", "apply", "-R", "--cached", patchPath)
+				cmd := exec.Command("git", "-c", "core.quotepath=false", "apply", "-R", "--cached", patchPath)
 				cmd.Dir = repoRoot
 				_, err := cmd.CombinedOutput()
 				if err != nil {
@@ -440,9 +529,9 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				if currentFile != "" {
 					var cmd *exec.Cmd
 					if currentStatus == "staged" {
-						cmd = exec.Command("git", "reset", "HEAD", currentFile)
+						cmd = exec.Command("git", "-c", "core.quotepath=false", "reset", "HEAD", currentFile)
 					} else {
-						cmd = exec.Command("git", "add", currentFile)
+						cmd = exec.Command("git", "-c", "core.quotepath=false", "add", currentFile)
 					}
 					cmd.Dir = repoRoot
 
@@ -517,18 +606,59 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 		return event
 	})
 
+	// Split View用のキー入力処理を設定
+	splitViewFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			// 左ペインに戻る
+			// 選択モードをリセット（カーソル位置は保持）
+			isSelecting = false
+			selectStart = -1
+			selectEnd = -1
+			// 表示を更新（カーソルなし）
+			updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
+			// 左ペインにフォーカスを戻す
+			leftPaneFocused = true
+			updateFileListView()
+			app.SetFocus(textView)
+			return nil
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case 'w':
+				// 左ペインに戻る
+				// 選択モードをリセット（カーソル位置は保持）
+				isSelecting = false
+				selectStart = -1
+				selectEnd = -1
+				// 表示を更新（カーソルなし）
+				updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
+				// 左ペインにフォーカスを戻す
+				leftPaneFocused = true
+				updateFileListView()
+				app.SetFocus(textView)
+				return nil
+			default:
+				// その他のキーはdiffViewの処理を呼び出す
+				return diffView.GetInputCapture()(event)
+			}
+		default:
+			// その他のキーはdiffViewの処理を呼び出す
+			return diffView.GetInputCapture()(event)
+		}
+	})
+
 	// ボーダーを作成
 	verticalBorder := CreateVerticalBorder()
 	horizontalTopBorder := CreateHorizontalTopBorder()
 	horizontalBottomBorder := CreateHorizontalBottomBorder()
 
-	// 左右のペインをフレックスに追加（左:縦線:右 = 1:0:2）
+	// 左右のペインをフレックスに追加（左:縦線:右 = 1:0:4）
+	verticalBorderLeft := CreateVerticalBorder()
 	contentFlex.
-		AddItem(verticalBorder, 1, 0, false).
+		AddItem(verticalBorderLeft, 1, 0, false).
 		AddItem(textView, 0, 1, true).
 		AddItem(verticalBorder, 1, 0, false).
-		AddItem(diffView, 0, 2, false).
-		AddItem(verticalBorder, 1, 0, false)
+		AddItem(diffView, 0, 4, false)
 
 	// ファイル一覧を構築
 	var content strings.Builder
@@ -683,7 +813,11 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 
 			// 右ペインに差分を表示（カーソルなし）
 			diffLines = ShowDiffInPane(diffView, file, status, repoRoot, cursorY, &currentDiffText)
-			updateDiffViewWithoutCursor(diffView, diffLines)
+			if isSplitView {
+				updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
+			} else {
+				updateDiffViewWithoutCursor(diffView, diffLines)
+			}
 		}
 	}
 
@@ -728,10 +862,19 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				// 右ペインに差分を表示
 				diffLines = ShowDiffInPane(diffView, file, status, repoRoot, cursorY, &currentDiffText)
 
+				// Split Viewの場合はカーソル付きで更新
+				if isSplitView {
+					updateSplitViewWithCursor(beforeView, afterView, currentDiffText, cursorY)
+				}
+
 				// フォーカスを右ペインに移動
 				leftPaneFocused = false
 				updateFileListView()
-				app.SetFocus(diffView)
+				if isSplitView {
+					app.SetFocus(splitViewFlex)
+				} else {
+					app.SetFocus(diffView)
+				}
 			}
 			return nil
 		case tcell.KeyRune:
@@ -750,6 +893,22 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					updateSelectedFileDiff()
 				}
 				return nil
+			case 's':
+				// Split Viewのトグル
+				isSplitView = !isSplitView
+
+				if isSplitView {
+					// Split Viewを表示
+					updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
+					contentFlex.RemoveItem(diffView)
+					contentFlex.AddItem(splitViewFlex, 0, 4, false)
+				} else {
+					// 通常の差分表示に戻す
+					contentFlex.RemoveItem(splitViewFlex)
+					contentFlex.AddItem(diffView, 0, 4, false)
+					updateDiffViewWithoutCursor(diffView, diffLines)
+				}
+				return nil
 			case 'A': // 'A' で現在のファイルを git add/reset
 				if currentSelection >= 0 && currentSelection < len(regions) {
 					regionID := regions[currentSelection]
@@ -759,11 +918,11 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					var cmd *exec.Cmd
 					if status == "staged" {
 						// stagedファイルをunstageする
-						cmd = exec.Command("git", "reset", "HEAD", file)
+						cmd = exec.Command("git", "-c", "core.quotepath=false", "reset", "HEAD", file)
 						cmd.Dir = repoRoot
 					} else {
 						// unstaged/untrackedファイルをstageする
-						cmd = exec.Command("git", "add", file)
+						cmd = exec.Command("git", "-c", "core.quotepath=false", "add", file)
 						cmd.Dir = repoRoot
 					}
 
@@ -872,7 +1031,12 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 									}
 								}
 
-								updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+								// Split Viewモードの場合はSplit View更新、そうでなければ通常の更新
+								if isSplitView {
+									updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
+								} else {
+									updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+								}
 							}
 						}
 					})
@@ -986,4 +1150,193 @@ func isLineSelected(index, start, end int) bool {
 		min, max = max, min
 	}
 	return index >= min && index <= max
+}
+
+// カーソルなしでSplit Viewを更新する関数
+func updateSplitViewWithoutCursor(beforeView, afterView *tview.TextView, diffText string) {
+	beforeView.Clear()
+	afterView.Clear()
+
+	lines := strings.Split(diffText, "\n")
+	var beforeLines []string
+	var afterLines []string
+	inHunk := false
+
+	for _, line := range lines {
+		// ヘッダー行をスキップ
+		if strings.HasPrefix(line, "diff --git") ||
+			strings.HasPrefix(line, "index ") ||
+			strings.HasPrefix(line, "--- ") ||
+			strings.HasPrefix(line, "+++ ") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "@@") {
+			inHunk = true
+			continue
+		}
+
+		if !inHunk {
+			continue
+		}
+
+		if strings.HasPrefix(line, "-") {
+			// 削除行は左側に赤で表示
+			beforeLines = append(beforeLines, "[red]"+line+"[-]")
+			afterLines = append(afterLines, "")
+		} else if strings.HasPrefix(line, "+") {
+			// 追加行は右側に緑で表示
+			beforeLines = append(beforeLines, "")
+			afterLines = append(afterLines, "[green]"+line+"[-]")
+		} else {
+			// 共通行は両側に表示
+			beforeLines = append(beforeLines, line)
+			afterLines = append(afterLines, line)
+		}
+	}
+
+	// 表示を更新（カーソルなし）
+	for _, line := range beforeLines {
+		beforeView.Write([]byte(line + "\n"))
+	}
+
+	for _, line := range afterLines {
+		afterView.Write([]byte(line + "\n"))
+	}
+
+	// スクロール位置を先頭に
+	beforeView.ScrollTo(0, 0)
+	afterView.ScrollTo(0, 0)
+}
+
+// Split View用の有効な行数を取得
+func getSplitViewLineCount(diffText string) int {
+	lines := strings.Split(diffText, "\n")
+	count := 0
+	inHunk := false
+
+	for _, line := range lines {
+		// ヘッダー行をスキップ
+		if strings.HasPrefix(line, "diff --git") ||
+			strings.HasPrefix(line, "index ") ||
+			strings.HasPrefix(line, "--- ") ||
+			strings.HasPrefix(line, "+++ ") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "@@") {
+			inHunk = true
+			continue
+		}
+
+		if inHunk {
+			count++
+		}
+	}
+
+	return count
+}
+
+// カーソル付きでSplit Viewを更新する関数
+func updateSplitViewWithCursor(beforeView, afterView *tview.TextView, diffText string, cursorY int) {
+	updateSplitViewWithSelection(beforeView, afterView, diffText, cursorY, -1, -1, false)
+}
+
+// 選択範囲付きでSplit Viewを更新する関数
+func updateSplitViewWithSelection(beforeView, afterView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool) {
+	beforeView.Clear()
+	afterView.Clear()
+
+	lines := strings.Split(diffText, "\n")
+	var beforeLines []string
+	var afterLines []string
+	var inHunk bool = false
+
+	for _, line := range lines {
+		// ヘッダー行を非表示にする
+		if strings.HasPrefix(line, "diff --git") ||
+			strings.HasPrefix(line, "index ") ||
+			strings.HasPrefix(line, "--- ") ||
+			strings.HasPrefix(line, "+++ ") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "@@") {
+			// ハンクヘッダー（非表示にする）
+			inHunk = true
+			continue
+		} else if inHunk {
+			if strings.HasPrefix(line, "-") {
+				// 削除行（左側のみに表示、- 記号を含める）
+				beforeLines = append(beforeLines, "[red]"+line+"[-]")
+				afterLines = append(afterLines, "[dimgray] [-]") // 右側には空行の代わりにスペースを表示
+			} else if strings.HasPrefix(line, "+") {
+				// 追加行（右側のみに表示、+ 記号を含める）
+				beforeLines = append(beforeLines, "[dimgray] [-]") // 左側には空行の代わりにスペースを表示
+				afterLines = append(afterLines, "[green]"+line+"[-]")
+			} else if strings.HasPrefix(line, " ") {
+				// 変更なし行（両側に表示、先頭のスペースを保持）
+				beforeLines = append(beforeLines, " "+line[1:])
+				afterLines = append(afterLines, " "+line[1:])
+			} else {
+				// その他の行
+				beforeLines = append(beforeLines, " "+line)
+				afterLines = append(afterLines, " "+line)
+			}
+		}
+	}
+
+	// カーソル行の実際のインデックスを取得（単純化）
+	// cursorYは表示行のインデックスとして扱う
+	cursorIndex := -1
+	if cursorY >= 0 && cursorY < len(beforeLines) {
+		cursorIndex = cursorY
+	}
+
+	// 表示を更新
+	for i, line := range beforeLines {
+		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
+			// 選択行を黄色でハイライト
+			beforeView.Write([]byte("[black:yellow]" + line + "[-:-]\n"))
+		} else if cursorIndex >= 0 && i == cursorIndex {
+			// カーソル行を青でハイライト
+			beforeView.Write([]byte("[white:blue]" + line + "[-:-]\n"))
+		} else {
+			beforeView.Write([]byte(line + "\n"))
+		}
+	}
+
+	for i, line := range afterLines {
+		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
+			// 選択行を黄色でハイライト
+			afterView.Write([]byte("[black:yellow]" + line + "[-:-]\n"))
+		} else if cursorIndex >= 0 && i == cursorIndex {
+			// カーソル行を青でハイライト
+			afterView.Write([]byte("[white:blue]" + line + "[-:-]\n"))
+		} else {
+			afterView.Write([]byte(line + "\n"))
+		}
+	}
+
+	// スクロール位置を同期
+	if cursorIndex >= 0 {
+		_, _, _, height := beforeView.GetInnerRect()
+		currentRow, _ := beforeView.GetScrollOffset()
+
+		// カーソルが画面より下にある場合
+		if cursorIndex >= currentRow+height-1 {
+			scrollPos := cursorIndex - height + 2
+			beforeView.ScrollTo(scrollPos, 0)
+			afterView.ScrollTo(scrollPos, 0)
+		}
+		// カーソルが画面より上にある場合
+		if cursorIndex < currentRow {
+			beforeView.ScrollTo(cursorIndex, 0)
+			afterView.ScrollTo(cursorIndex, 0)
+		}
+	} else {
+		// カーソルなしの場合は先頭に
+		beforeView.ScrollTo(0, 0)
+		afterView.ScrollTo(0, 0)
+	}
 }

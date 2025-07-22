@@ -41,11 +41,11 @@ func CreateHorizontalTopBorder() *tview.Box {
 			// 縦線の位置を計算
 			// レイアウト: 縦線(1) + textView(比率1) + 縦線(1) + diffView(比率2) + 縦線(1)
 			totalFlexWidth := width - 3     // 3つの縦線の幅を除く
-			unitWidth := totalFlexWidth / 3 // 比率の合計は1+2=3
+			unitWidth := totalFlexWidth / 5 // 比率の合計は1+4=5
 
 			// 各縦線の位置
 			leftBorderPos := 0               // 左端の縦線
-			middleBorderPos := 1 + unitWidth // 左縦線(1) + textView(unitWidth)
+			middleBorderPos := 2 + unitWidth // 左縦線(1) + textView(unitWidth)
 			rightBorderPos := width - 1      // 右端の縦線
 
 			// 交差部分を描画
