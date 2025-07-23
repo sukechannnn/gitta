@@ -111,15 +111,15 @@ func renderFileTreeWithPrefix(node *TreeNode, depth int, prefix string, sb *stri
 		child := node.Children[key]
 
 		// 現在の要素の接続記号
-		connector := "├── "
+		connector := "├─"
 		if isLast {
-			connector = "└── "
+			connector = "└─"
 		}
 
 		// 次の階層のためのプレフィックス
-		childPrefix := prefix + "│   "
+		childPrefix := prefix + "│ "
 		if isLast {
-			childPrefix = prefix + "    "
+			childPrefix = prefix + "  "
 		}
 
 		if child.IsFile {
@@ -506,7 +506,11 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				cursorY = 0
 
 				// 再描画
-				updateDiffView(diffView, diffLines, cursorY)
+				if isSplitView {
+					updateSplitViewWithCursor(beforeView, afterView, currentDiffText, cursorY)
+				} else {
+					updateDiffView(diffView, diffLines, cursorY)
+				}
 
 				// ファイルリストを内部的に更新
 				refreshFileList()
@@ -758,12 +762,15 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 
 	// 初期表示を更新
 	updateFileListView = func() {
+		// 現在の横スクロール位置を保存
+		_, currentCol := textView.GetScrollOffset()
+
 		textView.Clear()
 		textView.SetText(buildFileListContent(leftPaneFocused))
 
-		// 最初のファイルが選択されている場合は一番上にスクロール
+		// 最初のファイルが選択されている場合は一番上にスクロール（横スクロール位置は維持）
 		if currentSelection == 0 {
-			textView.ScrollTo(0, 0)
+			textView.ScrollTo(0, currentCol)
 			return
 		}
 
@@ -774,11 +781,11 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 
 			// 選択行が画面より下にある場合
 			if actualLine >= currentRow+height-1 {
-				textView.ScrollTo(actualLine-height+2, 0)
+				textView.ScrollTo(actualLine-height+2, currentCol)
 			}
 			// 選択行が画面より上にある場合
 			if actualLine < currentRow {
-				textView.ScrollTo(actualLine, 0)
+				textView.ScrollTo(actualLine, currentCol)
 			}
 		}
 	}
@@ -892,6 +899,18 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					updateFileListView()
 					updateSelectedFileDiff()
 				}
+				return nil
+			case 'h':
+				// 左にスクロール
+				currentRow, currentCol := textView.GetScrollOffset()
+				if currentCol > 0 {
+					textView.ScrollTo(currentRow, currentCol-1)
+				}
+				return nil
+			case 'l':
+				// 右にスクロール
+				currentRow, currentCol := textView.GetScrollOffset()
+				textView.ScrollTo(currentRow, currentCol+1)
 				return nil
 			case 's':
 				// Split Viewのトグル
