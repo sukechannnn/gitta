@@ -187,11 +187,11 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 	contentFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// 左ペイン（ファイルリスト）のテキストビューを作成
-	textView := tview.NewTextView().
+	fileListView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetRegions(true).
 		SetWrap(false)
-	textView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+	fileListView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// 右ペイン（差分表示）のテキストビューを作成
 	diffView := tview.NewTextView().
@@ -234,6 +234,8 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 	var gPressed bool = false
 	var lastGTime time.Time
 	var isSplitView bool = false // Split Viewモードのフラグ
+	var oldLineMap map[int]int   // 表示行 -> 元ファイルの行番号
+	var newLineMap map[int]int   // 表示行 -> 新ファイルの行番号
 
 	// 保存されたカーソル位置を復元
 	if preferUnstagedSection || savedTargetFile != "" {
@@ -304,12 +306,31 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
 			} else {
 				// 通常の差分表示もカーソルなし
-				updateDiffViewWithoutCursor(diffView, diffLines)
+				updateDiffViewWithoutCursorAndMapping(diffView, diffLines, oldLineMap, newLineMap)
 			}
 			// 左ペインにフォーカスを戻す
 			leftPaneFocused = true
 			updateFileListView()
-			app.SetFocus(textView)
+			app.SetFocus(fileListView)
+			return nil
+		case tcell.KeyEnter:
+			// 左ペインに戻る
+			// 選択モードをリセット（カーソル位置は保持）
+			isSelecting = false
+			selectStart = -1
+			selectEnd = -1
+			// 表示を更新
+			if isSplitView {
+				// Split Viewはカーソル付きで更新
+				updateSplitViewWithCursor(beforeView, afterView, currentDiffText, cursorY)
+			} else {
+				// 通常の差分表示はカーソルなし
+				updateDiffViewWithoutCursorAndMapping(diffView, diffLines, oldLineMap, newLineMap)
+			}
+			// 左ペインにフォーカスを戻す
+			leftPaneFocused = true
+			updateFileListView()
+			app.SetFocus(fileListView)
 			return nil
 		case tcell.KeyRune:
 			switch event.Rune() {
@@ -325,12 +346,12 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					updateSplitViewWithCursor(beforeView, afterView, currentDiffText, cursorY)
 				} else {
 					// 通常の差分表示はカーソルなし
-					updateDiffViewWithoutCursor(diffView, diffLines)
+					updateDiffViewWithoutCursorAndMapping(diffView, diffLines, oldLineMap, newLineMap)
 				}
 				// 左ペインにフォーカスを戻す
 				leftPaneFocused = true
 				updateFileListView()
-				app.SetFocus(textView)
+				app.SetFocus(fileListView)
 				return nil
 			case 's':
 				// Split Viewのトグル
@@ -349,7 +370,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					// 通常の差分表示に戻す
 					contentFlex.RemoveItem(splitViewFlex)
 					contentFlex.AddItem(diffView, 0, 4, false)
-					updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+					updateDiffViewWithSelectionAndMapping(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting, oldLineMap, newLineMap)
 					// フォーカスがsplitViewFlexにある場合、diffViewに移動
 					if !leftPaneFocused {
 						app.SetFocus(diffView)
@@ -367,7 +388,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					if isSplitView {
 						updateSplitViewWithSelection(beforeView, afterView, currentDiffText, cursorY, selectStart, selectEnd, isSelecting)
 					} else {
-						updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+						updateDiffViewWithSelectionAndMapping(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting, oldLineMap, newLineMap)
 					}
 					gPressed = false
 				} else {
@@ -385,7 +406,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				if isSplitView {
 					updateSplitViewWithCursor(beforeView, afterView, currentDiffText, cursorY)
 				} else {
-					updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+					updateDiffViewWithSelectionAndMapping(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting, oldLineMap, newLineMap)
 				}
 				return nil
 			case 'j':
@@ -409,7 +430,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					if isSplitView {
 						updateSplitViewWithSelection(beforeView, afterView, currentDiffText, cursorY, selectStart, selectEnd, isSelecting)
 					} else {
-						updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+						updateDiffViewWithSelectionAndMapping(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting, oldLineMap, newLineMap)
 					}
 				}
 				return nil
@@ -423,7 +444,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					if isSplitView {
 						updateSplitViewWithSelection(beforeView, afterView, currentDiffText, cursorY, selectStart, selectEnd, isSelecting)
 					} else {
-						updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+						updateDiffViewWithSelectionAndMapping(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting, oldLineMap, newLineMap)
 					}
 				}
 				return nil
@@ -436,7 +457,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					if isSplitView {
 						updateSplitViewWithSelection(beforeView, afterView, currentDiffText, cursorY, selectStart, selectEnd, isSelecting)
 					} else {
-						updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+						updateDiffViewWithSelectionAndMapping(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting, oldLineMap, newLineMap)
 					}
 				}
 				return nil
@@ -469,7 +490,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					diffLines = util.SplitLines(coloredDiff)
 
 					// 再描画
-					updateDiffView(diffView, diffLines, cursorY)
+					updateDiffViewWithMapping(diffView, diffLines, cursorY, oldLineMap, newLineMap)
 
 					// ファイルリストを更新
 					refreshFileList()
@@ -509,7 +530,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				if isSplitView {
 					updateSplitViewWithCursor(beforeView, afterView, currentDiffText, cursorY)
 				} else {
-					updateDiffView(diffView, diffLines, cursorY)
+					updateDiffViewWithMapping(diffView, diffLines, cursorY, oldLineMap, newLineMap)
 				}
 
 				// ファイルリストを内部的に更新
@@ -566,7 +587,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 						cursorY = 0
 
 						// 再描画
-						updateDiffView(diffView, diffLines, cursorY)
+						updateDiffViewWithMapping(diffView, diffLines, cursorY, oldLineMap, newLineMap)
 
 						// ステータスを更新
 						if wasStaged {
@@ -624,7 +645,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 			// 左ペインにフォーカスを戻す
 			leftPaneFocused = true
 			updateFileListView()
-			app.SetFocus(textView)
+			app.SetFocus(fileListView)
 			return nil
 		case tcell.KeyRune:
 			switch event.Rune() {
@@ -639,7 +660,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				// 左ペインにフォーカスを戻す
 				leftPaneFocused = true
 				updateFileListView()
-				app.SetFocus(textView)
+				app.SetFocus(fileListView)
 				return nil
 			default:
 				// その他のキーはdiffViewの処理を呼び出す
@@ -660,7 +681,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 	verticalBorderLeft := CreateVerticalBorder()
 	contentFlex.
 		AddItem(verticalBorderLeft, 1, 0, false).
-		AddItem(textView, 0, 1, true).
+		AddItem(fileListView, 0, 1, true).
 		AddItem(verticalBorder, 1, 0, false).
 		AddItem(diffView, 0, 4, false)
 
@@ -763,29 +784,29 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 	// 初期表示を更新
 	updateFileListView = func() {
 		// 現在の横スクロール位置を保存
-		_, currentCol := textView.GetScrollOffset()
+		_, currentCol := fileListView.GetScrollOffset()
 
-		textView.Clear()
-		textView.SetText(buildFileListContent(leftPaneFocused))
+		fileListView.Clear()
+		fileListView.SetText(buildFileListContent(leftPaneFocused))
 
 		// 最初のファイルが選択されている場合は一番上にスクロール（横スクロール位置は維持）
 		if currentSelection == 0 {
-			textView.ScrollTo(0, currentCol)
+			fileListView.ScrollTo(0, currentCol)
 			return
 		}
 
 		// スクロール位置を調整（選択行が見える範囲に）
 		if actualLine, exists := lineNumberMap[currentSelection]; exists {
-			_, _, _, height := textView.GetInnerRect()
-			currentRow, _ := textView.GetScrollOffset()
+			_, _, _, height := fileListView.GetInnerRect()
+			currentRow, _ := fileListView.GetScrollOffset()
 
 			// 選択行が画面より下にある場合
 			if actualLine >= currentRow+height-1 {
-				textView.ScrollTo(actualLine-height+2, currentCol)
+				fileListView.ScrollTo(actualLine-height+2, currentCol)
 			}
 			// 選択行が画面より上にある場合
 			if actualLine < currentRow {
-				textView.ScrollTo(actualLine, currentCol)
+				fileListView.ScrollTo(actualLine, currentCol)
 			}
 		}
 	}
@@ -820,10 +841,12 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 
 			// 右ペインに差分を表示（カーソルなし）
 			diffLines = ShowDiffInPane(diffView, file, status, repoRoot, cursorY, &currentDiffText)
+			// 行番号マッピングを作成
+			oldLineMap, newLineMap = createLineNumberMapping(currentDiffText)
 			if isSplitView {
 				updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
 			} else {
-				updateDiffViewWithoutCursor(diffView, diffLines)
+				updateDiffViewWithoutCursorAndMapping(diffView, diffLines, oldLineMap, newLineMap)
 			}
 		}
 	}
@@ -834,7 +857,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 	updateSelectedFileDiff()
 
 	// キー入力の処理
-	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	fileListView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyUp:
 			if currentSelection > 0 {
@@ -902,15 +925,15 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				return nil
 			case 'h':
 				// 左にスクロール
-				currentRow, currentCol := textView.GetScrollOffset()
+				currentRow, currentCol := fileListView.GetScrollOffset()
 				if currentCol > 0 {
-					textView.ScrollTo(currentRow, currentCol-1)
+					fileListView.ScrollTo(currentRow, currentCol-1)
 				}
 				return nil
 			case 'l':
 				// 右にスクロール
-				currentRow, currentCol := textView.GetScrollOffset()
-				textView.ScrollTo(currentRow, currentCol+1)
+				currentRow, currentCol := fileListView.GetScrollOffset()
+				fileListView.ScrollTo(currentRow, currentCol+1)
 				return nil
 			case 's':
 				// Split Viewのトグル
@@ -925,7 +948,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 					// 通常の差分表示に戻す
 					contentFlex.RemoveItem(splitViewFlex)
 					contentFlex.AddItem(diffView, 0, 4, false)
-					updateDiffViewWithoutCursor(diffView, diffLines)
+					updateDiffViewWithoutCursorAndMapping(diffView, diffLines, oldLineMap, newLineMap)
 				}
 				return nil
 			case 'A': // 'A' で現在のファイルを git add/reset
@@ -951,15 +974,35 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 						return nil
 					}
 
-					// カーソル位置を保存
-					// 常にunstagedセクションの先頭を選択するように設定
-					preferUnstagedSection = true
-					savedTargetFile = ""
+					// 現在のカーソル位置の次のファイルを探す
+					var nextFile string
+					var nextStatus string
+					if currentSelection < len(regions)-1 {
+						nextRegionID := regions[currentSelection+1]
+						nextFile = fileMap[nextRegionID]
+						nextStatus = fileStatusMap[nextRegionID]
+					}
 
 					// ファイルリストを更新
-					if onUpdate != nil {
-						onUpdate()
+					refreshFileList()
+
+					// カーソル位置を復元
+					if nextFile != "" {
+						// 次のファイルを探す
+						for i, regionID := range regions {
+							if fileMap[regionID] == nextFile && fileStatusMap[regionID] == nextStatus {
+								currentSelection = i
+								break
+							}
+						}
+					} else if currentSelection >= len(regions) {
+						// 最後のファイルだった場合
+						currentSelection = len(regions) - 1
 					}
+
+					// 画面を更新
+					updateFileListView()
+					updateSelectedFileDiff()
 				}
 				return nil
 			case 'q': // 'q' でアプリ終了
@@ -987,19 +1030,22 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 				select {
 				case <-ticker.C:
 					app.QueueUpdateDraw(func() {
-						// 現在の選択ファイルを保存
+						// 現在の選択ファイルとステータスを保存
 						var currentlySelectedFile string
+						var currentlySelectedStatus string
 						if currentSelection >= 0 && currentSelection < len(regions) {
-							currentlySelectedFile = fileMap[regions[currentSelection]]
+							regionID := regions[currentSelection]
+							currentlySelectedFile = fileMap[regionID]
+							currentlySelectedStatus = fileStatusMap[regionID]
 						}
 
 						// ファイルリストを更新
 						refreshFileList()
 
-						// 選択位置を復元
+						// 選択位置を復元（ファイル名とステータスの両方で検索）
 						newSelection := -1
 						for i, regionID := range regions {
-							if fileMap[regionID] == currentlySelectedFile {
+							if fileMap[regionID] == currentlySelectedFile && fileStatusMap[regionID] == currentlySelectedStatus {
 								newSelection = i
 								break
 							}
@@ -1054,7 +1100,7 @@ func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedF
 								if isSplitView {
 									updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
 								} else {
-									updateDiffViewWithSelection(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting)
+									updateDiffViewWithSelectionAndMapping(diffView, diffLines, cursorY, selectStart, selectEnd, isSelecting, oldLineMap, newLineMap)
 								}
 							}
 						}
@@ -1106,29 +1152,136 @@ func ShowDiffInPane(diffView *tview.TextView, filePath string, status string, re
 	lines := util.SplitLines(coloredDiff)
 
 	// カーソル付きで表示（SetTextは不要、updateDiffViewが処理する）
-	updateDiffView(diffView, lines, cursorY)
+	oldMap, newMap := createLineNumberMapping(diffText)
+	updateDiffViewWithMapping(diffView, lines, cursorY, oldMap, newMap)
 
 	return lines
 }
 
-// 差分ビューを更新する関数
-func updateDiffView(diffView *tview.TextView, lines []string, cursorY int) {
-	updateDiffViewWithSelection(diffView, lines, cursorY, -1, -1, false)
+// 差分ビューを更新する関数（行番号マッピング付き）
+func updateDiffViewWithMapping(diffView *tview.TextView, lines []string, cursorY int, oldLineMap, newLineMap map[int]int) {
+	updateDiffViewWithSelectionAndMapping(diffView, lines, cursorY, -1, -1, false, oldLineMap, newLineMap)
 }
 
-// 選択範囲付きで差分ビューを更新する関数
-func updateDiffViewWithSelection(diffView *tview.TextView, lines []string, cursorY int, selectStart int, selectEnd int, isSelecting bool) {
+// diffテキストから行番号マッピングを作成
+func createLineNumberMapping(diffText string) (map[int]int, map[int]int) {
+	oldLineMap := make(map[int]int)
+	newLineMap := make(map[int]int)
+
+	lines := strings.Split(diffText, "\n")
+	displayLine := 0
+	var oldLineNum, newLineNum int
+	inHunk := false
+
+	for _, line := range lines {
+		// ヘッダー行をスキップ（ColorizeDiffと同じロジック）
+		if strings.HasPrefix(line, "diff --git") ||
+			strings.HasPrefix(line, "index ") ||
+			strings.HasPrefix(line, "--- ") ||
+			strings.HasPrefix(line, "+++ ") ||
+			strings.HasPrefix(line, "@@") {
+			// ハンクヘッダーから行番号を取得
+			if strings.HasPrefix(line, "@@") {
+				// @@ -oldStart,oldCount +newStart,newCount @@
+				var oldStart, newStart int
+				fmt.Sscanf(line, "@@ -%d", &oldStart)
+				parts := strings.Split(line, " +")
+				if len(parts) >= 2 {
+					fmt.Sscanf(parts[1], "%d", &newStart)
+				}
+				oldLineNum = oldStart
+				newLineNum = newStart
+				inHunk = true
+			}
+			continue
+		}
+
+		if !inHunk {
+			continue
+		}
+
+		// 実際の差分行（ColorizeDiffで表示される行のみカウント）
+		if strings.HasPrefix(line, "-") {
+			oldLineMap[displayLine] = oldLineNum
+			oldLineNum++
+		} else if strings.HasPrefix(line, "+") {
+			newLineMap[displayLine] = newLineNum
+			newLineNum++
+		} else {
+			// スペースで始まる行またはそれ以外の行（コンテキスト行）
+			oldLineMap[displayLine] = oldLineNum
+			newLineMap[displayLine] = newLineNum
+			oldLineNum++
+			newLineNum++
+		}
+
+		displayLine++
+	}
+
+	return oldLineMap, newLineMap
+}
+
+// 選択範囲と行番号マッピング付きで差分ビューを更新する関数
+func updateDiffViewWithSelectionAndMapping(diffView *tview.TextView, lines []string, cursorY int, selectStart int, selectEnd int, isSelecting bool, oldLineMap, newLineMap map[int]int) {
 	diffView.Clear()
 
+	// 行番号の最大桁数を計算
+	maxOldLine := 0
+	maxNewLine := 0
+	for _, lineNum := range oldLineMap {
+		if lineNum > maxOldLine {
+			maxOldLine = lineNum
+		}
+	}
+	for _, lineNum := range newLineMap {
+		if lineNum > maxNewLine {
+			maxNewLine = lineNum
+		}
+	}
+	maxDigits := len(fmt.Sprintf("%d", maxNewLine))
+	if len(fmt.Sprintf("%d", maxOldLine)) > maxDigits {
+		maxDigits = len(fmt.Sprintf("%d", maxOldLine))
+	}
+
 	for i, line := range lines {
+		// 実際の行番号を取得
+		var lineNum string
+		if strings.HasPrefix(line, "[red]") || (len(line) > 0 && line[0] == '-') {
+			// 削除行
+			if num, ok := oldLineMap[i]; ok {
+				lineNum = fmt.Sprintf("%*d", maxDigits, num)
+			} else {
+				lineNum = strings.Repeat(" ", maxDigits)
+			}
+			lineNum += " -│ "
+		} else if strings.HasPrefix(line, "[green]") || (len(line) > 0 && line[0] == '+') {
+			// 追加行
+			if num, ok := newLineMap[i]; ok {
+				lineNum = fmt.Sprintf("%*d", maxDigits, num)
+			} else {
+				lineNum = strings.Repeat(" ", maxDigits)
+			}
+			lineNum += " +│ "
+		} else {
+			// 共通行
+			if num, ok := newLineMap[i]; ok {
+				lineNum = fmt.Sprintf("%*d", maxDigits, num)
+			} else if num, ok := oldLineMap[i]; ok {
+				lineNum = fmt.Sprintf("%*d", maxDigits, num)
+			} else {
+				lineNum = strings.Repeat(" ", maxDigits)
+			}
+			lineNum += "  │ "
+		}
+
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
 			// 選択行を黄色でハイライト
-			diffView.Write([]byte("[black:yellow]" + line + "[-:-]\n"))
+			diffView.Write([]byte("[black:yellow]" + lineNum + line + "[-:-]\n"))
 		} else if i == cursorY {
 			// カーソル行を青でハイライト
-			diffView.Write([]byte("[white:blue]" + line + "[-:-]\n"))
+			diffView.Write([]byte("[white:blue]" + lineNum + line + "[-:-]\n"))
 		} else {
-			diffView.Write([]byte(line + "\n"))
+			diffView.Write([]byte("[dimgray]" + lineNum + "[-]" + line + "\n"))
 		}
 	}
 
@@ -1146,12 +1299,60 @@ func updateDiffViewWithSelection(diffView *tview.TextView, lines []string, curso
 	}
 }
 
-// カーソルなしで差分ビューを更新する関数
-func updateDiffViewWithoutCursor(diffView *tview.TextView, lines []string) {
+// カーソルなしで差分ビューを更新する関数（行番号マッピング付き）
+func updateDiffViewWithoutCursorAndMapping(diffView *tview.TextView, lines []string, oldLineMap, newLineMap map[int]int) {
 	diffView.Clear()
 
-	for _, line := range lines {
-		diffView.Write([]byte(line + "\n"))
+	// 行番号の最大桁数を計算
+	maxOldLine := 0
+	maxNewLine := 0
+	for _, lineNum := range oldLineMap {
+		if lineNum > maxOldLine {
+			maxOldLine = lineNum
+		}
+	}
+	for _, lineNum := range newLineMap {
+		if lineNum > maxNewLine {
+			maxNewLine = lineNum
+		}
+	}
+	maxDigits := len(fmt.Sprintf("%d", maxNewLine))
+	if len(fmt.Sprintf("%d", maxOldLine)) > maxDigits {
+		maxDigits = len(fmt.Sprintf("%d", maxOldLine))
+	}
+
+	for i, line := range lines {
+		// 実際の行番号を取得
+		var lineNum string
+		if strings.HasPrefix(line, "[red]") || (len(line) > 0 && line[0] == '-') {
+			// 削除行
+			if num, ok := oldLineMap[i]; ok {
+				lineNum = fmt.Sprintf("%*d", maxDigits, num)
+			} else {
+				lineNum = strings.Repeat(" ", maxDigits)
+			}
+			lineNum += " -│ "
+		} else if strings.HasPrefix(line, "[green]") || (len(line) > 0 && line[0] == '+') {
+			// 追加行
+			if num, ok := newLineMap[i]; ok {
+				lineNum = fmt.Sprintf("%*d", maxDigits, num)
+			} else {
+				lineNum = strings.Repeat(" ", maxDigits)
+			}
+			lineNum += " +│ "
+		} else {
+			// 共通行
+			if num, ok := newLineMap[i]; ok {
+				lineNum = fmt.Sprintf("%*d", maxDigits, num)
+			} else if num, ok := oldLineMap[i]; ok {
+				lineNum = fmt.Sprintf("%*d", maxDigits, num)
+			} else {
+				lineNum = strings.Repeat(" ", maxDigits)
+			}
+			lineNum += "  │ "
+		}
+
+		diffView.Write([]byte("[dimgray]" + lineNum + "[-]" + line + "\n"))
 	}
 
 	// スクロール位置を先頭に
@@ -1173,59 +1374,9 @@ func isLineSelected(index, start, end int) bool {
 
 // カーソルなしでSplit Viewを更新する関数
 func updateSplitViewWithoutCursor(beforeView, afterView *tview.TextView, diffText string) {
-	beforeView.Clear()
-	afterView.Clear()
-
-	lines := strings.Split(diffText, "\n")
-	var beforeLines []string
-	var afterLines []string
-	inHunk := false
-
-	for _, line := range lines {
-		// ヘッダー行をスキップ
-		if strings.HasPrefix(line, "diff --git") ||
-			strings.HasPrefix(line, "index ") ||
-			strings.HasPrefix(line, "--- ") ||
-			strings.HasPrefix(line, "+++ ") {
-			continue
-		}
-
-		if strings.HasPrefix(line, "@@") {
-			inHunk = true
-			continue
-		}
-
-		if !inHunk {
-			continue
-		}
-
-		if strings.HasPrefix(line, "-") {
-			// 削除行は左側に赤で表示
-			beforeLines = append(beforeLines, "[red]"+line+"[-]")
-			afterLines = append(afterLines, "")
-		} else if strings.HasPrefix(line, "+") {
-			// 追加行は右側に緑で表示
-			beforeLines = append(beforeLines, "")
-			afterLines = append(afterLines, "[green]"+line+"[-]")
-		} else {
-			// 共通行は両側に表示
-			beforeLines = append(beforeLines, line)
-			afterLines = append(afterLines, line)
-		}
-	}
-
-	// 表示を更新（カーソルなし）
-	for _, line := range beforeLines {
-		beforeView.Write([]byte(line + "\n"))
-	}
-
-	for _, line := range afterLines {
-		afterView.Write([]byte(line + "\n"))
-	}
-
-	// スクロール位置を先頭に
-	beforeView.ScrollTo(0, 0)
-	afterView.ScrollTo(0, 0)
+	// 行番号マッピングを作成
+	oldLineMap, newLineMap := createLineNumberMapping(diffText)
+	updateSplitViewWithSelectionAndMapping(beforeView, afterView, diffText, -1, -1, -1, false, oldLineMap, newLineMap)
 }
 
 // Split View用の有効な行数を取得
@@ -1258,18 +1409,48 @@ func getSplitViewLineCount(diffText string) int {
 
 // カーソル付きでSplit Viewを更新する関数
 func updateSplitViewWithCursor(beforeView, afterView *tview.TextView, diffText string, cursorY int) {
-	updateSplitViewWithSelection(beforeView, afterView, diffText, cursorY, -1, -1, false)
+	// 行番号マッピングを作成
+	oldLineMap, newLineMap := createLineNumberMapping(diffText)
+	updateSplitViewWithSelectionAndMapping(beforeView, afterView, diffText, cursorY, -1, -1, false, oldLineMap, newLineMap)
 }
 
 // 選択範囲付きでSplit Viewを更新する関数
 func updateSplitViewWithSelection(beforeView, afterView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool) {
+	// 行番号マッピングを作成
+	oldLineMap, newLineMap := createLineNumberMapping(diffText)
+	updateSplitViewWithSelectionAndMapping(beforeView, afterView, diffText, cursorY, selectStart, selectEnd, isSelecting, oldLineMap, newLineMap)
+}
+
+// 選択範囲と行番号マッピング付きでSplit Viewを更新する関数
+func updateSplitViewWithSelectionAndMapping(beforeView, afterView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool, oldLineMap, newLineMap map[int]int) {
 	beforeView.Clear()
 	afterView.Clear()
 
 	lines := strings.Split(diffText, "\n")
 	var beforeLines []string
 	var afterLines []string
+	var beforeLineNums []string
+	var afterLineNums []string
 	var inHunk bool = false
+	displayLine := 0
+
+	// 行番号の最大桁数を計算
+	maxOldLine := 0
+	maxNewLine := 0
+	for _, lineNum := range oldLineMap {
+		if lineNum > maxOldLine {
+			maxOldLine = lineNum
+		}
+	}
+	for _, lineNum := range newLineMap {
+		if lineNum > maxNewLine {
+			maxNewLine = lineNum
+		}
+	}
+	maxDigits := len(fmt.Sprintf("%d", maxNewLine))
+	if len(fmt.Sprintf("%d", maxOldLine)) > maxDigits {
+		maxDigits = len(fmt.Sprintf("%d", maxOldLine))
+	}
 
 	for _, line := range lines {
 		// ヘッダー行を非表示にする
@@ -1288,20 +1469,57 @@ func updateSplitViewWithSelection(beforeView, afterView *tview.TextView, diffTex
 			if strings.HasPrefix(line, "-") {
 				// 削除行（左側のみに表示、- 記号を含める）
 				beforeLines = append(beforeLines, "[red]"+line+"[-]")
-				afterLines = append(afterLines, "[dimgray] [-]") // 右側には空行の代わりにスペースを表示
+				afterLines = append(afterLines, "[dimgray] [-]") // 右側には左側の行数と合わせるためのスペースを表示
+				// 左側に実際の行番号、右側は空
+				if num, ok := oldLineMap[displayLine]; ok {
+					beforeLineNums = append(beforeLineNums, fmt.Sprintf("%*d", maxDigits, num))
+				} else {
+					beforeLineNums = append(beforeLineNums, strings.Repeat(" ", maxDigits))
+				}
+				afterLineNums = append(afterLineNums, strings.Repeat(" ", maxDigits))
 			} else if strings.HasPrefix(line, "+") {
 				// 追加行（右側のみに表示、+ 記号を含める）
-				beforeLines = append(beforeLines, "[dimgray] [-]") // 左側には空行の代わりにスペースを表示
+				beforeLines = append(beforeLines, "[dimgray] [-]") // 左側には右側の行数と合わせるためのスペースを表示
 				afterLines = append(afterLines, "[green]"+line+"[-]")
+				// 左側は空、右側に実際の行番号
+				beforeLineNums = append(beforeLineNums, strings.Repeat(" ", maxDigits))
+				if num, ok := newLineMap[displayLine]; ok {
+					afterLineNums = append(afterLineNums, fmt.Sprintf("%*d", maxDigits, num))
+				} else {
+					afterLineNums = append(afterLineNums, strings.Repeat(" ", maxDigits))
+				}
 			} else if strings.HasPrefix(line, " ") {
 				// 変更なし行（両側に表示、先頭のスペースを保持）
 				beforeLines = append(beforeLines, " "+line[1:])
 				afterLines = append(afterLines, " "+line[1:])
+				// 両側に実際の行番号
+				if num, ok := oldLineMap[displayLine]; ok {
+					beforeLineNums = append(beforeLineNums, fmt.Sprintf("%*d", maxDigits, num))
+				} else {
+					beforeLineNums = append(beforeLineNums, strings.Repeat(" ", maxDigits))
+				}
+				if num, ok := newLineMap[displayLine]; ok {
+					afterLineNums = append(afterLineNums, fmt.Sprintf("%*d", maxDigits, num))
+				} else {
+					afterLineNums = append(afterLineNums, strings.Repeat(" ", maxDigits))
+				}
 			} else {
 				// その他の行
 				beforeLines = append(beforeLines, " "+line)
 				afterLines = append(afterLines, " "+line)
+				// 両側に実際の行番号
+				if num, ok := oldLineMap[displayLine]; ok {
+					beforeLineNums = append(beforeLineNums, fmt.Sprintf("%*d", maxDigits, num))
+				} else {
+					beforeLineNums = append(beforeLineNums, strings.Repeat(" ", maxDigits))
+				}
+				if num, ok := newLineMap[displayLine]; ok {
+					afterLineNums = append(afterLineNums, fmt.Sprintf("%*d", maxDigits, num))
+				} else {
+					afterLineNums = append(afterLineNums, strings.Repeat(" ", maxDigits))
+				}
 			}
+			displayLine++
 		}
 	}
 
@@ -1314,26 +1532,32 @@ func updateSplitViewWithSelection(beforeView, afterView *tview.TextView, diffTex
 
 	// 表示を更新
 	for i, line := range beforeLines {
+		// 行番号を追加
+		lineNum := beforeLineNums[i] + " │ "
+
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
 			// 選択行を黄色でハイライト
-			beforeView.Write([]byte("[black:yellow]" + line + "[-:-]\n"))
+			beforeView.Write([]byte("[black:yellow]" + lineNum + line + "[-:-]\n"))
 		} else if cursorIndex >= 0 && i == cursorIndex {
 			// カーソル行を青でハイライト
-			beforeView.Write([]byte("[white:blue]" + line + "[-:-]\n"))
+			beforeView.Write([]byte("[white:blue]" + lineNum + line + "[-:-]\n"))
 		} else {
-			beforeView.Write([]byte(line + "\n"))
+			beforeView.Write([]byte("[dimgray]" + lineNum + "[-]" + line + "\n"))
 		}
 	}
 
 	for i, line := range afterLines {
+		// 行番号を追加
+		lineNum := afterLineNums[i] + " │ "
+
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
 			// 選択行を黄色でハイライト
-			afterView.Write([]byte("[black:yellow]" + line + "[-:-]\n"))
+			afterView.Write([]byte("[black:yellow]" + lineNum + line + "[-:-]\n"))
 		} else if cursorIndex >= 0 && i == cursorIndex {
 			// カーソル行を青でハイライト
-			afterView.Write([]byte("[white:blue]" + line + "[-:-]\n"))
+			afterView.Write([]byte("[white:blue]" + lineNum + line + "[-:-]\n"))
 		} else {
-			afterView.Write([]byte(line + "\n"))
+			afterView.Write([]byte("[dimgray]" + lineNum + "[-]" + line + "\n"))
 		}
 	}
 
