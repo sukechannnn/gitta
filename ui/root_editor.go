@@ -170,9 +170,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	}
 
 	// ファイル一覧を構築するための変数
-	var regions []string
-	var fileMap = make(map[string]string)
-	var fileStatusMap = make(map[string]string)
+	var fileList []FileEntry
 	var lineNumberMap = make(map[int]int)
 
 	// ボーダーを作成
@@ -196,9 +194,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			*untrackedFilesPtr,
 			currentSelection,
 			focusedPane,
-			&regions,
-			fileMap,
-			fileStatusMap,
+			&fileList,
 			lineNumberMap,
 		)
 	}
@@ -246,10 +242,10 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	// 選択されているファイルの差分を更新する関数
 	updateSelectedFileDiff := func() {
-		if currentSelection >= 0 && currentSelection < len(regions) {
-			regionID := regions[currentSelection]
-			file := fileMap[regionID]
-			status := fileStatusMap[regionID]
+		if currentSelection >= 0 && currentSelection < len(fileList) {
+			fileEntry := fileList[currentSelection]
+			file := fileEntry.Path
+			status := fileEntry.Status
 
 			// 現在のファイル情報を更新
 			currentFile = file
@@ -303,9 +299,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		CurrentDiffText:  &currentDiffText,
 
 		// Collections
-		Regions:       &regions,
-		FileMap:       fileMap,
-		FileStatusMap: fileStatusMap,
+		FileList: &fileList,
 
 		// Paths
 		RepoRoot: repoRoot,
@@ -376,10 +370,10 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 						// 現在の選択ファイルとステータスを保存
 						var currentlySelectedFile string
 						var currentlySelectedStatus string
-						if currentSelection >= 0 && currentSelection < len(regions) {
-							regionID := regions[currentSelection]
-							currentlySelectedFile = fileMap[regionID]
-							currentlySelectedStatus = fileStatusMap[regionID]
+						if currentSelection >= 0 && currentSelection < len(fileList) {
+							fileEntry := fileList[currentSelection]
+							currentlySelectedFile = fileEntry.Path
+							currentlySelectedStatus = fileEntry.Status
 						}
 
 						// ファイルリストを更新
@@ -387,16 +381,16 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 						// 選択位置を復元（ファイル名とステータスの両方で検索）
 						newSelection := -1
-						for i, regionID := range regions {
-							if fileMap[regionID] == currentlySelectedFile && fileStatusMap[regionID] == currentlySelectedStatus {
+						for i, fileEntry := range fileList {
+							if fileEntry.Path == currentlySelectedFile && fileEntry.Status == currentlySelectedStatus {
 								newSelection = i
 								break
 							}
 						}
 						if newSelection >= 0 {
 							currentSelection = newSelection
-						} else if currentSelection >= len(regions) {
-							currentSelection = len(regions) - 1
+						} else if currentSelection >= len(fileList) {
+							currentSelection = len(fileList) - 1
 						}
 
 						// 表示を更新
