@@ -38,15 +38,7 @@ func CreateHorizontalTopBorder() *tview.Box {
 				screen.SetContent(i, y, '─', nil, style)
 			}
 
-			// 縦線の位置を計算
-			// レイアウト: 縦線(1) + textView(比率1) + 縦線(1) + diffView(比率2) + 縦線(1)
-			totalFlexWidth := width - 3     // 3つの縦線の幅を除く
-			unitWidth := totalFlexWidth / 5 // 比率の合計は1+4=5
-
-			// 各縦線の位置
-			leftBorderPos := 0               // 左端の縦線
-			middleBorderPos := 2 + unitWidth // 左縦線(1) + textView(unitWidth)
-			rightBorderPos := width - 1      // 右端の縦線
+			leftBorderPos, middleBorderPos, rightBorderPos := calcBorderPos(width)
 
 			// 交差部分を描画
 			screen.SetContent(x+leftBorderPos, y, '┌', nil, style)
@@ -73,15 +65,7 @@ func CreateHorizontalBottomBorder() *tview.Box {
 				screen.SetContent(i, y, '─', nil, style)
 			}
 
-			// 縦線の位置を計算
-			// レイアウト: 縦線(1) + textView(比率1) + 縦線(1) + diffView(比率2) + 縦線(1)
-			totalFlexWidth := width - 3     // 3つの縦線の幅を除く
-			unitWidth := totalFlexWidth / 3 // 比率の合計は1+2=3
-
-			// 各縦線の位置
-			leftBorderPos := 0               // 左端の縦線
-			middleBorderPos := 1 + unitWidth // 左縦線(1) + textView(unitWidth)
-			rightBorderPos := width - 1      // 右端の縦線
+			leftBorderPos, middleBorderPos, rightBorderPos := calcBorderPos(width)
 
 			// 交差部分を描画（下線用）
 			screen.SetContent(x+leftBorderPos, y, '└', nil, style)
@@ -92,4 +76,18 @@ func CreateHorizontalBottomBorder() *tview.Box {
 		})
 	horizontalBorder.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 	return horizontalBorder
+}
+
+func calcBorderPos(width int) (int, int, int) {
+	// 縦線の位置を計算
+	// レイアウト: 縦線(1) + textView(比率1) + 縦線(1) + diffView(比率2) + 縦線(1)
+	totalFlexWidth := width - 3     // 3つの縦線の幅を除く
+	unitWidth := totalFlexWidth / 5 // 比率の合計は1+4=5
+
+	// 各縦線の位置
+	leftBorderPos := 0               // 左端の縦線
+	middleBorderPos := 2 + unitWidth // 左縦線(1) + textView(unitWidth)
+	rightBorderPos := width - 1      // 右端の縦線
+
+	return leftBorderPos, middleBorderPos, rightBorderPos
 }
