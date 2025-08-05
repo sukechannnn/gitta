@@ -92,22 +92,21 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to get updated files: %v", err)
 		}
-		fileListView := ui.ShowFileList(
+		rootEditor := ui.RootEditor(
 			gittaApp.App,
 			updatedStagedFiles,
 			updatedModifiedFiles,
 			updatedUntrackedFiles,
 			repoPath,
-			nil, // onSelect は使用されていない
 			updateFileList,
 			autoRefresh,
 		)
-		gittaApp.App.SetRoot(fileListView, true)
+		gittaApp.App.SetRoot(rootEditor, true)
 	}
 
 	// 初期ビュー（ファイル一覧）を作成し、ルートに設定
 	// onSelect パラメータは現在使用されていないため nil を渡す
-	initialView := ui.ShowFileList(gittaApp.App, stagedFiles, modifiedFiles, untrackedFiles, repoPath, nil, updateFileList, autoRefresh)
+	initialView := ui.RootEditor(gittaApp.App, stagedFiles, modifiedFiles, untrackedFiles, repoPath, updateFileList, autoRefresh)
 	gittaApp.App.SetRoot(initialView, true)
 
 	// アプリケーションの実行は main で一度だけ

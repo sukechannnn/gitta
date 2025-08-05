@@ -55,8 +55,7 @@ func updateCurrentDiffText(filePath string, status string, repoRoot string, curr
 	}
 }
 
-// ファイル一覧を表示
-func ShowFileList(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []string, repoRoot string, onSelect func(file string, status string), onUpdate func(), enableAutoRefresh bool) tview.Primitive {
+func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []string, repoRoot string, onUpdate func(), enableAutoRefresh bool) tview.Primitive {
 	// ファイルリストを更新するための参照を保持
 	stagedFilesPtr := &stagedFiles
 	modifiedFilesPtr := &modifiedFiles
