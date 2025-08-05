@@ -14,11 +14,10 @@ import (
 	"github.com/sukechannnn/gitta/ui"
 )
 
-// Application はアプリケーション全体の状態と設定を保持します
+// Application はアプリケーション全体の状態と設定を保持
 type Application struct {
 	App    *tview.Application
-	Config *config.AppConfig // 設定構造体を含める
-	// 必要に応じて他のグローバルな状態を追加
+	Config *config.AppConfig
 }
 
 func main() {
