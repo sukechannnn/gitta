@@ -55,7 +55,7 @@ func updateCurrentDiffText(filePath string, status string, repoRoot string, curr
 	}
 }
 
-func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []string, repoRoot string, onUpdate func(), enableAutoRefresh bool) tview.Primitive {
+func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []git.FileInfo, repoRoot string, onUpdate func(), enableAutoRefresh bool) tview.Primitive {
 	// ファイルリストを更新するための参照を保持
 	stagedFilesPtr := &stagedFiles
 	modifiedFilesPtr := &modifiedFiles
@@ -132,9 +132,9 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		foundTarget := false
 
 		// 全ファイルを走査
-		for _, file := range *stagedFilesPtr {
-			if strings.TrimSpace(file) != "" {
-				if !preferUnstagedSection && file == savedTargetFile {
+		for _, fileInfo := range *stagedFilesPtr {
+			if strings.TrimSpace(fileInfo.Path) != "" {
+				if !preferUnstagedSection && fileInfo.Path == savedTargetFile {
 					currentSelection = targetSelection
 					foundTarget = true
 					break
@@ -147,14 +147,14 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			// unstagedセクションの開始位置
 			unstagedStart := targetSelection
 
-			for _, file := range *modifiedFilesPtr {
-				if strings.TrimSpace(file) != "" {
+			for _, fileInfo := range *modifiedFilesPtr {
+				if strings.TrimSpace(fileInfo.Path) != "" {
 					if preferUnstagedSection && targetSelection == unstagedStart {
 						// unstagedセクションの最初のファイル
 						currentSelection = targetSelection
 						foundTarget = true
 						break
-					} else if !preferUnstagedSection && file == savedTargetFile {
+					} else if !preferUnstagedSection && fileInfo.Path == savedTargetFile {
 						currentSelection = targetSelection
 						foundTarget = true
 						break
@@ -245,7 +245,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		if currentSelection >= 0 && currentSelection < len(fileList) {
 			fileEntry := fileList[currentSelection]
 			file := fileEntry.Path
-			status := fileEntry.Status
+			status := fileEntry.StageStatus
 
 			// 現在のファイル情報を更新
 			currentFile = file
@@ -373,7 +373,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 						if currentSelection >= 0 && currentSelection < len(fileList) {
 							fileEntry := fileList[currentSelection]
 							currentlySelectedFile = fileEntry.Path
-							currentlySelectedStatus = fileEntry.Status
+							currentlySelectedStatus = fileEntry.StageStatus
 						}
 
 						// ファイルリストを更新
@@ -382,7 +382,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 						// 選択位置を復元（ファイル名とステータスの両方で検索）
 						newSelection := -1
 						for i, fileEntry := range fileList {
-							if fileEntry.Path == currentlySelectedFile && fileEntry.Status == currentlySelectedStatus {
+							if fileEntry.Path == currentlySelectedFile && fileEntry.StageStatus == currentlySelectedStatus {
 								newSelection = i
 								break
 							}

@@ -10,14 +10,29 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"github.com/sukechannnn/gitta/git"
 	"github.com/sukechannnn/gitta/util"
 )
 
 // FileEntry represents a file entry in the file list with ID, path and status
 type FileEntry struct {
-	ID     string
-	Path   string
-	Status string
+	ID          string
+	Path        string
+	StageStatus string // "staged", "unstaged", "untracked"
+}
+
+// formatFileWithStatus adds status decoration to filename
+func formatFileWithStatus(filename string, status string) string {
+	switch status {
+	case "added", "untracked":
+		return filename + " " + "(+)"
+	case "deleted":
+		return filename + " " + "(-)"
+	case "modified":
+		return filename + " " + "(•)"
+	default:
+		return filename
+	}
 }
 
 // TreeNode represents a node in the file tree structure
@@ -29,15 +44,15 @@ type TreeNode struct {
 }
 
 // buildFileTree converts a list of file paths into a tree structure
-func buildFileTree(files []string) *TreeNode {
+func buildFileTree(files []git.FileInfo) *TreeNode {
 	root := &TreeNode{
 		Name:     "",
 		IsFile:   false,
 		Children: make(map[string]*TreeNode),
 	}
 
-	for _, file := range files {
-		file = strings.TrimSpace(file)
+	for _, fileInfo := range files {
+		file := strings.TrimSpace(fileInfo.Path)
 		if file == "" {
 			continue
 		}
@@ -73,12 +88,13 @@ func renderFileTree(
 	depth int,
 	sb *strings.Builder,
 	fileList *[]FileEntry,
-	status string,
+	stageStatus string,
 	regionIndex *int,
 	currentSelection int,
 	focusedPane bool,
 	lineNumberMap map[int]int,
 	currentLine *int,
+	fileInfos []git.FileInfo,
 ) {
 	renderFileTreeWithPrefix(
 		node,
@@ -86,12 +102,13 @@ func renderFileTree(
 		"",
 		sb,
 		fileList,
-		status,
+		stageStatus,
 		regionIndex,
 		currentSelection,
 		focusedPane,
 		lineNumberMap,
 		currentLine,
+		fileInfos,
 	)
 }
 
@@ -102,12 +119,13 @@ func renderFileTreeWithPrefix(
 	prefix string,
 	sb *strings.Builder,
 	fileList *[]FileEntry,
-	status string,
+	stageStatus string,
 	regionIndex *int,
 	currentSelection int,
 	focusedPane bool,
 	lineNumberMap map[int]int,
 	currentLine *int,
+	fileInfos []git.FileInfo,
 ) {
 	// Sort children for consistent ordering
 	var sortedKeys []string
@@ -152,17 +170,27 @@ func renderFileTreeWithPrefix(
 			// ファイルの場合
 			regionID := fmt.Sprintf("file-%d", *regionIndex)
 			*fileList = append(*fileList, FileEntry{
-				ID:     regionID,
-				Path:   child.FullPath,
-				Status: status,
+				ID:          regionID,
+				Path:        child.FullPath,
+				StageStatus: stageStatus,
 			})
 
+			// ファイル名に装飾を追加
+			displayName := child.Name
+			// ファイルのステータスを検索して装飾を追加
+			for _, fileInfo := range fileInfos {
+				if fileInfo.Path == child.FullPath {
+					displayName = formatFileWithStatus(child.Name, fileInfo.ChangeStatus)
+					break
+				}
+			}
+
 			if focusedPane && *regionIndex == currentSelection {
-				sb.WriteString(fmt.Sprintf(`%s[white:blue]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, child.Name))
+				sb.WriteString(fmt.Sprintf(`%s[white:blue]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, displayName))
 			} else if !focusedPane && *regionIndex == currentSelection {
-				sb.WriteString(fmt.Sprintf(`%s[black:white]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, child.Name))
+				sb.WriteString(fmt.Sprintf(`%s[black:white]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, displayName))
 			} else {
-				sb.WriteString(fmt.Sprintf(`%s[white:%s]["file-%d"]%s%s[""][-:-]`+"\n", prefix, util.NotSelectedFileLineColor, *regionIndex, connector, child.Name))
+				sb.WriteString(fmt.Sprintf(`%s[white:%s]["file-%d"]%s%s[""][-:-]`+"\n", prefix, util.NotSelectedFileLineColor, *regionIndex, connector, displayName))
 			}
 			lineNumberMap[*regionIndex] = *currentLine
 			(*regionIndex)++
@@ -172,14 +200,14 @@ func renderFileTreeWithPrefix(
 			sb.WriteString(fmt.Sprintf("%s%s%s/\n", prefix, connector, child.Name))
 			(*currentLine)++
 			renderFileTreeWithPrefix(child, depth+1, childPrefix, sb, fileList,
-				status, regionIndex, currentSelection, focusedPane, lineNumberMap, currentLine)
+				stageStatus, regionIndex, currentSelection, focusedPane, lineNumberMap, currentLine, fileInfos)
 		}
 	}
 }
 
 // BuildFileListContent builds the colored file list content
 func BuildFileListContent(
-	stagedFiles, modifiedFiles, untrackedFiles []string,
+	stagedFiles, modifiedFiles, untrackedFiles []git.FileInfo,
 	currentSelection int,
 	focusedPane bool,
 	fileList *[]FileEntry,
@@ -202,7 +230,7 @@ func BuildFileListContent(
 		currentLine++
 		tree := buildFileTree(stagedFiles)
 		renderFileTree(tree, 1, &coloredContent, fileList,
-			"staged", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine)
+			"staged", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, stagedFiles)
 		coloredContent.WriteString("\n")
 		currentLine++
 	}
@@ -213,7 +241,7 @@ func BuildFileListContent(
 		currentLine++
 		tree := buildFileTree(modifiedFiles)
 		renderFileTree(tree, 1, &coloredContent, fileList,
-			"unstaged", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine)
+			"unstaged", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, modifiedFiles)
 		coloredContent.WriteString("\n")
 		currentLine++
 	}
@@ -224,7 +252,7 @@ func BuildFileListContent(
 		currentLine++
 		tree := buildFileTree(untrackedFiles)
 		renderFileTree(tree, 1, &coloredContent, fileList,
-			"untracked", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine)
+			"untracked", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, untrackedFiles)
 	}
 
 	return coloredContent.String()
@@ -288,7 +316,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 			if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 				fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 				file := fileEntry.Path
-				status := fileEntry.Status
+				status := fileEntry.StageStatus
 
 				// 現在のファイル情報を更新
 				*ctx.currentFile = file
@@ -367,7 +395,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 					file := fileEntry.Path
-					status := fileEntry.Status
+					status := fileEntry.StageStatus
 
 					var cmd *exec.Cmd
 					if status == "staged" {
@@ -392,7 +420,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					if *ctx.currentSelection < len(*ctx.fileList)-1 {
 						nextFileEntry := (*ctx.fileList)[*ctx.currentSelection+1]
 						nextFile = nextFileEntry.Path
-						nextStatus = nextFileEntry.Status
+						nextStatus = nextFileEntry.StageStatus
 					}
 
 					// ファイルリストを更新
@@ -409,7 +437,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 
 						// 次のファイルを探す
 						for i, fileEntry := range *ctx.fileList {
-							if fileEntry.Path == nextFile && fileEntry.Status == nextStatus {
+							if fileEntry.Path == nextFile && fileEntry.StageStatus == nextStatus {
 								tempSelection = i
 								foundNext = true
 								break

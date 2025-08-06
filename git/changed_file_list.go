@@ -7,6 +7,12 @@ import (
 	"strings"
 )
 
+// FileInfo represents a file with its status
+type FileInfo struct {
+	Path         string
+	ChangeStatus string // "added", "deleted", "modified", "untracked"
+}
+
 // FindGitRoot は現在のディレクトリから上位階層へ遡って .git ディレクトリを探します
 func FindGitRoot(startPath string) (string, error) {
 	dir, err := filepath.Abs(startPath)
@@ -31,7 +37,7 @@ func FindGitRoot(startPath string) (string, error) {
 	return "", os.ErrNotExist
 }
 
-func GetChangedFiles(repoPath string) ([]string, []string, []string, error) {
+func GetChangedFiles(repoPath string) ([]FileInfo, []FileInfo, []FileInfo, error) {
 	// Git リポジトリのルートを検索
 	gitRoot, err := FindGitRoot(repoPath)
 	if err != nil {
@@ -46,9 +52,9 @@ func GetChangedFiles(repoPath string) ([]string, []string, []string, error) {
 		return nil, nil, nil, err
 	}
 
-	var stagedFiles []string
-	var modifiedFiles []string
-	var untrackedFiles []string
+	var stagedFiles []FileInfo
+	var modifiedFiles []FileInfo
+	var untrackedFiles []FileInfo
 
 	// 出力を解析 (TrimSpaceは使わず、空行のみ除去)
 	lines := strings.Split(string(output), "\n")
@@ -71,17 +77,44 @@ func GetChangedFiles(repoPath string) ([]string, []string, []string, error) {
 		worktreeStatus := line[1]
 		filename := strings.TrimSpace(line[2:]) // 2文字目の後からファイル名
 
-		// untrackedファイル
-		if indexStatus == '?' && worktreeStatus == '?' {
-			untrackedFiles = append(untrackedFiles, filename)
+		// リネームの場合の処理 (R  old -> new)
+		if indexStatus == 'R' {
+			// " -> " で分割して古いファイル名と新しいファイル名を取得
+			parts := strings.Split(filename, " -> ")
+			oldFile := parts[0]
+			newFile := parts[1]
+			// 古いファイルは削除として、新しいファイルは追加として扱う
+			stagedFiles = append(stagedFiles, FileInfo{Path: oldFile, ChangeStatus: "deleted"})
+			stagedFiles = append(stagedFiles, FileInfo{Path: newFile, ChangeStatus: "added"})
+		} else if worktreeStatus == 'R' {
+			// unstaged のリネーム
+			parts := strings.Split(filename, " -> ")
+			oldFile := parts[0]
+			newFile := parts[1]
+			modifiedFiles = append(modifiedFiles, FileInfo{Path: oldFile, ChangeStatus: "deleted"})
+			modifiedFiles = append(modifiedFiles, FileInfo{Path: newFile, ChangeStatus: "added"})
+		} else if indexStatus == '?' && worktreeStatus == '?' {
+			// untrackedファイル
+			untrackedFiles = append(untrackedFiles, FileInfo{Path: filename, ChangeStatus: "untracked"})
 		} else {
-			// stagedの変更があるファイル (indexStatus が空白以外)
-			if indexStatus != ' ' && indexStatus != '?' {
-				stagedFiles = append(stagedFiles, filename)
+			// ステータスに応じて適切な情報を追加
+			if indexStatus == 'A' {
+				stagedFiles = append(stagedFiles, FileInfo{Path: filename, ChangeStatus: "added"})
+			} else if indexStatus == 'D' {
+				stagedFiles = append(stagedFiles, FileInfo{Path: filename, ChangeStatus: "deleted"})
+			} else if indexStatus == 'M' {
+				stagedFiles = append(stagedFiles, FileInfo{Path: filename, ChangeStatus: "modified"})
+			} else if indexStatus != ' ' && indexStatus != '?' {
+				stagedFiles = append(stagedFiles, FileInfo{Path: filename, ChangeStatus: "modified"})
 			}
-			// unstagedの変更があるファイル (worktreeStatus が空白以外)
-			if worktreeStatus != ' ' && worktreeStatus != '?' {
-				modifiedFiles = append(modifiedFiles, filename)
+
+			// unstagedの変更
+			if worktreeStatus == 'D' {
+				modifiedFiles = append(modifiedFiles, FileInfo{Path: filename, ChangeStatus: "deleted"})
+			} else if worktreeStatus == 'M' {
+				modifiedFiles = append(modifiedFiles, FileInfo{Path: filename, ChangeStatus: "modified"})
+			} else if worktreeStatus != ' ' && worktreeStatus != '?' {
+				modifiedFiles = append(modifiedFiles, FileInfo{Path: filename, ChangeStatus: "modified"})
 			}
 		}
 	}
