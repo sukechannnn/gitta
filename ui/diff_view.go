@@ -271,38 +271,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			case 'u':
-				// パッチファイルが存在するか確認
-				if _, err := os.Stat(ctx.patchPath); os.IsNotExist(err) {
-					ctx.updateListStatus("No patch to undo", "yellow")
-					return nil
-				}
-
-				cmd := exec.Command("git", "-c", "core.quotepath=false", "apply", "-R", "--cached", ctx.patchPath)
-				cmd.Dir = ctx.repoRoot
-				_, err := cmd.CombinedOutput()
-				if err != nil {
-					ctx.updateListStatus("Undo failed!", "firebrick")
-				} else {
-					ctx.updateListStatus("Undo successful!", "gold")
-
-					// 差分を再取得
-					var newDiffText string
-					if *ctx.currentStatus == "staged" {
-						newDiffText, _ = git.GetStagedDiff(*ctx.currentFile, ctx.repoRoot)
-					} else {
-						newDiffText, _ = git.GetFileDiff(*ctx.currentFile, ctx.repoRoot)
-					}
-					*ctx.currentDiffText = newDiffText
-
-					// 再描画
-					if ctx.viewUpdater != nil {
-						ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
-					}
-
-					// ファイルリストを更新
-					ctx.refreshFileList()
-					ctx.updateFileListView()
-				}
+				ctx.updateListStatus("undo is not implemented!", "tomato")
 			case 'a':
 				// commandA関数を呼び出す
 				params := commands.CommandAParams{
