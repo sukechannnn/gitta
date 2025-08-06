@@ -39,7 +39,9 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 
 	// Staged ファイルでは行単位のunstageは未対応
 	if params.CurrentStatus == "staged" {
-		params.UpdateListStatus("Line-by-line unstaging is not implemented!", "firebrick")
+		if params.UpdateListStatus != nil {
+			params.UpdateListStatus("Line-by-line unstaging is not implemented!", "firebrick")
+		}
 		return nil, nil
 	}
 
