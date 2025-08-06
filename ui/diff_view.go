@@ -131,23 +131,17 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 	keyHandler := func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyEsc:
-			// 左ペインに戻る
 			// 選択モードをリセット（カーソル位置は保持）
 			*ctx.isSelecting = false
 			*ctx.selectEnd = -1
 			*ctx.selectStart = -1
-			// 表示を更新（カーソルなし）
+			// 表示を更新
 			if ctx.viewUpdater != nil {
-				ctx.viewUpdater.UpdateWithoutCursor(*ctx.currentDiffText)
+				ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 			}
-			// 左ペインにフォーカスを戻す
-			*ctx.leftPaneFocused = true
-			ctx.updateFileListView()
-			ctx.app.SetFocus(ctx.fileListView)
 			return nil
 		case tcell.KeyEnter:
 			// 左ペインに戻る
-			// 選択モードをリセット（カーソル位置は保持）
 			*ctx.isSelecting = false
 			*ctx.selectStart = -1
 			*ctx.selectEnd = -1
