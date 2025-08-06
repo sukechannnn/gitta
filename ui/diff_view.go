@@ -118,6 +118,15 @@ func scrollDiffView(ctx *DiffViewContext, direction int) {
 
 // SetupDiffViewKeyBindings sets up key bindings for diff view
 func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
+	// 初期状態でviewUpdaterを設定
+	if ctx.viewUpdater == nil {
+		if *ctx.isSplitView {
+			ctx.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
+		} else {
+			ctx.viewUpdater = NewUnifiedViewUpdater(ctx.diffView)
+		}
+	}
+
 	// 共通のキーハンドラー関数
 	keyHandler := func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {

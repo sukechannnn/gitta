@@ -288,6 +288,9 @@ type FileListKeyContext struct {
 	// Paths
 	repoRoot string
 
+	// Diff view context
+	diffViewContext *DiffViewContext
+
 	// Callbacks
 	updateFileListView     func()
 	updateSelectedFileDiff func()
@@ -385,11 +388,19 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					updateSplitViewWithoutCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText)
 					ctx.contentFlex.RemoveItem(ctx.unifiedViewFlex)
 					ctx.contentFlex.AddItem(ctx.splitViewFlex, 0, 4, false)
+					// viewUpdaterをSplitView用に更新
+					if ctx.diffViewContext != nil {
+						ctx.diffViewContext.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
+					}
 				} else {
 					// 通常の差分表示に戻す
 					ctx.contentFlex.RemoveItem(ctx.splitViewFlex)
 					ctx.contentFlex.AddItem(ctx.unifiedViewFlex, 0, 4, false)
 					updateDiffViewWithoutCursor(ctx.diffView, *ctx.currentDiffText)
+					// viewUpdaterをUnifiedView用に更新
+					if ctx.diffViewContext != nil {
+						ctx.diffViewContext.viewUpdater = NewUnifiedViewUpdater(ctx.diffView)
+					}
 				}
 				return nil
 			case 'A': // 'A' で現在のファイルを git add/reset

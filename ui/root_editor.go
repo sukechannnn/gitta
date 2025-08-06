@@ -282,56 +282,17 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	// 初期メッセージを設定
 	listStatusView.SetText(listKeyBindingMessage)
 
-	// ファイルリストのキーバインディングを設定
-	fileListKeyContext := &FileListKeyContext{
-		// UI Components
-		fileListView:    fileListView,
-		diffView:        diffView,
-		beforeView:      beforeView,
-		afterView:       afterView,
-		splitViewFlex:   splitViewFlex,
-		unifiedViewFlex: unifiedViewFlex,
-		contentFlex:     contentFlex,
-		app:             app,
-
-		// State
-		currentSelection: &currentSelection,
-		cursorY:          &cursorY,
-		isSelecting:      &isSelecting,
-		selectStart:      &selectStart,
-		selectEnd:        &selectEnd,
-		isSplitView:      &isSplitView,
-		leftPaneFocused:  &leftPaneFocused,
-		currentFile:      &currentFile,
-		currentStatus:    &currentStatus,
-		currentDiffText:  &currentDiffText,
-
-		// Collections
-		fileList: &fileList,
-
-		// Paths
-		repoRoot: repoRoot,
-
-		// Callbacks
-		updateFileListView:     updateFileListView,
-		updateSelectedFileDiff: updateSelectedFileDiff,
-		refreshFileList:        refreshFileList,
-		updateCurrentDiffText:  updateCurrentDiffText,
-	}
-	SetupFileListKeyBindings(fileListKeyContext)
-
 	// 右ペインのキー入力処理を設定（file_view.goと同じ動作）
 	// diffViewのキーバインディングを設定
 	diffViewContext := &DiffViewContext{
 		// UI Components
-		diffView:        diffView,
-		fileListView:    fileListView,
-		beforeView:      beforeView,
-		afterView:       afterView,
-		splitViewFlex:   splitViewFlex,
-		unifiedViewFlex: unifiedViewFlex,
-		contentFlex:     contentFlex,
-		app:             app,
+		diffView:      diffView,
+		fileListView:  fileListView,
+		beforeView:    beforeView,
+		afterView:     afterView,
+		splitViewFlex: splitViewFlex,
+		contentFlex:   contentFlex,
+		app:           app,
 
 		// State
 		cursorY:               &cursorY,
@@ -364,6 +325,47 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		onUpdate:           onUpdate,
 	}
 	SetupDiffViewKeyBindings(diffViewContext)
+
+	// ファイルリストのキーバインディングを設定（一時的にnilを設定）
+	fileListKeyContext := &FileListKeyContext{
+		// UI Components
+		fileListView:    fileListView,
+		diffView:        diffView,
+		beforeView:      beforeView,
+		afterView:       afterView,
+		splitViewFlex:   splitViewFlex,
+		unifiedViewFlex: unifiedViewFlex,
+		contentFlex:     contentFlex,
+		app:             app,
+
+		// State
+		currentSelection: &currentSelection,
+		cursorY:          &cursorY,
+		isSelecting:      &isSelecting,
+		selectStart:      &selectStart,
+		selectEnd:        &selectEnd,
+		isSplitView:      &isSplitView,
+		leftPaneFocused:  &leftPaneFocused,
+		currentFile:      &currentFile,
+		currentStatus:    &currentStatus,
+		currentDiffText:  &currentDiffText,
+
+		// Collections
+		fileList: &fileList,
+
+		// Paths
+		repoRoot: repoRoot,
+
+		// Diff view context
+		diffViewContext: diffViewContext, // 後で設定
+
+		// Callbacks
+		updateFileListView:     updateFileListView,
+		updateSelectedFileDiff: updateSelectedFileDiff,
+		refreshFileList:        refreshFileList,
+		updateCurrentDiffText:  updateCurrentDiffText,
+	}
+	SetupFileListKeyBindings(fileListKeyContext)
 
 	// 自動リフレッシュが有効な場合のみゴルーチンを開始
 	if enableAutoRefresh {
