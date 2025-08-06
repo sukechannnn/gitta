@@ -97,7 +97,7 @@ func updateDiffViewWithSelectionAndMapping(diffView *tview.TextView, diffText st
 	for i, line := range content.Lines {
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
 			// 選択行を黄色でハイライト
-			diffView.Write([]byte("[black:yellow]" + line.LineNumber + line.Content + "[-:-]\n"))
+			diffView.Write([]byte("[black:dimgrey]" + line.LineNumber + line.Content + "[-:-]\n"))
 		} else if i == cursorY {
 			// カーソル行を青でハイライト
 			diffView.Write([]byte("[white:blue]" + line.LineNumber + line.Content + "[-:-]\n"))

@@ -40,7 +40,7 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 	// Staged ファイルでは行単位のunstageは未対応
 	if params.CurrentStatus == "staged" {
 		if params.UpdateListStatus != nil {
-			params.UpdateListStatus("Line-by-line unstaging is not implemented!", "firebrick")
+			params.UpdateListStatus("Line-by-line unstaging is not implemented!", "tomato")
 		}
 		return nil, nil
 	}
@@ -52,7 +52,7 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 	originalContent, err := os.ReadFile(filePath)
 	if err != nil {
 		if params.UpdateListStatus != nil {
-			params.UpdateListStatus("Failed to read file", "firebrick")
+			params.UpdateListStatus("Failed to read file", "tomato")
 		}
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 	modifiedContent, _, err := git.ApplySelectedChangesToFile(params.CurrentFile, params.RepoRoot, params.CurrentDiffText, start, end)
 	if err != nil {
 		if params.UpdateListStatus != nil {
-			params.UpdateListStatus("Failed to process changes", "firebrick")
+			params.UpdateListStatus("Failed to process changes", "tomato")
 		}
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 	err = os.WriteFile(filePath, []byte(modifiedContent), 0644)
 	if err != nil {
 		if params.UpdateListStatus != nil {
-			params.UpdateListStatus("Failed to write file", "firebrick")
+			params.UpdateListStatus("Failed to write file", "tomato")
 		}
 		return nil, err
 	}
@@ -127,9 +127,9 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 
 	if gitErr != nil {
 		if params.UpdateListStatus != nil {
-			params.UpdateListStatus("Failed to stage changes", "firebrick")
+			params.UpdateListStatus("Failed to stage changes", "tomato")
 			if restoreErr != nil {
-				params.UpdateListStatus("Critical: Failed to restore file!", "firebrick")
+				params.UpdateListStatus("Critical: Failed to restore file!", "tomato")
 			}
 		}
 		return nil, gitErr
@@ -147,7 +147,7 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 
 	// 成功した場合の処理
 	if params.UpdateListStatus != nil {
-		params.UpdateListStatus("Selected lines staged successfully!", "gold")
+		params.UpdateListStatus("Selected lines staged successfully!", "forestgreen")
 	}
 
 	// ColorizeDiffで色付け

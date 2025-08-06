@@ -393,9 +393,9 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 
 						// ステータスを更新
 						if wasStaged {
-							ctx.updateListStatus("File unstaged successfully!", "gold")
+							ctx.updateListStatus("File unstaged successfully!", "forestgreen")
 						} else {
-							ctx.updateListStatus("File staged successfully!", "gold")
+							ctx.updateListStatus("File staged successfully!", "forestgreen")
 						}
 
 						// refreshFileListを呼んで最新の状態を取得
@@ -413,9 +413,9 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					} else {
 						// エラーの場合
 						if *ctx.currentStatus == "staged" {
-							ctx.updateListStatus("Failed to unstage file", "firebrick")
+							ctx.updateListStatus("Failed to unstage file", "tomato")
 						} else {
-							ctx.updateListStatus("Failed to stage file", "firebrick")
+							ctx.updateListStatus("Failed to stage file", "tomato")
 						}
 					}
 				}
