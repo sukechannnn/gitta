@@ -46,17 +46,17 @@ Actions:
 
 ### Command Line Options
 
-Enable debug mode to see patch details:
-```bash
-gitta --debug
-```
-
 Enable auto-refresh mode to watch for file changes:
 ```bash
 gitta --watch
 ```
 
-With `--watch` enabled, gitta will automatically refresh the file list and diff view every 300ms, allowing you to see changes in real-time as you edit files in your editor.
+With `--watch` enabled, gitta will automatically refresh the file list and diff view, allowing you to see changes in near real-time as you edit files in your editor.
+
+Enable debug mode and output logs to `tmp/`:
+```bash
+gitta --debug
+```
 
 ---
 
