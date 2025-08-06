@@ -513,6 +513,68 @@ type DiffViewContext struct {
 	onUpdate           func()
 }
 
+// scrollDiffView scrolls the diff view by the specified direction and handles cursor following
+func scrollDiffView(ctx *DiffViewContext, direction int) {
+	if *ctx.isSplitView {
+		currentRow, _ := ctx.beforeView.GetScrollOffset()
+		maxLines := getSplitViewLineCount(*ctx.currentDiffText)
+
+		nextRow := currentRow + direction
+		// スクロール位置を更新（範囲内に収める）
+		if nextRow >= 0 && nextRow < maxLines {
+			ctx.beforeView.ScrollTo(nextRow, 0)
+			ctx.afterView.ScrollTo(nextRow, 0)
+
+			// カーソルが画面外になったら追従
+			if direction > 0 && *ctx.cursorY < nextRow {
+				// 下スクロール時：カーソルが画面最上部にある場合は追従
+				*ctx.cursorY = nextRow
+				if ctx.viewUpdater != nil {
+					ctx.viewUpdater.UpdateWithSelection(*ctx.currentDiffText, *ctx.cursorY, *ctx.selectStart, *ctx.selectEnd, *ctx.isSelecting)
+				}
+			} else if direction < 0 && *ctx.cursorY > nextRow+20 {
+				// 上スクロール時：カーソルが画面最下部にある場合は追従（画面高さを20行と仮定）
+				*ctx.cursorY = nextRow + 20
+				if *ctx.cursorY >= maxLines {
+					*ctx.cursorY = maxLines - 1
+				}
+				if ctx.viewUpdater != nil {
+					ctx.viewUpdater.UpdateWithSelection(*ctx.currentDiffText, *ctx.cursorY, *ctx.selectStart, *ctx.selectEnd, *ctx.isSelecting)
+				}
+			}
+		}
+	} else {
+		// Unified Viewの場合
+		currentRow, _ := ctx.diffView.GetScrollOffset()
+		coloredDiff := ColorizeDiff(*ctx.currentDiffText)
+		maxLines := len(util.SplitLines(coloredDiff))
+
+		nextRow := currentRow + direction
+		// スクロール位置を更新（範囲内に収める）
+		if nextRow >= 0 && nextRow < maxLines {
+			ctx.diffView.ScrollTo(nextRow, 0)
+
+			// カーソルが画面外になったら追従
+			if direction > 0 && *ctx.cursorY < nextRow {
+				// 下スクロール時：カーソルが画面最上部にある場合は追従
+				*ctx.cursorY = nextRow
+				if ctx.viewUpdater != nil {
+					ctx.viewUpdater.UpdateWithSelection(*ctx.currentDiffText, *ctx.cursorY, *ctx.selectStart, *ctx.selectEnd, *ctx.isSelecting)
+				}
+			} else if direction < 0 && *ctx.cursorY > nextRow+20 {
+				// 上スクロール時：カーソルが画面最下部にある場合は追従（画面高さを20行と仮定）
+				*ctx.cursorY = nextRow + 20
+				if *ctx.cursorY >= maxLines {
+					*ctx.cursorY = maxLines - 1
+				}
+				if ctx.viewUpdater != nil {
+					ctx.viewUpdater.UpdateWithSelection(*ctx.currentDiffText, *ctx.cursorY, *ctx.selectStart, *ctx.selectEnd, *ctx.isSelecting)
+				}
+			}
+		}
+	}
+}
+
 // SetupDiffViewKeyBindings sets up key bindings for diff view
 func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 	// 共通のキーハンドラー関数
@@ -550,44 +612,11 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			return nil
 		case tcell.KeyCtrlE:
 			// Ctrl+E: 1行下にスクロール（カーソルは最上部になったら追従）
-			if *ctx.isSplitView {
-				currentRow, _ := ctx.beforeView.GetScrollOffset()
-				maxLines := getSplitViewLineCount(*ctx.currentDiffText)
-
-				nextRow := currentRow + 1
-				// スクロール位置を更新（最大行数を超えないようにする）
-				if nextRow < maxLines {
-					ctx.beforeView.ScrollTo(nextRow, 0)
-					ctx.afterView.ScrollTo(nextRow, 0)
-
-					// カーソルが画面最上部にある場合は追従
-					if *ctx.cursorY < nextRow {
-						*ctx.cursorY = nextRow
-						if ctx.viewUpdater != nil {
-							ctx.viewUpdater.UpdateWithSelection(*ctx.currentDiffText, *ctx.cursorY, *ctx.selectStart, *ctx.selectEnd, *ctx.isSelecting)
-						}
-					}
-				}
-			} else {
-				// Unified Viewの場合
-				currentRow, _ := ctx.diffView.GetScrollOffset()
-				coloredDiff := ColorizeDiff(*ctx.currentDiffText)
-				maxLines := len(util.SplitLines(coloredDiff))
-
-				nextRow := currentRow + 1
-				// スクロール位置を更新（最大行数を超えないようにする）
-				if nextRow < maxLines {
-					ctx.diffView.ScrollTo(nextRow, 0)
-
-					// カーソルが画面最上部にある場合は追従
-					if *ctx.cursorY < nextRow {
-						*ctx.cursorY = nextRow
-						if ctx.viewUpdater != nil {
-							ctx.viewUpdater.UpdateWithSelection(*ctx.currentDiffText, *ctx.cursorY, *ctx.selectStart, *ctx.selectEnd, *ctx.isSelecting)
-						}
-					}
-				}
-			}
+			scrollDiffView(ctx, 1)
+			return nil
+		case tcell.KeyCtrlY:
+			// Ctrl+Y: 1行上にスクロール（カーソルは最下部になったら追従）
+			scrollDiffView(ctx, -1)
 			return nil
 		case tcell.KeyRune:
 			switch event.Rune() {

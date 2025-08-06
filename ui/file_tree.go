@@ -261,13 +261,14 @@ func BuildFileListContent(
 // FileListKeyContext contains all the context needed for file list key bindings
 type FileListKeyContext struct {
 	// UI Components
-	fileListView  *tview.TextView
-	diffView      *tview.TextView
-	beforeView    *tview.TextView
-	afterView     *tview.TextView
-	splitViewFlex *tview.Flex
-	contentFlex   *tview.Flex
-	app           *tview.Application
+	fileListView    *tview.TextView
+	diffView        *tview.TextView
+	beforeView      *tview.TextView
+	afterView       *tview.TextView
+	splitViewFlex   *tview.Flex
+	unifiedViewFlex *tview.Flex
+	contentFlex     *tview.Flex
+	app             *tview.Application
 
 	// State
 	currentSelection *int
@@ -382,12 +383,12 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				if *ctx.isSplitView {
 					// Split Viewを表示
 					updateSplitViewWithoutCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText)
-					ctx.contentFlex.RemoveItem(ctx.diffView)
+					ctx.contentFlex.RemoveItem(ctx.unifiedViewFlex)
 					ctx.contentFlex.AddItem(ctx.splitViewFlex, 0, 4, false)
 				} else {
 					// 通常の差分表示に戻す
 					ctx.contentFlex.RemoveItem(ctx.splitViewFlex)
-					ctx.contentFlex.AddItem(ctx.diffView, 0, 4, false)
+					ctx.contentFlex.AddItem(ctx.unifiedViewFlex, 0, 4, false)
 					updateDiffViewWithoutCursor(ctx.diffView, *ctx.currentDiffText)
 				}
 				return nil

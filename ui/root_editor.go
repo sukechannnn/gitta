@@ -91,6 +91,12 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		SetWrap(false)
 	diffView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
+	// Unified View用のフレックスコンテナ（diffViewと右端の縦線を含む）
+	unifiedViewFlex := tview.NewFlex().
+		AddItem(diffView, 0, 1, false).
+		AddItem(CreateVerticalBorder(), 1, 0, false)
+	unifiedViewFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+
 	// Split View用のテキストビューを作成
 	beforeView := tview.NewTextView().
 		SetDynamicColors(true).
@@ -108,7 +114,8 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	splitViewFlex := tview.NewFlex().
 		AddItem(beforeView, 0, 1, false).
 		AddItem(CreateVerticalBorder(), 1, 0, false).
-		AddItem(afterView, 0, 1, false)
+		AddItem(afterView, 0, 1, false).
+		AddItem(CreateVerticalBorder(), 1, 0, false)
 	splitViewFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// 現在のファイル情報を保持
@@ -184,7 +191,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		AddItem(verticalBorderLeft, 1, 0, false).
 		AddItem(fileListView, 0, 1, true).
 		AddItem(verticalBorder, 1, 0, false).
-		AddItem(diffView, 0, 4, false)
+		AddItem(unifiedViewFlex, 0, 4, false)
 
 	// ファイル一覧の内容を構築（色付き）
 	buildFileListContent := func(focusedPane bool) string {
@@ -278,13 +285,14 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	// ファイルリストのキーバインディングを設定
 	fileListKeyContext := &FileListKeyContext{
 		// UI Components
-		fileListView:  fileListView,
-		diffView:      diffView,
-		beforeView:    beforeView,
-		afterView:     afterView,
-		splitViewFlex: splitViewFlex,
-		contentFlex:   contentFlex,
-		app:           app,
+		fileListView:    fileListView,
+		diffView:        diffView,
+		beforeView:      beforeView,
+		afterView:       afterView,
+		splitViewFlex:   splitViewFlex,
+		unifiedViewFlex: unifiedViewFlex,
+		contentFlex:     contentFlex,
+		app:             app,
 
 		// State
 		currentSelection: &currentSelection,
@@ -316,13 +324,14 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	// diffViewのキーバインディングを設定
 	diffViewContext := &DiffViewContext{
 		// UI Components
-		diffView:      diffView,
-		fileListView:  fileListView,
-		beforeView:    beforeView,
-		afterView:     afterView,
-		splitViewFlex: splitViewFlex,
-		contentFlex:   contentFlex,
-		app:           app,
+		diffView:        diffView,
+		fileListView:    fileListView,
+		beforeView:      beforeView,
+		afterView:       afterView,
+		splitViewFlex:   splitViewFlex,
+		unifiedViewFlex: unifiedViewFlex,
+		contentFlex:     contentFlex,
+		app:             app,
 
 		// State
 		cursorY:               &cursorY,
