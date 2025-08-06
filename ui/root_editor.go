@@ -512,7 +512,6 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 				return nil
 			}
 
-			// コミット成功
 			updateGlobalStatus("Successfully committed", "forestgreen")
 			// コミット後にファイルリストを更新
 			refreshFileList()
@@ -531,10 +530,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		return event
 	})
 
-	// Shift + C キーハンドラーを追加する関数
-	handleShiftC := func() {
 		if !isCommitMode {
-			// コミットモードに入る
 			isCommitMode = true
 			mainFlex.AddItem(commitTextArea, 7, 0, true) // TextAreaは高さを7に増やして複数行に対応
 			app.SetFocus(commitTextArea)
@@ -547,7 +543,6 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		AddItem(contentFlex, 0, 1, true).
 		AddItem(horizontalBottomBorder, 1, 0, false)
 
-	// mainFlexのキーバインディング（Shift + Cを捕捉するため）
 	mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyRune && event.Rune() == 'C' && !isCommitMode {
 			handleShiftC()
