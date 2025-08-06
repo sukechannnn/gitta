@@ -20,7 +20,7 @@ var patchPath = "/tmp/gitta_selected.patch"
 
 // globalStatusView をグローバルに定義
 var globalStatusView *tview.TextView
-var listKeyBindingMessage = "Press 'w' to switch panes, 'q' to quit, 'a' to stage selected lines, 'A' to stage/unstage file, 'V' to select lines, 'Ctrl+S' to commit, and 'j/k' to navigate."
+var listKeyBindingMessage = "Press 'Enter' to switch panes, 'q' to quit, 'a' to stage selected lines, 'A' to stage/unstage file, 'V' to select lines, 'Ctrl+K' to commit, and 'j/k' to navigate."
 
 func updateGlobalStatus(message string, color string) {
 	if globalStatusView != nil {
@@ -188,7 +188,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	// コミットメッセージ入力エリア
 	commitTextArea := tview.NewTextArea().
-		SetPlaceholder("Enter commit message (Press Ctrl+S to commit, Esc to cancel)")
+		SetPlaceholder("Enter commit message (Press Ctrl+S to commit, Ctrl+l to focus file list, Esc to cancel)")
 
 	// TextAreaのスタイル設定
 	// テキストスタイル（入力される文字）
@@ -487,23 +487,23 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		}()
 	}
 
-	// コミットテキストエリアのキーバインディング
 	commitTextArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		exitCommitMode := func() {
 			isCommitMode = false
+			leftPaneFocused = true
 			commitTextArea.SetText("", false)
 			mainFlex.RemoveItem(commitTextArea)
 			app.SetFocus(fileListView)
 		}
 
-		if event.Key() == tcell.KeyCtrlS {
+		switch event.Key() {
+		case tcell.KeyCtrlS:
 			commitMessage = commitTextArea.GetText()
 			if commitMessage == "" {
 				updateGlobalStatus("Commit message cannot be empty", "tomato")
 				return nil
 			}
 
-			// git commit を実行
 			err := git.Commit(commitMessage, repoRoot)
 			if err != nil {
 				updateGlobalStatus("Failed to commit: "+err.Error(), "tomato")
@@ -518,21 +518,24 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			updateFileListView()
 			updateSelectedFileDiff()
 
-			// コミットモードを終了
 			exitCommitMode()
 			return nil
-		} else if event.Key() == tcell.KeyEsc {
-			// Esc でコミットモードをキャンセル
+		case tcell.KeyCtrlL:
+			app.SetFocus(fileListView)
+			return nil
+		case tcell.KeyEsc:
 			exitCommitMode()
 			return nil
 		}
-		// TextAreaではEnterキーを改行として扱うため、デフォルトの動作を許可
 		return event
 	})
 
+	commitMode := func() {
 		if !isCommitMode {
 			isCommitMode = true
 			mainFlex.AddItem(commitTextArea, 7, 0, true) // TextAreaは高さを7に増やして複数行に対応
+			app.SetFocus(commitTextArea)
+		} else {
 			app.SetFocus(commitTextArea)
 		}
 	}
@@ -544,8 +547,8 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		AddItem(horizontalBottomBorder, 1, 0, false)
 
 	mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyRune && event.Rune() == 'C' && !isCommitMode {
-			handleShiftC()
+		if event.Key() == tcell.KeyCtrlK {
+			commitMode()
 			return nil
 		}
 		return event
