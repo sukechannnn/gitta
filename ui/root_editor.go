@@ -22,7 +22,7 @@ var patchPath = "/tmp/gitta_selected.patch"
 var globalStatusView *tview.TextView
 var listKeyBindingMessage = "Press 'w' to switch panes, 'q' to quit, 'a' to stage selected lines, 'A' to stage/unstage file, 'V' to select lines, 'Ctrl+S' to commit, and 'j/k' to navigate."
 
-func updateListStatus(message string, color string) {
+func updateGlobalStatus(message string, color string) {
 	if globalStatusView != nil {
 		globalStatusView.SetText(fmt.Sprintf("[%s]%s[-]", color, message))
 		go func() {
@@ -76,10 +76,6 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	// フレックスレイアウトを作成（上下分割、その下に左右分割）
 	mainFlex := tview.NewFlex().SetDirection(tview.FlexRow)
-
-	// 左右分割のフレックス
-	contentFlex := tview.NewFlex()
-	contentFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// 左ペイン（ファイルリスト）のテキストビューを作成
 	fileListView := tview.NewTextView().
@@ -188,6 +184,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	verticalBorder := CreateVerticalBorder()
 	horizontalTopBorder := CreateHorizontalTopBorder()
 	horizontalBottomBorder := CreateHorizontalBottomBorder()
+	verticalBorderLeft := CreateVerticalBorder()
 
 	// コミットメッセージ入力エリア
 	commitTextArea := tview.NewTextArea().
@@ -212,8 +209,11 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	commitTextArea.SetTitleAlign(tview.AlignLeft)
 	commitTextArea.SetTitleColor(tcell.ColorWhite)
 
+	// 左右分割のフレックス
+	contentFlex := tview.NewFlex()
+	contentFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 	// 左右のペインをフレックスに追加（左:縦線:右 = 1:0:4）
-	verticalBorderLeft := CreateVerticalBorder()
+	// 右側の縦線は unifiedViewFlex と splitViewFlex で定義している
 	contentFlex.
 		AddItem(verticalBorderLeft, 1, 0, false).
 		AddItem(fileListView, 0, 1, true).
@@ -347,7 +347,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 		// Callbacks
 		updateFileListView: updateFileListView,
-		updateListStatus:   updateListStatus,
+		updateGlobalStatus: updateGlobalStatus,
 		refreshFileList:    refreshFileList,
 		onUpdate:           onUpdate,
 	}

@@ -49,7 +49,7 @@ type DiffViewContext struct {
 
 	// Callbacks
 	updateFileListView func()
-	updateListStatus   func(string, string)
+	updateGlobalStatus func(string, string)
 	refreshFileList    func()
 	onUpdate           func()
 }
@@ -271,17 +271,17 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			case 'u':
-				ctx.updateListStatus("undo is not implemented!", "tomato")
+				ctx.updateGlobalStatus("undo is not implemented!", "tomato")
 			case 'a':
 				// commandA関数を呼び出す
 				params := commands.CommandAParams{
-					SelectStart:      *ctx.selectStart,
-					SelectEnd:        *ctx.selectEnd,
-					CurrentFile:      *ctx.currentFile,
-					CurrentStatus:    *ctx.currentStatus,
-					CurrentDiffText:  *ctx.currentDiffText,
-					RepoRoot:         ctx.repoRoot,
-					UpdateListStatus: ctx.updateListStatus,
+					SelectStart:        *ctx.selectStart,
+					SelectEnd:          *ctx.selectEnd,
+					CurrentFile:        *ctx.currentFile,
+					CurrentStatus:      *ctx.currentStatus,
+					CurrentDiffText:    *ctx.currentDiffText,
+					RepoRoot:           ctx.repoRoot,
+					UpdateGlobalStatus: ctx.updateGlobalStatus,
 				}
 
 				result, err := commands.CommandA(params)
@@ -362,9 +362,9 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 
 						// ステータスを更新
 						if wasStaged {
-							ctx.updateListStatus("File unstaged successfully!", "forestgreen")
+							ctx.updateGlobalStatus("File unstaged successfully!", "forestgreen")
 						} else {
-							ctx.updateListStatus("File staged successfully!", "forestgreen")
+							ctx.updateGlobalStatus("File staged successfully!", "forestgreen")
 						}
 
 						// refreshFileListを呼んで最新の状態を取得
@@ -382,9 +382,9 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					} else {
 						// エラーの場合
 						if *ctx.currentStatus == "staged" {
-							ctx.updateListStatus("Failed to unstage file", "tomato")
+							ctx.updateGlobalStatus("Failed to unstage file", "tomato")
 						} else {
-							ctx.updateListStatus("Failed to stage file", "tomato")
+							ctx.updateGlobalStatus("Failed to stage file", "tomato")
 						}
 					}
 				}

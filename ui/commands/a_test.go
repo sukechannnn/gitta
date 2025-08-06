@@ -56,7 +56,7 @@ func TestCommandA(t *testing.T) {
 			CurrentStatus:   "unstaged",
 			CurrentDiffText: "some diff",
 			RepoRoot:        "/tmp",
-			UpdateListStatus: func(msg, color string) {
+			UpdateGlobalStatus: func(msg, color string) {
 				statusMessages = append(statusMessages, msg)
 			},
 		}
@@ -141,7 +141,7 @@ func TestCommandA_Integration(t *testing.T) {
 			CurrentStatus:   "unstaged",
 			CurrentDiffText: diffText,
 			RepoRoot:        tmpDir,
-			UpdateListStatus: func(msg, color string) {
+			UpdateGlobalStatus: func(msg, color string) {
 				statusMessages = append(statusMessages, msg)
 			},
 		}
@@ -178,7 +178,7 @@ func TestCommandA_Integration(t *testing.T) {
 			CurrentStatus:   "unstaged",
 			CurrentDiffText: diffText,
 			RepoRoot:        tmpDir,
-			UpdateListStatus: func(msg, color string) {
+			UpdateGlobalStatus: func(msg, color string) {
 				statusMessages = append(statusMessages, msg)
 			},
 		}
@@ -269,13 +269,13 @@ func TestCommandA_Integration(t *testing.T) {
 
 		// Stage only the first modification (line2)
 		params := CommandAParams{
-			SelectStart:      2,
-			SelectEnd:        3,
-			CurrentFile:      "test.txt",
-			CurrentStatus:    "unstaged",
-			CurrentDiffText:  diffText,
-			RepoRoot:         tmpDir2,
-			UpdateListStatus: func(msg, color string) {},
+			SelectStart:        2,
+			SelectEnd:          3,
+			CurrentFile:        "test.txt",
+			CurrentStatus:      "unstaged",
+			CurrentDiffText:    diffText,
+			RepoRoot:           tmpDir2,
+			UpdateGlobalStatus: func(msg, color string) {},
 		}
 
 		result, err := CommandA(params)

@@ -12,13 +12,13 @@ import (
 
 // CommandAParams contains parameters for commandA function
 type CommandAParams struct {
-	SelectStart      int
-	SelectEnd        int
-	CurrentFile      string
-	CurrentStatus    string
-	CurrentDiffText  string
-	RepoRoot         string
-	UpdateListStatus func(string, string)
+	SelectStart        int
+	SelectEnd          int
+	CurrentFile        string
+	CurrentStatus      string
+	CurrentDiffText    string
+	RepoRoot           string
+	UpdateGlobalStatus func(string, string)
 }
 
 // CommandAResult contains the results from commandA execution
@@ -39,8 +39,8 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 
 	// Staged ファイルでは行単位のunstageは未対応
 	if params.CurrentStatus == "staged" {
-		if params.UpdateListStatus != nil {
-			params.UpdateListStatus("Line-by-line unstaging is not implemented!", "tomato")
+		if params.UpdateGlobalStatus != nil {
+			params.UpdateGlobalStatus("Line-by-line unstaging is not implemented!", "tomato")
 		}
 		return nil, nil
 	}
@@ -51,8 +51,8 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 	// 現在のファイル内容を保存
 	originalContent, err := os.ReadFile(filePath)
 	if err != nil {
-		if params.UpdateListStatus != nil {
-			params.UpdateListStatus("Failed to read file", "tomato")
+		if params.UpdateGlobalStatus != nil {
+			params.UpdateGlobalStatus("Failed to read file", "tomato")
 		}
 		return nil, err
 	}
@@ -85,8 +85,8 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 
 	// 変更が含まれていない場合は早期リターン
 	if !hasChanges {
-		if params.UpdateListStatus != nil {
-			params.UpdateListStatus("No changes were staged", "yellow")
+		if params.UpdateGlobalStatus != nil {
+			params.UpdateGlobalStatus("No changes were staged", "yellow")
 		}
 		// 成功として扱うが、変更はなし
 		result := &CommandAResult{
@@ -101,8 +101,8 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 
 	modifiedContent, _, err := git.ApplySelectedChangesToFile(params.CurrentFile, params.RepoRoot, params.CurrentDiffText, start, end)
 	if err != nil {
-		if params.UpdateListStatus != nil {
-			params.UpdateListStatus("Failed to process changes", "tomato")
+		if params.UpdateGlobalStatus != nil {
+			params.UpdateGlobalStatus("Failed to process changes", "tomato")
 		}
 		return nil, err
 	}
@@ -110,8 +110,8 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 	// 一時的に選択した変更のみのファイルに書き換え
 	err = os.WriteFile(filePath, []byte(modifiedContent), 0644)
 	if err != nil {
-		if params.UpdateListStatus != nil {
-			params.UpdateListStatus("Failed to write file", "tomato")
+		if params.UpdateGlobalStatus != nil {
+			params.UpdateGlobalStatus("Failed to write file", "tomato")
 		}
 		return nil, err
 	}
@@ -126,18 +126,18 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 	restoreErr := os.WriteFile(filePath, originalContent, 0644)
 
 	if gitErr != nil {
-		if params.UpdateListStatus != nil {
-			params.UpdateListStatus("Failed to stage changes", "tomato")
+		if params.UpdateGlobalStatus != nil {
+			params.UpdateGlobalStatus("Failed to stage changes", "tomato")
 			if restoreErr != nil {
-				params.UpdateListStatus("Critical: Failed to restore file!", "tomato")
+				params.UpdateGlobalStatus("Critical: Failed to restore file!", "tomato")
 			}
 		}
 		return nil, gitErr
 	}
 
 	if restoreErr != nil {
-		if params.UpdateListStatus != nil {
-			params.UpdateListStatus("Warning: Failed to restore unstaged changes", "yellow")
+		if params.UpdateGlobalStatus != nil {
+			params.UpdateGlobalStatus("Warning: Failed to restore unstaged changes", "yellow")
 		}
 		return nil, restoreErr
 	}
@@ -146,8 +146,8 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 	newDiffText, _ := git.GetFileDiff(params.CurrentFile, params.RepoRoot)
 
 	// 成功した場合の処理
-	if params.UpdateListStatus != nil {
-		params.UpdateListStatus("Selected lines staged successfully!", "forestgreen")
+	if params.UpdateGlobalStatus != nil {
+		params.UpdateGlobalStatus("Selected lines staged successfully!", "forestgreen")
 	}
 
 	// ColorizeDiffで色付け
