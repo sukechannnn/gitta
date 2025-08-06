@@ -17,16 +17,16 @@ var preferUnstagedSection bool = false
 // パッチファイルのパス
 var patchPath = "/tmp/gitta_selected.patch"
 
-// listStatusView をグローバルに定義
-var listStatusView *tview.TextView
+// globalStatusView をグローバルに定義
+var globalStatusView *tview.TextView
 var listKeyBindingMessage = "Press 'w' to switch panes, 'q' to quit, 'a' to stage selected lines, 'A' to stage/unstage file, 'V' to select lines, and 'j/k' to navigate."
 
 func updateListStatus(message string, color string) {
-	if listStatusView != nil {
-		listStatusView.SetText(fmt.Sprintf("[%s]%s[-]", color, message))
+	if globalStatusView != nil {
+		globalStatusView.SetText(fmt.Sprintf("[%s]%s[-]", color, message))
 		go func() {
 			time.Sleep(5 * time.Second)
-			listStatusView.SetText(listKeyBindingMessage)
+			globalStatusView.SetText(listKeyBindingMessage)
 		}()
 	}
 }
@@ -62,19 +62,18 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	untrackedFilesPtr := &untrackedFiles
 
 	// listStatusView を作成
-	listStatusView = tview.NewTextView().
+	globalStatusView = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft).
 		SetWrap(true)
-	listStatusView.SetBorder(true)
-	listStatusView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+	globalStatusView.SetBorder(true)
+	globalStatusView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// フレックスレイアウトを作成（上下分割、その下に左右分割）
 	mainFlex := tview.NewFlex().SetDirection(tview.FlexRow)
 
 	// 左右分割のフレックス
 	contentFlex := tview.NewFlex()
-	// contentFlex.SetBorder(true)
 	contentFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// 左ペイン（ファイルリスト）のテキストビューを作成
@@ -280,7 +279,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	updateSelectedFileDiff()
 
 	// 初期メッセージを設定
-	listStatusView.SetText(listKeyBindingMessage)
+	globalStatusView.SetText(listKeyBindingMessage)
 
 	// 右ペインのキー入力処理を設定（file_view.goと同じ動作）
 	// diffViewのキーバインディングを設定
@@ -461,7 +460,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	}
 
 	// mainFlex にステータスビューとコンテンツを追加
-	mainFlex.AddItem(listStatusView, 5, 0, false).
+	mainFlex.AddItem(globalStatusView, 5, 0, false).
 		AddItem(horizontalTopBorder, 1, 0, false).
 		AddItem(contentFlex, 0, 1, true).
 		AddItem(horizontalBottomBorder, 1, 0, false)
