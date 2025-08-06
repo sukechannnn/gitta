@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestcalculateMaxLineNumberDigits(t *testing.T) {
+func TestCalculateMaxLineNumberDigits(t *testing.T) {
 	tests := []struct {
 		name       string
 		oldLineMap map[int]int
