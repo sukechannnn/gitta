@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/sukechannnn/gitta/git"
 	"github.com/sukechannnn/gitta/util"
@@ -19,7 +20,7 @@ var patchPath = "/tmp/gitta_selected.patch"
 
 // globalStatusView をグローバルに定義
 var globalStatusView *tview.TextView
-var listKeyBindingMessage = "Press 'w' to switch panes, 'q' to quit, 'a' to stage selected lines, 'A' to stage/unstage file, 'V' to select lines, and 'j/k' to navigate."
+var listKeyBindingMessage = "Press 'w' to switch panes, 'q' to quit, 'a' to stage selected lines, 'A' to stage/unstage file, 'V' to select lines, 'Ctrl+S' to commit, and 'j/k' to navigate."
 
 func updateListStatus(message string, color string) {
 	if globalStatusView != nil {
@@ -60,6 +61,10 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	stagedFilesPtr := &stagedFiles
 	modifiedFilesPtr := &modifiedFiles
 	untrackedFilesPtr := &untrackedFiles
+
+	// コミット関連の状態
+	var isCommitMode bool = false
+	var commitMessage string = ""
 
 	// listStatusView を作成
 	globalStatusView = tview.NewTextView().
@@ -183,6 +188,29 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	verticalBorder := CreateVerticalBorder()
 	horizontalTopBorder := CreateHorizontalTopBorder()
 	horizontalBottomBorder := CreateHorizontalBottomBorder()
+
+	// コミットメッセージ入力エリア
+	commitTextArea := tview.NewTextArea().
+		SetPlaceholder("Enter commit message (Press Ctrl+S to commit, Esc to cancel)")
+
+	// TextAreaのスタイル設定
+	// テキストスタイル（入力される文字）
+	commitTextArea.SetTextStyle(tcell.StyleDefault.
+		Foreground(util.MainTextColor.ToTcellColor()).
+		Background(util.BackgroundColor.ToTcellColor()))
+
+	// プレースホルダーのスタイル
+	commitTextArea.SetPlaceholderStyle(tcell.StyleDefault.
+		Foreground(util.PlaceholderColor.ToTcellColor()).
+		Background(util.BackgroundColor.ToTcellColor()))
+
+	// 背景色とボーダー設定
+	commitTextArea.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+	commitTextArea.SetBorder(true)
+	commitTextArea.SetBorderColor(util.CommitAreaBorderColor.ToTcellColor())
+	commitTextArea.SetTitle("Commit Message")
+	commitTextArea.SetTitleAlign(tview.AlignLeft)
+	commitTextArea.SetTitleColor(tcell.ColorWhite)
 
 	// 左右のペインをフレックスに追加（左:縦線:右 = 1:0:4）
 	verticalBorderLeft := CreateVerticalBorder()
@@ -459,11 +487,76 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		}()
 	}
 
+	// コミットテキストエリアのキーバインディング
+	commitTextArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		exitCommitMode := func() {
+			isCommitMode = false
+			commitTextArea.SetText("", false)
+			mainFlex.RemoveItem(commitTextArea)
+			// フォーカスを元に戻す
+			// 常に左ペイン（fileListView）にフォーカスを戻す
+			app.SetFocus(fileListView)
+		}
+
+		if event.Key() == tcell.KeyCtrlS {
+			commitMessage = commitTextArea.GetText()
+			if commitMessage == "" {
+				updateGlobalStatus("Commit message cannot be empty", "tomato")
+				return nil
+			}
+
+			// git commit を実行
+			err := git.Commit(commitMessage, repoRoot)
+			if err != nil {
+				updateGlobalStatus("Failed to commit: "+err.Error(), "tomato")
+				// エラー時もコミットモードを終了してフォーカスを戻す
+				exitCommitMode()
+				return nil
+			}
+
+			// コミット成功
+			updateGlobalStatus("Successfully committed", "forestgreen")
+			// コミット後にファイルリストを更新
+			refreshFileList()
+			updateFileListView()
+			updateSelectedFileDiff()
+
+			// コミットモードを終了
+			exitCommitMode()
+			return nil
+		} else if event.Key() == tcell.KeyEsc {
+			// Esc でコミットモードをキャンセル
+			exitCommitMode()
+			return nil
+		}
+		// TextAreaではEnterキーを改行として扱うため、デフォルトの動作を許可
+		return event
+	})
+
+	// Shift + C キーハンドラーを追加する関数
+	handleShiftC := func() {
+		if !isCommitMode {
+			// コミットモードに入る
+			isCommitMode = true
+			mainFlex.AddItem(commitTextArea, 7, 0, true) // TextAreaは高さを7に増やして複数行に対応
+			app.SetFocus(commitTextArea)
+		}
+	}
+
 	// mainFlex にステータスビューとコンテンツを追加
 	mainFlex.AddItem(globalStatusView, 5, 0, false).
 		AddItem(horizontalTopBorder, 1, 0, false).
 		AddItem(contentFlex, 0, 1, true).
 		AddItem(horizontalBottomBorder, 1, 0, false)
+
+	// mainFlexのキーバインディング（Shift + Cを捕捉するため）
+	mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyRune && event.Rune() == 'C' && !isCommitMode {
+			handleShiftC()
+			return nil
+		}
+		return event
+	})
 
 	return mainFlex
 }
