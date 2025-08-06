@@ -11,6 +11,9 @@ type ColorColde string
 const (
 	BackgroundColor          = ColorColde("#272A32")
 	NotSelectedFileLineColor = ColorColde("#383E50")
+	MainTextColor            = ColorColde("#FFFFFF")
+	CommitAreaBorderColor    = ColorColde("#4A5568")
+	PlaceholderColor         = ColorColde("#808080")
 )
 
 func (c ColorColde) hex() string {
