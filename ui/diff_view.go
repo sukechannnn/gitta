@@ -474,43 +474,43 @@ func isLineSelected(index, start, end int) bool {
 // DiffViewContext contains all the context needed for diff view key bindings
 type DiffViewContext struct {
 	// UI Components
-	DiffView      *tview.TextView
-	FileListView  *tview.TextView
-	BeforeView    *tview.TextView
-	AfterView     *tview.TextView
-	SplitViewFlex *tview.Flex
-	ContentFlex   *tview.Flex
-	App           *tview.Application
+	diffView      *tview.TextView
+	fileListView  *tview.TextView
+	beforeView    *tview.TextView
+	afterView     *tview.TextView
+	splitViewFlex *tview.Flex
+	contentFlex   *tview.Flex
+	app           *tview.Application
 
 	// State
-	CursorY               *int
-	SelectStart           *int
-	SelectEnd             *int
-	IsSelecting           *bool
-	IsSplitView           *bool
-	LeftPaneFocused       *bool
-	CurrentDiffText       *string
-	CurrentFile           *string
-	CurrentStatus         *string
-	SavedTargetFile       *string
-	PreferUnstagedSection *bool
+	cursorY               *int
+	selectStart           *int
+	selectEnd             *int
+	isSelecting           *bool
+	isSplitView           *bool
+	leftPaneFocused       *bool
+	currentDiffText       *string
+	currentFile           *string
+	currentStatus         *string
+	savedTargetFile       *string
+	preferUnstagedSection *bool
 
 	// Paths
-	RepoRoot  string
-	PatchPath string
+	repoRoot  string
+	patchPath string
 
 	// Key handling state
-	GPressed  *bool
-	LastGTime *time.Time
+	gPressed  *bool
+	lastGTime *time.Time
 
 	// View updater
-	ViewUpdater DiffViewUpdater
+	viewUpdater DiffViewUpdater
 
 	// Callbacks
-	UpdateFileListView func()
-	UpdateListStatus   func(string, string)
-	RefreshFileList    func()
-	OnUpdate           func()
+	updateFileListView func()
+	updateListStatus   func(string, string)
+	refreshFileList    func()
+	onUpdate           func()
 }
 
 // SetupDiffViewKeyBindings sets up key bindings for diff view
@@ -521,95 +521,136 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 		case tcell.KeyEsc:
 			// 左ペインに戻る
 			// 選択モードをリセット（カーソル位置は保持）
-			*ctx.IsSelecting = false
-			*ctx.SelectEnd = -1
-			*ctx.SelectStart = -1
+			*ctx.isSelecting = false
+			*ctx.selectEnd = -1
+			*ctx.selectStart = -1
 			// 表示を更新（カーソルなし）
-			if ctx.ViewUpdater != nil {
-				ctx.ViewUpdater.UpdateWithoutCursor(*ctx.CurrentDiffText)
+			if ctx.viewUpdater != nil {
+				ctx.viewUpdater.UpdateWithoutCursor(*ctx.currentDiffText)
 			}
 			// 左ペインにフォーカスを戻す
-			*ctx.LeftPaneFocused = true
-			ctx.UpdateFileListView()
-			ctx.App.SetFocus(ctx.FileListView)
+			*ctx.leftPaneFocused = true
+			ctx.updateFileListView()
+			ctx.app.SetFocus(ctx.fileListView)
 			return nil
 		case tcell.KeyEnter:
 			// 左ペインに戻る
 			// 選択モードをリセット（カーソル位置は保持）
-			*ctx.IsSelecting = false
-			*ctx.SelectStart = -1
-			*ctx.SelectEnd = -1
+			*ctx.isSelecting = false
+			*ctx.selectStart = -1
+			*ctx.selectEnd = -1
 			// 表示を更新
-			if ctx.ViewUpdater != nil {
-				ctx.ViewUpdater.UpdateWithoutCursor(*ctx.CurrentDiffText)
+			if ctx.viewUpdater != nil {
+				ctx.viewUpdater.UpdateWithoutCursor(*ctx.currentDiffText)
 			}
 			// 左ペインにフォーカスを戻す
-			*ctx.LeftPaneFocused = true
-			ctx.UpdateFileListView()
-			ctx.App.SetFocus(ctx.FileListView)
+			*ctx.leftPaneFocused = true
+			ctx.updateFileListView()
+			ctx.app.SetFocus(ctx.fileListView)
+			return nil
+		case tcell.KeyCtrlE:
+			// Ctrl+E: 1行下にスクロール（カーソルは最上部になったら追従）
+			if *ctx.isSplitView {
+				currentRow, _ := ctx.beforeView.GetScrollOffset()
+				maxLines := getSplitViewLineCount(*ctx.currentDiffText)
+
+				nextRow := currentRow + 1
+				// スクロール位置を更新（最大行数を超えないようにする）
+				if nextRow < maxLines {
+					ctx.beforeView.ScrollTo(nextRow, 0)
+					ctx.afterView.ScrollTo(nextRow, 0)
+
+					// カーソルが画面最上部にある場合は追従
+					if *ctx.cursorY < nextRow {
+						*ctx.cursorY = nextRow
+						if ctx.viewUpdater != nil {
+							ctx.viewUpdater.UpdateWithSelection(*ctx.currentDiffText, *ctx.cursorY, *ctx.selectStart, *ctx.selectEnd, *ctx.isSelecting)
+						}
+					}
+				}
+			} else {
+				// Unified Viewの場合
+				currentRow, _ := ctx.diffView.GetScrollOffset()
+				coloredDiff := ColorizeDiff(*ctx.currentDiffText)
+				maxLines := len(util.SplitLines(coloredDiff))
+
+				nextRow := currentRow + 1
+				// スクロール位置を更新（最大行数を超えないようにする）
+				if nextRow < maxLines {
+					ctx.diffView.ScrollTo(nextRow, 0)
+
+					// カーソルが画面最上部にある場合は追従
+					if *ctx.cursorY < nextRow {
+						*ctx.cursorY = nextRow
+						if ctx.viewUpdater != nil {
+							ctx.viewUpdater.UpdateWithSelection(*ctx.currentDiffText, *ctx.cursorY, *ctx.selectStart, *ctx.selectEnd, *ctx.isSelecting)
+						}
+					}
+				}
+			}
 			return nil
 		case tcell.KeyRune:
 			switch event.Rune() {
 			case 's':
 				// Split Viewのトグル
-				*ctx.IsSplitView = !*ctx.IsSplitView
+				*ctx.isSplitView = !*ctx.isSplitView
 
-				if *ctx.IsSplitView {
+				if *ctx.isSplitView {
 					// Split Viewを表示（現在のカーソル位置を維持）
-					ctx.ViewUpdater = NewSplitViewUpdater(ctx.BeforeView, ctx.AfterView)
-					ctx.ViewUpdater.UpdateWithCursor(*ctx.CurrentDiffText, *ctx.CursorY)
-					ctx.ContentFlex.RemoveItem(ctx.DiffView)
-					ctx.ContentFlex.AddItem(ctx.SplitViewFlex, 0, 4, false)
+					ctx.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
+					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+					ctx.contentFlex.RemoveItem(ctx.diffView)
+					ctx.contentFlex.AddItem(ctx.splitViewFlex, 0, 4, false)
 					// フォーカスがdiffViewにある場合、splitViewFlexに移動
-					if !*ctx.LeftPaneFocused {
-						ctx.App.SetFocus(ctx.SplitViewFlex)
+					if !*ctx.leftPaneFocused {
+						ctx.app.SetFocus(ctx.splitViewFlex)
 					}
 				} else {
 					// 通常の差分表示に戻す
-					ctx.ViewUpdater = NewUnifiedViewUpdater(ctx.DiffView)
-					ctx.ContentFlex.RemoveItem(ctx.SplitViewFlex)
-					ctx.ContentFlex.AddItem(ctx.DiffView, 0, 4, false)
-					ctx.ViewUpdater.UpdateWithCursor(*ctx.CurrentDiffText, *ctx.CursorY)
+					ctx.viewUpdater = NewUnifiedViewUpdater(ctx.diffView)
+					ctx.contentFlex.RemoveItem(ctx.splitViewFlex)
+					ctx.contentFlex.AddItem(ctx.diffView, 0, 4, false)
+					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 					// フォーカスがsplitViewFlexにある場合、diffViewに移動
-					if !*ctx.LeftPaneFocused {
-						ctx.App.SetFocus(ctx.DiffView)
+					if !*ctx.leftPaneFocused {
+						ctx.app.SetFocus(ctx.diffView)
 					}
 				}
 				return nil
 			case 'g':
 				now := time.Now()
-				if *ctx.GPressed && now.Sub(*ctx.LastGTime) < 500*time.Millisecond {
+				if *ctx.gPressed && now.Sub(*ctx.lastGTime) < 500*time.Millisecond {
 					// gg → 最上部
-					*ctx.CursorY = 0
-					if *ctx.IsSelecting {
-						*ctx.SelectEnd = *ctx.CursorY
+					*ctx.cursorY = 0
+					if *ctx.isSelecting {
+						*ctx.selectEnd = *ctx.cursorY
 					}
-					if ctx.ViewUpdater != nil {
-						ctx.ViewUpdater.UpdateWithSelection(*ctx.CurrentDiffText, *ctx.CursorY, *ctx.SelectStart, *ctx.SelectEnd, *ctx.IsSelecting)
+					if ctx.viewUpdater != nil {
+						ctx.viewUpdater.UpdateWithSelection(*ctx.currentDiffText, *ctx.cursorY, *ctx.selectStart, *ctx.selectEnd, *ctx.isSelecting)
 					}
-					*ctx.GPressed = false
+					*ctx.gPressed = false
 				} else {
 					// 1回目のg
-					*ctx.GPressed = true
-					*ctx.LastGTime = now
+					*ctx.gPressed = true
+					*ctx.lastGTime = now
 				}
 				return nil
 			case 'G': // 大文字G → 最下部へ
-				coloredDiff := ColorizeDiff(*ctx.CurrentDiffText)
-				*ctx.CursorY = len(util.SplitLines(coloredDiff)) - 1
-				if *ctx.IsSelecting {
-					*ctx.SelectEnd = *ctx.CursorY
+				coloredDiff := ColorizeDiff(*ctx.currentDiffText)
+				*ctx.cursorY = len(util.SplitLines(coloredDiff)) - 1
+				if *ctx.isSelecting {
+					*ctx.selectEnd = *ctx.cursorY
 				}
-				if ctx.ViewUpdater != nil {
-					ctx.ViewUpdater.UpdateWithCursor(*ctx.CurrentDiffText, *ctx.CursorY)
+				if ctx.viewUpdater != nil {
+					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 				}
 				return nil
 			case 'j':
 				// 下移動
-				maxLines := len(*ctx.CurrentDiffText) - 1
-				if *ctx.IsSplitView {
+				maxLines := len(*ctx.currentDiffText) - 1
+				if *ctx.isSplitView {
 					// Split Viewの場合は有効な行数を取得
-					splitViewLines := getSplitViewLineCount(*ctx.CurrentDiffText)
+					splitViewLines := getSplitViewLineCount(*ctx.currentDiffText)
 					if splitViewLines > 0 {
 						maxLines = splitViewLines - 1
 					} else {
@@ -617,82 +658,82 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					}
 				}
 
-				if *ctx.CursorY < maxLines {
-					(*ctx.CursorY)++
-					if *ctx.IsSelecting {
-						*ctx.SelectEnd = *ctx.CursorY
+				if *ctx.cursorY < maxLines {
+					(*ctx.cursorY)++
+					if *ctx.isSelecting {
+						*ctx.selectEnd = *ctx.cursorY
 					}
-					if ctx.ViewUpdater != nil {
-						ctx.ViewUpdater.UpdateWithSelection(*ctx.CurrentDiffText, *ctx.CursorY, *ctx.SelectStart, *ctx.SelectEnd, *ctx.IsSelecting)
+					if ctx.viewUpdater != nil {
+						ctx.viewUpdater.UpdateWithSelection(*ctx.currentDiffText, *ctx.cursorY, *ctx.selectStart, *ctx.selectEnd, *ctx.isSelecting)
 					}
 				}
 				return nil
 			case 'k':
 				// 上移動
-				if *ctx.CursorY > 0 {
-					(*ctx.CursorY)--
-					if *ctx.IsSelecting {
-						*ctx.SelectEnd = *ctx.CursorY
+				if *ctx.cursorY > 0 {
+					(*ctx.cursorY)--
+					if *ctx.isSelecting {
+						*ctx.selectEnd = *ctx.cursorY
 					}
-					if ctx.ViewUpdater != nil {
-						ctx.ViewUpdater.UpdateWithSelection(*ctx.CurrentDiffText, *ctx.CursorY, *ctx.SelectStart, *ctx.SelectEnd, *ctx.IsSelecting)
+					if ctx.viewUpdater != nil {
+						ctx.viewUpdater.UpdateWithSelection(*ctx.currentDiffText, *ctx.cursorY, *ctx.selectStart, *ctx.selectEnd, *ctx.isSelecting)
 					}
 				}
 				return nil
 			case 'V':
 				// Shift + V で選択モード開始
-				if !*ctx.IsSelecting {
-					*ctx.IsSelecting = true
-					*ctx.SelectStart = *ctx.CursorY
-					*ctx.SelectEnd = *ctx.CursorY
-					if ctx.ViewUpdater != nil {
-						ctx.ViewUpdater.UpdateWithSelection(*ctx.CurrentDiffText, *ctx.CursorY, *ctx.SelectStart, *ctx.SelectEnd, *ctx.IsSelecting)
+				if !*ctx.isSelecting {
+					*ctx.isSelecting = true
+					*ctx.selectStart = *ctx.cursorY
+					*ctx.selectEnd = *ctx.cursorY
+					if ctx.viewUpdater != nil {
+						ctx.viewUpdater.UpdateWithSelection(*ctx.currentDiffText, *ctx.cursorY, *ctx.selectStart, *ctx.selectEnd, *ctx.isSelecting)
 					}
 				}
 				return nil
 			case 'u':
 				// パッチファイルが存在するか確認
-				if _, err := os.Stat(ctx.PatchPath); os.IsNotExist(err) {
-					ctx.UpdateListStatus("No patch to undo", "yellow")
+				if _, err := os.Stat(ctx.patchPath); os.IsNotExist(err) {
+					ctx.updateListStatus("No patch to undo", "yellow")
 					return nil
 				}
 
-				cmd := exec.Command("git", "-c", "core.quotepath=false", "apply", "-R", "--cached", ctx.PatchPath)
-				cmd.Dir = ctx.RepoRoot
+				cmd := exec.Command("git", "-c", "core.quotepath=false", "apply", "-R", "--cached", ctx.patchPath)
+				cmd.Dir = ctx.repoRoot
 				_, err := cmd.CombinedOutput()
 				if err != nil {
-					ctx.UpdateListStatus("Undo failed!", "firebrick")
+					ctx.updateListStatus("Undo failed!", "firebrick")
 				} else {
-					ctx.UpdateListStatus("Undo successful!", "gold")
+					ctx.updateListStatus("Undo successful!", "gold")
 
 					// 差分を再取得
 					var newDiffText string
-					if *ctx.CurrentStatus == "staged" {
-						newDiffText, _ = git.GetStagedDiff(*ctx.CurrentFile, ctx.RepoRoot)
+					if *ctx.currentStatus == "staged" {
+						newDiffText, _ = git.GetStagedDiff(*ctx.currentFile, ctx.repoRoot)
 					} else {
-						newDiffText, _ = git.GetFileDiff(*ctx.CurrentFile, ctx.RepoRoot)
+						newDiffText, _ = git.GetFileDiff(*ctx.currentFile, ctx.repoRoot)
 					}
-					*ctx.CurrentDiffText = newDiffText
+					*ctx.currentDiffText = newDiffText
 
 					// 再描画
-					if ctx.ViewUpdater != nil {
-						ctx.ViewUpdater.UpdateWithCursor(*ctx.CurrentDiffText, *ctx.CursorY)
+					if ctx.viewUpdater != nil {
+						ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 					}
 
 					// ファイルリストを更新
-					ctx.RefreshFileList()
-					ctx.UpdateFileListView()
+					ctx.refreshFileList()
+					ctx.updateFileListView()
 				}
 			case 'a':
 				// commandA関数を呼び出す
 				params := commands.CommandAParams{
-					SelectStart:      *ctx.SelectStart,
-					SelectEnd:        *ctx.SelectEnd,
-					CurrentFile:      *ctx.CurrentFile,
-					CurrentStatus:    *ctx.CurrentStatus,
-					CurrentDiffText:  *ctx.CurrentDiffText,
-					RepoRoot:         ctx.RepoRoot,
-					UpdateListStatus: ctx.UpdateListStatus,
+					SelectStart:      *ctx.selectStart,
+					SelectEnd:        *ctx.selectEnd,
+					CurrentFile:      *ctx.currentFile,
+					CurrentStatus:    *ctx.currentStatus,
+					CurrentDiffText:  *ctx.currentDiffText,
+					RepoRoot:         ctx.repoRoot,
+					UpdateListStatus: ctx.updateListStatus,
 				}
 
 				result, err := commands.CommandA(params)
@@ -704,98 +745,98 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 
 				// 結果を反映
-				*ctx.CurrentDiffText = result.NewDiffText
+				*ctx.currentDiffText = result.NewDiffText
 
 				// 選択を解除してカーソルリセット
-				*ctx.IsSelecting = false
-				*ctx.SelectStart = -1
-				*ctx.SelectEnd = -1
-				*ctx.CursorY = 0
+				*ctx.isSelecting = false
+				*ctx.selectStart = -1
+				*ctx.selectEnd = -1
+				*ctx.cursorY = 0
 
 				// 再描画
-				if ctx.ViewUpdater != nil {
-					ctx.ViewUpdater.UpdateWithCursor(*ctx.CurrentDiffText, *ctx.CursorY)
+				if ctx.viewUpdater != nil {
+					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 				}
 
 				// ファイルリストを内部的に更新
-				ctx.RefreshFileList()
+				ctx.refreshFileList()
 
 				// 差分が残っている場合
 				if !result.ShouldUpdate {
 					// 現在のファイルの位置を維持するため、savedTargetFileを設定
-					*ctx.SavedTargetFile = *ctx.CurrentFile
+					*ctx.savedTargetFile = *ctx.currentFile
 					// ファイルリストを再描画
-					ctx.UpdateFileListView()
+					ctx.updateFileListView()
 				} else {
 					// 差分がなくなった場合は、完全に更新
-					if ctx.OnUpdate != nil {
-						ctx.OnUpdate()
+					if ctx.onUpdate != nil {
+						ctx.onUpdate()
 					}
 				}
 				return nil
 			case 'A':
 				// 現在のファイルをステージ/アンステージ
-				if *ctx.CurrentFile != "" {
+				if *ctx.currentFile != "" {
 					var cmd *exec.Cmd
-					if *ctx.CurrentStatus == "staged" {
-						cmd = exec.Command("git", "-c", "core.quotepath=false", "reset", "HEAD", *ctx.CurrentFile)
+					if *ctx.currentStatus == "staged" {
+						cmd = exec.Command("git", "-c", "core.quotepath=false", "reset", "HEAD", *ctx.currentFile)
 					} else {
-						cmd = exec.Command("git", "-c", "core.quotepath=false", "add", *ctx.CurrentFile)
+						cmd = exec.Command("git", "-c", "core.quotepath=false", "add", *ctx.currentFile)
 					}
-					cmd.Dir = ctx.RepoRoot
+					cmd.Dir = ctx.repoRoot
 
 					err := cmd.Run()
 					if err == nil {
-						wasStaged := (*ctx.CurrentStatus == "staged")
+						wasStaged := (*ctx.currentStatus == "staged")
 
-						if *ctx.CurrentStatus == "staged" {
+						if *ctx.currentStatus == "staged" {
 							// unstagedになったファイルの差分を表示
-							*ctx.CurrentStatus = "unstaged"
-							newDiffText, _ := git.GetFileDiff(*ctx.CurrentFile, ctx.RepoRoot)
-							*ctx.CurrentDiffText = newDiffText
+							*ctx.currentStatus = "unstaged"
+							newDiffText, _ := git.GetFileDiff(*ctx.currentFile, ctx.repoRoot)
+							*ctx.currentDiffText = newDiffText
 						} else {
 							// stagedになったファイルの差分を表示
-							*ctx.CurrentStatus = "staged"
-							newDiffText, _ := git.GetStagedDiff(*ctx.CurrentFile, ctx.RepoRoot)
-							*ctx.CurrentDiffText = newDiffText
+							*ctx.currentStatus = "staged"
+							newDiffText, _ := git.GetStagedDiff(*ctx.currentFile, ctx.repoRoot)
+							*ctx.currentDiffText = newDiffText
 						}
 
 						// カーソルと選択をリセット
-						*ctx.IsSelecting = false
-						*ctx.SelectStart = -1
-						*ctx.SelectEnd = -1
-						*ctx.CursorY = 0
+						*ctx.isSelecting = false
+						*ctx.selectStart = -1
+						*ctx.selectEnd = -1
+						*ctx.cursorY = 0
 
 						// 再描画
-						if ctx.ViewUpdater != nil {
-							ctx.ViewUpdater.UpdateWithCursor(*ctx.CurrentDiffText, *ctx.CursorY)
+						if ctx.viewUpdater != nil {
+							ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 						}
 
 						// ステータスを更新
 						if wasStaged {
-							ctx.UpdateListStatus("File unstaged successfully!", "gold")
+							ctx.updateListStatus("File unstaged successfully!", "gold")
 						} else {
-							ctx.UpdateListStatus("File staged successfully!", "gold")
+							ctx.updateListStatus("File staged successfully!", "gold")
 						}
 
 						// refreshFileListを呼んで最新の状態を取得
-						ctx.RefreshFileList()
+						ctx.refreshFileList()
 
 						// カーソル位置を保存
 						// 常にunstagedセクションの先頭を選択するように設定
-						*ctx.PreferUnstagedSection = true
-						*ctx.SavedTargetFile = ""
+						*ctx.preferUnstagedSection = true
+						*ctx.savedTargetFile = ""
 
 						// ファイルリストを更新
-						if ctx.OnUpdate != nil {
-							ctx.OnUpdate()
+						if ctx.onUpdate != nil {
+							ctx.onUpdate()
 						}
 					} else {
 						// エラーの場合
-						if *ctx.CurrentStatus == "staged" {
-							ctx.UpdateListStatus("Failed to unstage file", "firebrick")
+						if *ctx.currentStatus == "staged" {
+							ctx.updateListStatus("Failed to unstage file", "firebrick")
 						} else {
-							ctx.UpdateListStatus("Failed to stage file", "firebrick")
+							ctx.updateListStatus("Failed to stage file", "firebrick")
 						}
 					}
 				}
@@ -806,7 +847,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					time.Sleep(100 * time.Millisecond)
 					os.Exit(0)
 				}()
-				ctx.App.Stop()
+				ctx.app.Stop()
 				return nil
 			}
 		}
@@ -814,6 +855,6 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 	}
 
 	// DiffViewとSplitViewFlexの両方に同じキーハンドラーを設定
-	ctx.DiffView.SetInputCapture(keyHandler)
-	ctx.SplitViewFlex.SetInputCapture(keyHandler)
+	ctx.diffView.SetInputCapture(keyHandler)
+	ctx.splitViewFlex.SetInputCapture(keyHandler)
 }

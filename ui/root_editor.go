@@ -278,37 +278,37 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	// ファイルリストのキーバインディングを設定
 	fileListKeyContext := &FileListKeyContext{
 		// UI Components
-		FileListView:  fileListView,
-		DiffView:      diffView,
-		BeforeView:    beforeView,
-		AfterView:     afterView,
-		SplitViewFlex: splitViewFlex,
-		ContentFlex:   contentFlex,
-		App:           app,
+		fileListView:  fileListView,
+		diffView:      diffView,
+		beforeView:    beforeView,
+		afterView:     afterView,
+		splitViewFlex: splitViewFlex,
+		contentFlex:   contentFlex,
+		app:           app,
 
 		// State
-		CurrentSelection: &currentSelection,
-		CursorY:          &cursorY,
-		IsSelecting:      &isSelecting,
-		SelectStart:      &selectStart,
-		SelectEnd:        &selectEnd,
-		IsSplitView:      &isSplitView,
-		LeftPaneFocused:  &leftPaneFocused,
-		CurrentFile:      &currentFile,
-		CurrentStatus:    &currentStatus,
-		CurrentDiffText:  &currentDiffText,
+		currentSelection: &currentSelection,
+		cursorY:          &cursorY,
+		isSelecting:      &isSelecting,
+		selectStart:      &selectStart,
+		selectEnd:        &selectEnd,
+		isSplitView:      &isSplitView,
+		leftPaneFocused:  &leftPaneFocused,
+		currentFile:      &currentFile,
+		currentStatus:    &currentStatus,
+		currentDiffText:  &currentDiffText,
 
 		// Collections
-		FileList: &fileList,
+		fileList: &fileList,
 
 		// Paths
-		RepoRoot: repoRoot,
+		repoRoot: repoRoot,
 
 		// Callbacks
-		UpdateFileListView:     updateFileListView,
-		UpdateSelectedFileDiff: updateSelectedFileDiff,
-		RefreshFileList:        refreshFileList,
-		UpdateCurrentDiffText:  updateCurrentDiffText,
+		updateFileListView:     updateFileListView,
+		updateSelectedFileDiff: updateSelectedFileDiff,
+		refreshFileList:        refreshFileList,
+		updateCurrentDiffText:  updateCurrentDiffText,
 	}
 	SetupFileListKeyBindings(fileListKeyContext)
 
@@ -316,43 +316,43 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	// diffViewのキーバインディングを設定
 	diffViewContext := &DiffViewContext{
 		// UI Components
-		DiffView:      diffView,
-		FileListView:  fileListView,
-		BeforeView:    beforeView,
-		AfterView:     afterView,
-		SplitViewFlex: splitViewFlex,
-		ContentFlex:   contentFlex,
-		App:           app,
+		diffView:      diffView,
+		fileListView:  fileListView,
+		beforeView:    beforeView,
+		afterView:     afterView,
+		splitViewFlex: splitViewFlex,
+		contentFlex:   contentFlex,
+		app:           app,
 
 		// State
-		CursorY:               &cursorY,
-		SelectStart:           &selectStart,
-		SelectEnd:             &selectEnd,
-		IsSelecting:           &isSelecting,
-		IsSplitView:           &isSplitView,
-		LeftPaneFocused:       &leftPaneFocused,
-		CurrentDiffText:       &currentDiffText,
-		CurrentFile:           &currentFile,
-		CurrentStatus:         &currentStatus,
-		SavedTargetFile:       &savedTargetFile,
-		PreferUnstagedSection: &preferUnstagedSection,
+		cursorY:               &cursorY,
+		selectStart:           &selectStart,
+		selectEnd:             &selectEnd,
+		isSelecting:           &isSelecting,
+		isSplitView:           &isSplitView,
+		leftPaneFocused:       &leftPaneFocused,
+		currentDiffText:       &currentDiffText,
+		currentFile:           &currentFile,
+		currentStatus:         &currentStatus,
+		savedTargetFile:       &savedTargetFile,
+		preferUnstagedSection: &preferUnstagedSection,
 
 		// Paths
-		RepoRoot:  repoRoot,
-		PatchPath: patchPath,
+		repoRoot:  repoRoot,
+		patchPath: patchPath,
 
 		// Key handling state
-		GPressed:  &gPressed,
-		LastGTime: &lastGTime,
+		gPressed:  &gPressed,
+		lastGTime: &lastGTime,
 
 		// View updater
-		ViewUpdater: NewUnifiedViewUpdater(diffView),
+		viewUpdater: NewUnifiedViewUpdater(diffView),
 
 		// Callbacks
-		UpdateFileListView: updateFileListView,
-		UpdateListStatus:   updateListStatus,
-		RefreshFileList:    refreshFileList,
-		OnUpdate:           onUpdate,
+		updateFileListView: updateFileListView,
+		updateListStatus:   updateListStatus,
+		refreshFileList:    refreshFileList,
+		onUpdate:           onUpdate,
 	}
 	SetupDiffViewKeyBindings(diffViewContext)
 

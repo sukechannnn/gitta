@@ -233,139 +233,139 @@ func BuildFileListContent(
 // FileListKeyContext contains all the context needed for file list key bindings
 type FileListKeyContext struct {
 	// UI Components
-	FileListView  *tview.TextView
-	DiffView      *tview.TextView
-	BeforeView    *tview.TextView
-	AfterView     *tview.TextView
-	SplitViewFlex *tview.Flex
-	ContentFlex   *tview.Flex
-	App           *tview.Application
+	fileListView  *tview.TextView
+	diffView      *tview.TextView
+	beforeView    *tview.TextView
+	afterView     *tview.TextView
+	splitViewFlex *tview.Flex
+	contentFlex   *tview.Flex
+	app           *tview.Application
 
 	// State
-	CurrentSelection *int
-	CursorY          *int
-	IsSelecting      *bool
-	SelectStart      *int
-	SelectEnd        *int
-	IsSplitView      *bool
-	LeftPaneFocused  *bool
-	CurrentFile      *string
-	CurrentStatus    *string
-	CurrentDiffText  *string
+	currentSelection *int
+	cursorY          *int
+	isSelecting      *bool
+	selectStart      *int
+	selectEnd        *int
+	isSplitView      *bool
+	leftPaneFocused  *bool
+	currentFile      *string
+	currentStatus    *string
+	currentDiffText  *string
 
 	// Collections
-	FileList *[]FileEntry
+	fileList *[]FileEntry
 
 	// Paths
-	RepoRoot string
+	repoRoot string
 
 	// Callbacks
-	UpdateFileListView     func()
-	UpdateSelectedFileDiff func()
-	RefreshFileList        func()
-	UpdateCurrentDiffText  func(string, string, string, *string)
+	updateFileListView     func()
+	updateSelectedFileDiff func()
+	refreshFileList        func()
+	updateCurrentDiffText  func(string, string, string, *string)
 }
 
 // SetupFileListKeyBindings sets up key bindings for file list view
 func SetupFileListKeyBindings(ctx *FileListKeyContext) {
-	ctx.FileListView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	ctx.fileListView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyUp:
-			if *ctx.CurrentSelection > 0 {
-				(*ctx.CurrentSelection)--
-				ctx.UpdateFileListView()
-				ctx.UpdateSelectedFileDiff()
+			if *ctx.currentSelection > 0 {
+				(*ctx.currentSelection)--
+				ctx.updateFileListView()
+				ctx.updateSelectedFileDiff()
 			}
 			return nil
 		case tcell.KeyDown:
-			if *ctx.CurrentSelection < len(*ctx.FileList)-1 {
-				(*ctx.CurrentSelection)++
-				ctx.UpdateFileListView()
-				ctx.UpdateSelectedFileDiff()
+			if *ctx.currentSelection < len(*ctx.fileList)-1 {
+				(*ctx.currentSelection)++
+				ctx.updateFileListView()
+				ctx.updateSelectedFileDiff()
 			}
 			return nil
 		case tcell.KeyEnter:
-			if *ctx.CurrentSelection >= 0 && *ctx.CurrentSelection < len(*ctx.FileList) {
-				fileEntry := (*ctx.FileList)[*ctx.CurrentSelection]
+			if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
+				fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 				file := fileEntry.Path
 				status := fileEntry.Status
 
 				// 現在のファイル情報を更新
-				*ctx.CurrentFile = file
-				*ctx.CurrentStatus = status
+				*ctx.currentFile = file
+				*ctx.currentStatus = status
 
 				// カーソルと選択をリセット
-				*ctx.CursorY = 0
-				*ctx.IsSelecting = false
-				*ctx.SelectStart = -1
-				*ctx.SelectEnd = -1
+				*ctx.cursorY = 0
+				*ctx.isSelecting = false
+				*ctx.selectStart = -1
+				*ctx.selectEnd = -1
 
-				ctx.UpdateCurrentDiffText(file, status, ctx.RepoRoot, ctx.CurrentDiffText)
+				ctx.updateCurrentDiffText(file, status, ctx.repoRoot, ctx.currentDiffText)
 
 				// Split Viewの場合はカーソル付きで更新
-				if *ctx.IsSplitView {
-					updateSplitViewWithCursor(ctx.BeforeView, ctx.AfterView, *ctx.CurrentDiffText, *ctx.CursorY)
+				if *ctx.isSplitView {
+					updateSplitViewWithCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, *ctx.cursorY)
 				} else {
-					updateDiffViewWithCursor(ctx.DiffView, *ctx.CurrentDiffText, *ctx.CursorY)
+					updateDiffViewWithCursor(ctx.diffView, *ctx.currentDiffText, *ctx.cursorY)
 				}
 
 				// フォーカスを右ペインに移動
-				*ctx.LeftPaneFocused = false
-				ctx.UpdateFileListView()
-				if *ctx.IsSplitView {
-					ctx.App.SetFocus(ctx.SplitViewFlex)
+				*ctx.leftPaneFocused = false
+				ctx.updateFileListView()
+				if *ctx.isSplitView {
+					ctx.app.SetFocus(ctx.splitViewFlex)
 				} else {
-					ctx.App.SetFocus(ctx.DiffView)
+					ctx.app.SetFocus(ctx.diffView)
 				}
 			}
 			return nil
 		case tcell.KeyRune:
 			switch event.Rune() {
 			case 'k':
-				if *ctx.CurrentSelection > 0 {
-					(*ctx.CurrentSelection)--
-					ctx.UpdateFileListView()
-					ctx.UpdateSelectedFileDiff()
+				if *ctx.currentSelection > 0 {
+					(*ctx.currentSelection)--
+					ctx.updateFileListView()
+					ctx.updateSelectedFileDiff()
 				}
 				return nil
 			case 'j':
-				if *ctx.CurrentSelection < len(*ctx.FileList)-1 {
-					(*ctx.CurrentSelection)++
-					ctx.UpdateFileListView()
-					ctx.UpdateSelectedFileDiff()
+				if *ctx.currentSelection < len(*ctx.fileList)-1 {
+					(*ctx.currentSelection)++
+					ctx.updateFileListView()
+					ctx.updateSelectedFileDiff()
 				}
 				return nil
 			case 'h':
 				// 左にスクロール
-				currentRow, currentCol := ctx.FileListView.GetScrollOffset()
+				currentRow, currentCol := ctx.fileListView.GetScrollOffset()
 				if currentCol > 0 {
-					ctx.FileListView.ScrollTo(currentRow, currentCol-1)
+					ctx.fileListView.ScrollTo(currentRow, currentCol-1)
 				}
 				return nil
 			case 'l':
 				// 右にスクロール
-				currentRow, currentCol := ctx.FileListView.GetScrollOffset()
-				ctx.FileListView.ScrollTo(currentRow, currentCol+1)
+				currentRow, currentCol := ctx.fileListView.GetScrollOffset()
+				ctx.fileListView.ScrollTo(currentRow, currentCol+1)
 				return nil
 			case 's':
 				// Split Viewのトグル
-				*ctx.IsSplitView = !*ctx.IsSplitView
+				*ctx.isSplitView = !*ctx.isSplitView
 
-				if *ctx.IsSplitView {
+				if *ctx.isSplitView {
 					// Split Viewを表示
-					updateSplitViewWithoutCursor(ctx.BeforeView, ctx.AfterView, *ctx.CurrentDiffText)
-					ctx.ContentFlex.RemoveItem(ctx.DiffView)
-					ctx.ContentFlex.AddItem(ctx.SplitViewFlex, 0, 4, false)
+					updateSplitViewWithoutCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText)
+					ctx.contentFlex.RemoveItem(ctx.diffView)
+					ctx.contentFlex.AddItem(ctx.splitViewFlex, 0, 4, false)
 				} else {
 					// 通常の差分表示に戻す
-					ctx.ContentFlex.RemoveItem(ctx.SplitViewFlex)
-					ctx.ContentFlex.AddItem(ctx.DiffView, 0, 4, false)
-					updateDiffViewWithoutCursor(ctx.DiffView, *ctx.CurrentDiffText)
+					ctx.contentFlex.RemoveItem(ctx.splitViewFlex)
+					ctx.contentFlex.AddItem(ctx.diffView, 0, 4, false)
+					updateDiffViewWithoutCursor(ctx.diffView, *ctx.currentDiffText)
 				}
 				return nil
 			case 'A': // 'A' で現在のファイルを git add/reset
-				if *ctx.CurrentSelection >= 0 && *ctx.CurrentSelection < len(*ctx.FileList) {
-					fileEntry := (*ctx.FileList)[*ctx.CurrentSelection]
+				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
+					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 					file := fileEntry.Path
 					status := fileEntry.Status
 
@@ -373,11 +373,11 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					if status == "staged" {
 						// stagedファイルをunstageする
 						cmd = exec.Command("git", "-c", "core.quotepath=false", "reset", "HEAD", file)
-						cmd.Dir = ctx.RepoRoot
+						cmd.Dir = ctx.repoRoot
 					} else {
 						// unstaged/untrackedファイルをstageする
 						cmd = exec.Command("git", "-c", "core.quotepath=false", "add", file)
-						cmd.Dir = ctx.RepoRoot
+						cmd.Dir = ctx.repoRoot
 					}
 
 					err := cmd.Run()
@@ -389,14 +389,14 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					// 現在のカーソル位置の次のファイルを探す
 					var nextFile string
 					var nextStatus string
-					if *ctx.CurrentSelection < len(*ctx.FileList)-1 {
-						nextFileEntry := (*ctx.FileList)[*ctx.CurrentSelection+1]
+					if *ctx.currentSelection < len(*ctx.fileList)-1 {
+						nextFileEntry := (*ctx.fileList)[*ctx.currentSelection+1]
 						nextFile = nextFileEntry.Path
 						nextStatus = nextFileEntry.Status
 					}
 
 					// ファイルリストを更新
-					ctx.RefreshFileList()
+					ctx.refreshFileList()
 
 					// カーソル位置を復元（UpdateFileListViewの前に実行）
 					foundNext := false
@@ -405,10 +405,10 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 						tempSelection := -1
 
 						// ファイルリストを再構築（UpdateFileListViewを呼ぶ）
-						ctx.UpdateFileListView()
+						ctx.updateFileListView()
 
 						// 次のファイルを探す
-						for i, fileEntry := range *ctx.FileList {
+						for i, fileEntry := range *ctx.fileList {
 							if fileEntry.Path == nextFile && fileEntry.Status == nextStatus {
 								tempSelection = i
 								foundNext = true
@@ -417,24 +417,24 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 						}
 
 						if foundNext {
-							*ctx.CurrentSelection = tempSelection
+							*ctx.currentSelection = tempSelection
 						}
 					} else {
 						// nextFileがない場合は通常通り更新
-						ctx.UpdateFileListView()
+						ctx.updateFileListView()
 					}
 
 					if !foundNext {
 						// 次のファイルが見つからない場合
-						if *ctx.CurrentSelection >= len(*ctx.FileList) {
+						if *ctx.currentSelection >= len(*ctx.fileList) {
 							// 最後のファイルだった場合
-							*ctx.CurrentSelection = len(*ctx.FileList) - 1
+							*ctx.currentSelection = len(*ctx.fileList) - 1
 						}
 					}
 
 					// 画面を再度更新して選択位置を反映
-					ctx.UpdateFileListView()
-					ctx.UpdateSelectedFileDiff()
+					ctx.updateFileListView()
+					ctx.updateSelectedFileDiff()
 				}
 				return nil
 			case 'q': // 'q' でアプリ終了
@@ -442,7 +442,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					time.Sleep(100 * time.Millisecond)
 					os.Exit(0)
 				}()
-				ctx.App.Stop()
+				ctx.app.Stop()
 			}
 		}
 		return event
