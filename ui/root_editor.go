@@ -493,8 +493,6 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			isCommitMode = false
 			commitTextArea.SetText("", false)
 			mainFlex.RemoveItem(commitTextArea)
-			// フォーカスを元に戻す
-			// 常に左ペイン（fileListView）にフォーカスを戻す
 			app.SetFocus(fileListView)
 		}
 
