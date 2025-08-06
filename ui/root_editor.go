@@ -65,6 +65,19 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	// コミット関連の状態
 	var isCommitMode bool = false
 	var commitMessage string = ""
+	// 現在のファイル情報を保持
+	var currentFile string
+	var currentStatus string
+	var currentDiffText string
+	var cursorY int = 0
+	var selectStart int = -1
+	var selectEnd int = -1
+	var isSelecting bool = false
+	var currentSelection int = 0
+	var leftPaneFocused bool = true
+	var gPressed bool = false
+	var lastGTime time.Time
+	var isSplitView bool = false // Split Viewモードのフラグ
 
 	// listStatusView を作成
 	globalStatusView = tview.NewTextView().
@@ -117,20 +130,6 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		AddItem(afterView, 0, 1, false).
 		AddItem(CreateVerticalBorder(), 1, 0, false)
 	splitViewFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
-
-	// 現在のファイル情報を保持
-	var currentFile string
-	var currentStatus string
-	var currentDiffText string // 生の差分テキストを保持
-	var cursorY int = 0
-	var selectStart int = -1
-	var selectEnd int = -1
-	var isSelecting bool = false
-	var currentSelection int = 0
-	var leftPaneFocused bool = true
-	var gPressed bool = false
-	var lastGTime time.Time
-	var isSplitView bool = false // Split Viewモードのフラグ
 
 	// 保存されたカーソル位置を復元
 	if preferUnstagedSection || savedTargetFile != "" {
