@@ -34,10 +34,19 @@ func updateCurrentDiffText(filePath string, status string, repoRoot string, curr
 	var diffText string
 	var err error
 
-	if status == "staged" {
+	switch status {
+	case "staged":
 		// stagedファイルの場合はstaged差分を取得
 		diffText, err = git.GetStagedDiff(filePath, repoRoot)
-	} else {
+	case "untracked":
+		// untrackedファイルの場合はファイル内容を読み取って全て追加として表示
+		content, readErr := util.ReadFileContent(filePath, repoRoot)
+		if readErr != nil {
+			err = readErr
+		} else {
+			diffText = util.FormatAsAddedLines(content, filePath)
+		}
+	default:
 		// unstagedファイルの場合は通常の差分を取得
 		diffText, err = git.GetFileDiff(filePath, repoRoot)
 	}
