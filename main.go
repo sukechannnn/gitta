@@ -98,6 +98,7 @@ func main() {
 			updatedModifiedFiles,
 			updatedUntrackedFiles,
 			repoPath,
+			gittaApp.Config.PatchFilePath,
 			updateFileList,
 			autoRefresh,
 		)
@@ -106,7 +107,7 @@ func main() {
 
 	// 初期ビュー（ファイル一覧）を作成し、ルートに設定
 	// onSelect パラメータは現在使用されていないため nil を渡す
-	initialView := ui.RootEditor(gittaApp.App, stagedFiles, modifiedFiles, untrackedFiles, repoPath, updateFileList, autoRefresh)
+	initialView := ui.RootEditor(gittaApp.App, stagedFiles, modifiedFiles, untrackedFiles, repoPath, gittaApp.Config.PatchFilePath, updateFileList, autoRefresh)
 	gittaApp.App.SetRoot(initialView, true)
 
 	// アプリケーションの実行は main で一度だけ

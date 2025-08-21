@@ -15,9 +15,6 @@ import (
 var savedTargetFile string = ""
 var preferUnstagedSection bool = false
 
-// パッチファイルのパス
-var patchPath = "/tmp/gitta_selected.patch"
-
 // globalStatusView をグローバルに定義
 var globalStatusView *tview.TextView
 var listKeyBindingMessage = "Press 'Enter' to switch panes, 'q' to quit, 'a' to stage selected lines, 'A' to stage/unstage file, 'V' to select lines, 'Ctrl+K' to commit, and 'j/k' to navigate."
@@ -56,7 +53,7 @@ func updateCurrentDiffText(filePath string, status string, repoRoot string, curr
 	}
 }
 
-func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []git.FileInfo, repoRoot string, onUpdate func(), enableAutoRefresh bool) tview.Primitive {
+func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []git.FileInfo, repoRoot string, patchFilePath string, onUpdate func(), enableAutoRefresh bool) tview.Primitive {
 	// ファイルリストを更新するための参照を保持
 	stagedFilesPtr := &stagedFiles
 	modifiedFilesPtr := &modifiedFiles
@@ -335,7 +332,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 		// Paths
 		repoRoot:  repoRoot,
-		patchPath: patchPath,
+		patchPath: patchFilePath,
 
 		// Key handling state
 		gPressed:  &gPressed,
