@@ -483,15 +483,25 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		}()
 	}
 
-	commitTextArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		exitCommitMode := func() {
-			isCommitMode = false
-			leftPaneFocused = true
-			commitTextArea.SetText("", false)
-			mainFlex.RemoveItem(commitTextArea)
-			app.SetFocus(fileListView)
-		}
+	exitCommitMode := func() {
+		isCommitMode = false
+		leftPaneFocused = true
+		commitTextArea.SetText("", false)
+		mainFlex.RemoveItem(commitTextArea)
+		app.SetFocus(fileListView)
+	}
 
+	toggleCommitMode := func() {
+		if !isCommitMode {
+			isCommitMode = true
+			mainFlex.AddItem(commitTextArea, 7, 0, true) // TextAreaは高さを7に増やして複数行に対応
+			app.SetFocus(commitTextArea)
+		} else {
+			exitCommitMode()
+		}
+	}
+
+	commitTextArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyCtrlS:
 			commitMessage = commitTextArea.GetText()
@@ -526,16 +536,6 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		return event
 	})
 
-	commitMode := func() {
-		if !isCommitMode {
-			isCommitMode = true
-			mainFlex.AddItem(commitTextArea, 7, 0, true) // TextAreaは高さを7に増やして複数行に対応
-			app.SetFocus(commitTextArea)
-		} else {
-			app.SetFocus(commitTextArea)
-		}
-	}
-
 	// mainFlex にステータスビューとコンテンツを追加
 	mainFlex.AddItem(globalStatusView, 5, 0, false).
 		AddItem(horizontalTopBorder, 1, 0, false).
@@ -544,7 +544,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlK {
-			commitMode()
+			toggleCommitMode()
 			return nil
 		}
 		return event
