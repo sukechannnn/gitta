@@ -539,6 +539,26 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			updateGlobalStatus("Successfully committed", "forestgreen")
 			// コミット後にファイルリストを更新
 			refreshFileList()
+
+			// ファイルリストが更新された後、選択位置を調整
+			// fileListの再構築のためにupdateFileListViewを呼ぶ
+			updateFileListView()
+
+			// 選択位置が範囲外の場合は調整
+			if len(fileList) > 0 {
+				// ファイルがまだ残っている場合
+				if currentSelection >= len(fileList) {
+					currentSelection = len(fileList) - 1
+				}
+				if currentSelection < 0 {
+					currentSelection = 0
+				}
+			} else {
+				// ファイルリストが空になった場合
+				currentSelection = 0
+			}
+
+			// 再度ビューを更新して正しい選択位置を反映
 			updateFileListView()
 			updateSelectedFileDiff()
 
