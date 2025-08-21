@@ -521,7 +521,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	commitTextArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
-		case tcell.KeyCtrlS:
+		case tcell.KeyCtrlO:
 			commitMessage = commitTextArea.GetText()
 			if commitMessage == "" {
 				updateGlobalStatus("Commit message cannot be empty", "tomato")
