@@ -303,6 +303,15 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			} else {
 				updateDiffViewWithoutCursor(diffView, currentDiffText)
 			}
+		} else {
+			// ファイルリストが空の場合
+			currentDiffText = "No file content ✨"
+			if isSplitView {
+				beforeView.SetText("")
+				afterView.SetText("No file content ✨")
+			} else {
+				diffView.SetText("No file content ✨")
+			}
 		}
 	}
 
