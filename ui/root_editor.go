@@ -405,6 +405,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		updateSelectedFileDiff: updateSelectedFileDiff,
 		refreshFileList:        refreshFileList,
 		updateCurrentDiffText:  updateCurrentDiffText,
+		updateGlobalStatus:     updateGlobalStatus,
 	}
 	SetupFileListKeyBindings(fileListKeyContext)
 

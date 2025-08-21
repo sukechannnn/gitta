@@ -11,6 +11,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/sukechannnn/gitta/git"
+	"github.com/sukechannnn/gitta/ui/commands"
 	"github.com/sukechannnn/gitta/util"
 )
 
@@ -296,6 +297,7 @@ type FileListKeyContext struct {
 	updateSelectedFileDiff func()
 	refreshFileList        func()
 	updateCurrentDiffText  func(string, string, string, *string)
+	updateGlobalStatus     func(string, string)
 }
 
 // SetupFileListKeyBindings sets up key bindings for file list view
@@ -351,6 +353,19 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				}
 			}
 			return nil
+		case tcell.KeyCtrlY: // Ctrl+Y で .git があるリポジトリルートからのパスをコピー
+			if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
+				fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+				err := commands.CopyFilePath(fileEntry.Path)
+				if ctx.updateGlobalStatus != nil {
+					if err == nil {
+						ctx.updateGlobalStatus("Copied path to clipboard", "forestgreen")
+					} else {
+						ctx.updateGlobalStatus("Failed to copy path to clipboard", "tomato")
+					}
+				}
+			}
+			return nil
 		case tcell.KeyRune:
 			switch event.Rune() {
 			case 'k':
@@ -400,6 +415,19 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					// viewUpdaterをUnifiedView用に更新
 					if ctx.diffViewContext != nil {
 						ctx.diffViewContext.viewUpdater = NewUnifiedViewUpdater(ctx.diffView)
+					}
+				}
+				return nil
+			case 'y': // 'y' でファイル名のみをコピー
+				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
+					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+					err := commands.CopyFileName(fileEntry.Path)
+					if ctx.updateGlobalStatus != nil {
+						if err == nil {
+							ctx.updateGlobalStatus("Copied filename to clipboard", "forestgreen")
+						} else {
+							ctx.updateGlobalStatus("Failed to copy filename to clipboard", "tomato")
+						}
 					}
 				}
 				return nil
