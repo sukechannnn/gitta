@@ -89,8 +89,7 @@ func colorizeLine(line string) string {
 			// Escape the line content to prevent tview from interpreting brackets as color tags
 			return "[green]" + tview.Escape(line) + "[-]"
 		case ' ':
-			// Remove leading space for common lines (Git diff format) and escape
-			return tview.Escape(line[1:])
+			return tview.Escape(line)
 		default:
 			return tview.Escape(line)
 		}
