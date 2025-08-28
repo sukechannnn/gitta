@@ -87,7 +87,7 @@ func scrollDiffView(ctx *DiffViewContext, direction int) {
 	} else {
 		// Unified Viewの場合
 		currentRow, _ := ctx.diffView.GetScrollOffset()
-		coloredDiff := ColorizeDiff(*ctx.currentDiffText)
+		coloredDiff := ColorizeDiffWithSyntax(*ctx.currentDiffText, *ctx.currentFile)
 		maxLines := len(util.SplitLines(coloredDiff))
 
 		nextRow := currentRow + direction
@@ -121,9 +121,13 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 	// 初期状態でviewUpdaterを設定
 	if ctx.viewUpdater == nil {
 		if *ctx.isSplitView {
-			ctx.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
+			updater := NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
+			updater.SetCurrentFile(ctx.currentFile)
+			ctx.viewUpdater = updater
 		} else {
-			ctx.viewUpdater = NewUnifiedViewUpdater(ctx.diffView)
+			updater := NewUnifiedViewUpdater(ctx.diffView)
+			updater.SetCurrentFile(ctx.currentFile)
+			ctx.viewUpdater = updater
 		}
 	}
 
@@ -170,7 +174,9 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 
 				if *ctx.isSplitView {
 					// Split Viewを表示（現在のカーソル位置を維持）
-					ctx.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
+					updater := NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
+					updater.SetCurrentFile(ctx.currentFile)
+					ctx.viewUpdater = updater
 					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 					ctx.contentFlex.RemoveItem(ctx.unifiedViewFlex)
 					ctx.contentFlex.AddItem(ctx.splitViewFlex, 0, DiffViewFlexRatio, false)
@@ -209,7 +215,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			case 'G': // 大文字G → 最下部へ
-				coloredDiff := ColorizeDiff(*ctx.currentDiffText)
+				coloredDiff := ColorizeDiffWithSyntax(*ctx.currentDiffText, *ctx.currentFile)
 				*ctx.cursorY = len(util.SplitLines(coloredDiff)) - 1
 				if *ctx.isSelecting {
 					*ctx.selectEnd = *ctx.cursorY

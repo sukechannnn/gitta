@@ -17,6 +17,16 @@ type SplitViewContent struct {
 
 // generateSplitViewContent generates content for split view from diff text
 func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]int) *SplitViewContent {
+	return generateSplitViewContentInternal(diffText, oldLineMap, newLineMap, "", false)
+}
+
+// generateSplitViewContentWithSyntax generates content for split view with syntax highlighting
+func generateSplitViewContentWithSyntax(diffText string, oldLineMap, newLineMap map[int]int, filePath string) *SplitViewContent {
+	return generateSplitViewContentInternal(diffText, oldLineMap, newLineMap, filePath, true)
+}
+
+// generateSplitViewContentInternal is the internal implementation
+func generateSplitViewContentInternal(diffText string, oldLineMap, newLineMap map[int]int, filePath string, useSyntax bool) *SplitViewContent {
 	lines := strings.Split(diffText, "\n")
 	content := &SplitViewContent{
 		BeforeLines:    []string{},
@@ -42,7 +52,7 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 			inHunk = true
 			continue
 		} else if inHunk {
-			processHunkLine(line, displayLine, maxDigits, oldLineMap, newLineMap, content)
+			processHunkLine(line, displayLine, maxDigits, oldLineMap, newLineMap, content, filePath, useSyntax)
 			displayLine++
 		}
 	}
@@ -59,11 +69,19 @@ func isHeaderLine(line string) bool {
 }
 
 // processHunkLine processes a single line within a hunk
-func processHunkLine(line string, displayLine, maxDigits int, oldLineMap, newLineMap map[int]int, content *SplitViewContent) {
+func processHunkLine(line string, displayLine, maxDigits int, oldLineMap, newLineMap map[int]int, content *SplitViewContent, filePath string, useSyntax bool) {
 	if strings.HasPrefix(line, "-") {
 		// 削除行（左側のみに表示、- 記号を含める）
-		// Escape the line content to prevent tview from interpreting brackets as color tags
-		content.BeforeLines = append(content.BeforeLines, "[red]"+tview.Escape(line)+"[-]")
+		var displayText string
+		if useSyntax && len(line) > 1 {
+			// シンタックスハイライトを適用
+			highlighted := ApplySyntaxHighlight(line[1:], filePath)
+			displayText = "[red]-[-]" + highlighted
+		} else {
+			// Escape the line content to prevent tview from interpreting brackets as color tags
+			displayText = "[red]" + tview.Escape(line) + "[-]"
+		}
+		content.BeforeLines = append(content.BeforeLines, displayText)
 		content.AfterLines = append(content.AfterLines, "[dimgray] [-]") // 右側には左側の行数と合わせるためのスペースを表示
 
 		// 左側に実際の行番号、右側は空
@@ -76,8 +94,17 @@ func processHunkLine(line string, displayLine, maxDigits int, oldLineMap, newLin
 	} else if strings.HasPrefix(line, "+") {
 		// 追加行（右側のみに表示、+ 記号を含める）
 		content.BeforeLines = append(content.BeforeLines, "[dimgray] [-]") // 左側には右側の行数と合わせるためのスペースを表示
-		// Escape the line content to prevent tview from interpreting brackets as color tags
-		content.AfterLines = append(content.AfterLines, "[green]"+tview.Escape(line)+"[-]")
+
+		var displayText string
+		if useSyntax && len(line) > 1 {
+			// シンタックスハイライトを適用
+			highlighted := ApplySyntaxHighlight(line[1:], filePath)
+			displayText = "[green]+[-]" + highlighted
+		} else {
+			// Escape the line content to prevent tview from interpreting brackets as color tags
+			displayText = "[green]" + tview.Escape(line) + "[-]"
+		}
+		content.AfterLines = append(content.AfterLines, displayText)
 
 		// 左側は空、右側に実際の行番号
 		content.BeforeLineNums = append(content.BeforeLineNums, strings.Repeat(" ", maxDigits))
@@ -88,10 +115,17 @@ func processHunkLine(line string, displayLine, maxDigits int, oldLineMap, newLin
 		}
 	} else if strings.HasPrefix(line, " ") {
 		// 変更なし行（両側に表示、先頭のスペースを保持）
-		// Escape the line content to prevent tview from interpreting brackets as color tags
-		escapedLine := tview.Escape(line[1:])
-		content.BeforeLines = append(content.BeforeLines, " "+escapedLine)
-		content.AfterLines = append(content.AfterLines, " "+escapedLine)
+		var displayText string
+		if useSyntax && len(line) > 1 {
+			// シンタックスハイライトを適用
+			highlighted := ApplySyntaxHighlight(line[1:], filePath)
+			displayText = " " + highlighted
+		} else {
+			// Escape the line content to prevent tview from interpreting brackets as color tags
+			displayText = " " + tview.Escape(line[1:])
+		}
+		content.BeforeLines = append(content.BeforeLines, displayText)
+		content.AfterLines = append(content.AfterLines, displayText)
 
 		// 両側に実際の行番号
 		if num, ok := oldLineMap[displayLine]; ok {

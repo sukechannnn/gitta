@@ -24,6 +24,25 @@ func generateUnifiedViewContent(diffText string, oldLineMap, newLineMap map[int]
 	// First colorize the diff
 	coloredLines := colorizeDiff(diffText)
 
+	return buildUnifiedViewContent(coloredLines, oldLineMap, newLineMap)
+}
+
+// generateUnifiedViewContentWithSyntax generates content for unified view with syntax highlighting
+func generateUnifiedViewContentWithSyntax(diffText string, oldLineMap, newLineMap map[int]int, filePath string) *UnifiedViewContent {
+	// Apply syntax highlighting
+	coloredDiff := ColorizeDiffWithSyntax(diffText, filePath)
+	// Split into lines (already colored)
+	coloredLines := strings.Split(coloredDiff, "\n")
+	// Remove last empty line if present
+	if len(coloredLines) > 0 && coloredLines[len(coloredLines)-1] == "" {
+		coloredLines = coloredLines[:len(coloredLines)-1]
+	}
+
+	return buildUnifiedViewContent(coloredLines, oldLineMap, newLineMap)
+}
+
+// buildUnifiedViewContent builds unified view content from colored lines
+func buildUnifiedViewContent(coloredLines []string, oldLineMap, newLineMap map[int]int) *UnifiedViewContent {
 	// Calculate max digits for line numbers
 	maxDigits := calculateMaxLineNumberDigits(oldLineMap, newLineMap)
 

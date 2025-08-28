@@ -340,7 +340,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				if *ctx.isSplitView {
 					updateSplitViewWithCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, *ctx.cursorY)
 				} else {
-					updateDiffViewWithCursor(ctx.diffView, *ctx.currentDiffText, *ctx.cursorY)
+					updateDiffViewWithCursorWithSyntax(ctx.diffView, *ctx.currentDiffText, *ctx.cursorY, *ctx.currentFile)
 				}
 
 				// フォーカスを右ペインに移動
@@ -405,16 +405,21 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					ctx.contentFlex.AddItem(ctx.splitViewFlex, 0, DiffViewFlexRatio, false)
 					// viewUpdaterをSplitView用に更新
 					if ctx.diffViewContext != nil {
-						ctx.diffViewContext.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
+						updater := NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
+						updater.SetCurrentFile(ctx.currentFile)
+						ctx.diffViewContext.viewUpdater = updater
 					}
 				} else {
 					// 通常の差分表示に戻す
 					ctx.contentFlex.RemoveItem(ctx.splitViewFlex)
 					ctx.contentFlex.AddItem(ctx.unifiedViewFlex, 0, DiffViewFlexRatio, false)
-					updateDiffViewWithoutCursor(ctx.diffView, *ctx.currentDiffText)
+					// updateDiffViewWithoutCursor(ctx.diffView, *ctx.currentDiffText)
+					updateDiffViewWithoutCursorWithSyntax(ctx.diffView, *ctx.currentDiffText, *ctx.currentFile)
 					// viewUpdaterをUnifiedView用に更新
 					if ctx.diffViewContext != nil {
-						ctx.diffViewContext.viewUpdater = NewUnifiedViewUpdater(ctx.diffView)
+						updater := NewUnifiedViewUpdater(ctx.diffView)
+						updater.SetCurrentFile(ctx.currentFile)
+						ctx.diffViewContext.viewUpdater = updater
 					}
 				}
 				return nil

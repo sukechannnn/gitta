@@ -193,7 +193,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	// コミットメッセージ入力エリア
 	commitTextArea := tview.NewTextArea().
-		SetPlaceholder("Enter commit message (Press Ctrl+S to commit, Ctrl+l to focus file list, Esc to cancel)")
+		SetPlaceholder("Enter commit message (Press Ctrl+O to commit, Ctrl+l to focus file list, Esc to cancel)")
 
 	// TextAreaのスタイル設定
 	// テキストスタイル（入力される文字）
@@ -301,7 +301,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			if isSplitView {
 				updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
 			} else {
-				updateDiffViewWithoutCursor(diffView, currentDiffText)
+				updateDiffViewWithoutCursorWithSyntax(diffView, currentDiffText, currentFile)
 			}
 		} else {
 			// ファイルリストが空の場合
@@ -319,6 +319,29 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	// 初期表示時に最初のファイルの差分を表示
 	updateSelectedFileDiff()
+
+	// 最初のファイルの差分を事前にキャッシュに入れる（バックグラウンドで）
+	if len(fileList) > 0 && currentDiffText != "" {
+		go PreloadDiffCache(currentDiffText, currentFile)
+
+		// 全ファイルをバックグラウンドで事前処理
+		go func() {
+			// 少し待機して、UIの初期表示を優先
+			time.Sleep(100 * time.Millisecond)
+
+			// 最初のファイル以外を全て処理
+			for i := 1; i < len(fileList); i++ {
+				fileEntry := fileList[i]
+				var diffText string
+				updateCurrentDiffText(fileEntry.Path, fileEntry.StageStatus, repoRoot, &diffText)
+				if diffText != "" {
+					PreloadDiffCache(diffText, fileEntry.Path)
+					// 次のファイルの処理まで少し待機（CPU負荷を分散）
+					time.Sleep(50 * time.Millisecond)
+				}
+			}
+		}()
+	}
 
 	// 初期メッセージを設定
 	globalStatusView.SetText(listKeyBindingMessage)
@@ -357,7 +380,11 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		lastGTime: &lastGTime,
 
 		// View updater
-		viewUpdater: NewUnifiedViewUpdater(diffView),
+		viewUpdater: func() DiffViewUpdater {
+			updater := NewUnifiedViewUpdater(diffView)
+			updater.SetCurrentFile(&currentFile)
+			return updater
+		}(),
 
 		// Callbacks
 		updateFileListView: updateFileListView,
@@ -490,7 +517,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 								if isSplitView {
 									updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
 								} else {
-									updateDiffViewWithCursor(diffView, currentDiffText, cursorY)
+									updateDiffViewWithCursorWithSyntax(diffView, currentDiffText, cursorY, currentFile)
 								}
 							}
 						}
