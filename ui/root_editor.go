@@ -510,16 +510,6 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		app.SetFocus(fileListView)
 	}
 
-	toggleCommitMode := func() {
-		if !isCommitMode {
-			isCommitMode = true
-			mainFlex.AddItem(commitTextArea, 7, 0, true) // TextAreaは高さを7に増やして複数行に対応
-			app.SetFocus(commitTextArea)
-		} else {
-			exitCommitMode()
-		}
-	}
-
 	commitTextArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyCtrlO:
@@ -583,7 +573,13 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlK {
-			toggleCommitMode()
+			if !isCommitMode {
+				isCommitMode = true
+				mainFlex.AddItem(commitTextArea, 7, 0, true) // TextAreaは高さを7に増やして複数行に対応
+				app.SetFocus(commitTextArea)
+			} else {
+				app.SetFocus(commitTextArea)
+			}
 			return nil
 		}
 		return event
