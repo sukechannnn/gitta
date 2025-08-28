@@ -33,9 +33,9 @@ index 123..456 789
 				2: 2,
 			},
 			wantContent: []string{
-				"line1",
+				" line1",
 				"[red]-line2[-]",
-				"line3",
+				" line3",
 			},
 			wantLineNums: []string{
 				"1 │ ",
@@ -63,9 +63,9 @@ index 123..456 789
 				2: 3,
 			},
 			wantContent: []string{
-				"line1",
+				" line1",
 				"[green]+line2[-]",
-				"line3",
+				" line3",
 			},
 			wantLineNums: []string{
 				"1 │ ",
@@ -95,10 +95,10 @@ index 123..456 789
 				3: 3,
 			},
 			wantContent: []string{
-				"line1",
+				" line1",
 				"[red]-line2[-]",
 				"[green]+line2_modified[-]",
-				"line3",
+				" line3",
 			},
 			wantLineNums: []string{
 				"1 │ ",
@@ -129,10 +129,10 @@ index 123..456 789
 				3: 100,
 			},
 			wantContent: []string{
-				"line98",
+				" line98",
 				"[red]-line99[-]",
 				"[green]+line99_modified[-]",
-				"line100",
+				" line100",
 			},
 			wantLineNums: []string{
 				" 98 │ ",
@@ -226,7 +226,7 @@ func TestColorizeDiff(t *testing.T) {
 			diffText: ` line1
 -deleted
 +added`,
-			want: "line1\n[red]-deleted[-]\n[green]+added[-]\n",
+			want: " line1\n[red]-deleted[-]\n[green]+added[-]\n",
 		},
 		{
 			name: "ヘッダー行の除外",
@@ -289,7 +289,7 @@ func TestColorizeLine(t *testing.T) {
 	}{
 		{"削除行", "-deleted", "[red]-deleted[-]"},
 		{"追加行", "+added", "[green]+added[-]"},
-		{"通常の行", " normal", "normal"},
+		{"通常の行", " normal", " normal"},
 		{"空行", "", ""},
 		{"その他の行", "other", "other"},
 	}
