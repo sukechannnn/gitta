@@ -327,13 +327,14 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	// diffViewのキーバインディングを設定
 	diffViewContext := &DiffViewContext{
 		// UI Components
-		diffView:      diffView,
-		fileListView:  fileListView,
-		beforeView:    beforeView,
-		afterView:     afterView,
-		splitViewFlex: splitViewFlex,
-		contentFlex:   contentFlex,
-		app:           app,
+		diffView:        diffView,
+		fileListView:    fileListView,
+		beforeView:      beforeView,
+		afterView:       afterView,
+		unifiedViewFlex: unifiedViewFlex,
+		splitViewFlex:   splitViewFlex,
+		contentFlex:     contentFlex,
+		app:             app,
 
 		// State
 		cursorY:               &cursorY,

@@ -64,3 +64,5 @@ config.local.json
 Thumbs.db
 .Spotlight-V100
 .Trashes
+# Added by goreleaser init:
+dist/
