@@ -80,14 +80,14 @@ func CreateHorizontalBottomBorder() *tview.Box {
 
 func calcBorderPos(width int) (int, int, int) {
 	// 縦線の位置を計算
-	// レイアウト: 縦線(1) + textView(比率1) + 縦線(1) + diffView(比率2) + 縦線(1)
-	totalFlexWidth := width - 3     // 3つの縦線の幅を除く
-	unitWidth := totalFlexWidth / 5 // 比率の合計は1+4=5
+	// レイアウト: 縦線(1) + textView(比率FileListFlexRatio) + 縦線(1) + diffView(比率DiffViewFlexRatio) + 縦線(1)
+	totalFlexWidth := width - 3                  // 3つの縦線の幅を除く
+	unitWidth := totalFlexWidth / TotalFlexRatio // 比率の合計
 
 	// 各縦線の位置
-	leftBorderPos := 0               // 左端の縦線
-	middleBorderPos := 2 + unitWidth // 左縦線(1) + textView(unitWidth)
-	rightBorderPos := width - 1      // 右端の縦線
+	leftBorderPos := 0                                 // 左端の縦線
+	middleBorderPos := 1 + unitWidth*FileListFlexRatio // 左縦線(1) + textView(unitWidth*FileListFlexRatio)
+	rightBorderPos := width - 1                        // 右端の縦線
 
 	return leftBorderPos, middleBorderPos, rightBorderPos
 }

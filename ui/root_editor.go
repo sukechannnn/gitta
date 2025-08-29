@@ -217,13 +217,13 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	// 左右分割のフレックス
 	contentFlex := tview.NewFlex()
 	contentFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
-	// 左右のペインをフレックスに追加（左:縦線:右 = 1:0:4）
+	// 左右のペインをフレックスに追加（左:縦線:右 = FileListFlexRatio:0:DiffViewFlexRatio）
 	// 右側の縦線は unifiedViewFlex と splitViewFlex で定義している
 	contentFlex.
 		AddItem(verticalBorderLeft, 1, 0, false).
-		AddItem(fileListView, 0, 1, true).
+		AddItem(fileListView, 0, FileListFlexRatio, true).
 		AddItem(verticalBorder, 1, 0, false).
-		AddItem(unifiedViewFlex, 0, 4, false)
+		AddItem(unifiedViewFlex, 0, DiffViewFlexRatio, false)
 
 	// ファイル一覧の内容を構築（色付き）
 	buildFileListContent := func(focusedPane bool) string {

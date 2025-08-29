@@ -172,8 +172,8 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					// Split Viewを表示（現在のカーソル位置を維持）
 					ctx.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
 					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
-					ctx.contentFlex.RemoveItem(ctx.diffView)
-					ctx.contentFlex.AddItem(ctx.splitViewFlex, 0, 4, false)
+					ctx.contentFlex.RemoveItem(ctx.unifiedViewFlex)
+					ctx.contentFlex.AddItem(ctx.splitViewFlex, 0, DiffViewFlexRatio, false)
 					// フォーカスがdiffViewにある場合、splitViewFlexに移動
 					if !*ctx.leftPaneFocused {
 						ctx.app.SetFocus(ctx.splitViewFlex)
@@ -182,7 +182,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					// 通常の差分表示に戻す
 					ctx.viewUpdater = NewUnifiedViewUpdater(ctx.diffView)
 					ctx.contentFlex.RemoveItem(ctx.splitViewFlex)
-					ctx.contentFlex.AddItem(ctx.diffView, 0, 4, false)
+					ctx.contentFlex.AddItem(ctx.unifiedViewFlex, 0, DiffViewFlexRatio, false)
 					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 					// フォーカスがsplitViewFlexにある場合、diffViewに移動
 					if !*ctx.leftPaneFocused {

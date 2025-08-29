@@ -402,7 +402,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					// Split Viewを表示
 					updateSplitViewWithoutCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText)
 					ctx.contentFlex.RemoveItem(ctx.unifiedViewFlex)
-					ctx.contentFlex.AddItem(ctx.splitViewFlex, 0, 4, false)
+					ctx.contentFlex.AddItem(ctx.splitViewFlex, 0, DiffViewFlexRatio, false)
 					// viewUpdaterをSplitView用に更新
 					if ctx.diffViewContext != nil {
 						ctx.diffViewContext.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
@@ -410,7 +410,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				} else {
 					// 通常の差分表示に戻す
 					ctx.contentFlex.RemoveItem(ctx.splitViewFlex)
-					ctx.contentFlex.AddItem(ctx.unifiedViewFlex, 0, 4, false)
+					ctx.contentFlex.AddItem(ctx.unifiedViewFlex, 0, DiffViewFlexRatio, false)
 					updateDiffViewWithoutCursor(ctx.diffView, *ctx.currentDiffText)
 					// viewUpdaterをUnifiedView用に更新
 					if ctx.diffViewContext != nil {
