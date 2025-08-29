@@ -9,12 +9,10 @@ It's like `git add -p`, but better — with a keyboard-driven interface and visu
 
 ## ✨ Features
 
-- Visual Git diff viewer in the terminal
+- Visual Git diff viewer in the terminal (default unified view, `s` toggle split view mode)
 - Interactive selection of lines/hunks using Vim-like keys (`j`, `k`, `V`, etc.)
 - Apply selected changes as minimal patches (`git apply --cached`)
-- Toggleable debug mode (`--debug`) to see patch output and apply results
 - Real-time file watching with `--watch` flag
-- Split view mode for side-by-side diff comparison
 - Fast, minimal, and works well with real Git repositories
 
 ---
@@ -22,7 +20,7 @@ It's like `git add -p`, but better — with a keyboard-driven interface and visu
 ## 🚀 Usage
 
 ```bash
-cd path/to/your/file
+cd path/to/git/repository
 gitta
 ```
 
@@ -34,15 +32,14 @@ Navigation:
 - `j` / `k` or arrow keys — move cursor up/down
 - `g` + `g` — go to top
 - `G` — go to bottom
-- `w` — switch between file list and diff view
+- `enter` — switch between file list and diff view
+- `q` — quit
 
 Actions:
 - `V` — start/stop line selection mode
 - `a` — stage selected lines
 - `A` — stage/unstage entire file
 - `s` — toggle split view (side-by-side diff)
-- `u` — undo last staging operation
-- `q` — quit
 
 ### Command Line Options
 
