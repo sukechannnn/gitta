@@ -3,9 +3,7 @@
 **gitta** is a terminal UI tool for interactively staging Git hunks and lines as minimal patches.  
 It's like `git add -p`, but better — with a keyboard-driven interface and visual diff selection.
 
-![screenshot](screenshot.png) <!-- optional: replace with actual screenshot -->
-
----
+![demo](./docs/images/gitta_demo.gif)
 
 ## ✨ Features
 
