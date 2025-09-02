@@ -332,6 +332,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		beforeView:    beforeView,
 		afterView:     afterView,
 		splitViewFlex: splitViewFlex,
+		unifiedViewFlex: unifiedViewFlex,
 		contentFlex:   contentFlex,
 		app:           app,
 

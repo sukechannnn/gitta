@@ -15,13 +15,14 @@ import (
 // DiffViewContext contains all the context needed for diff view key bindings
 type DiffViewContext struct {
 	// UI Components
-	diffView      *tview.TextView
-	fileListView  *tview.TextView
-	beforeView    *tview.TextView
-	afterView     *tview.TextView
-	splitViewFlex *tview.Flex
-	contentFlex   *tview.Flex
-	app           *tview.Application
+	diffView        *tview.TextView
+	fileListView    *tview.TextView
+	beforeView      *tview.TextView
+	afterView       *tview.TextView
+	splitViewFlex   *tview.Flex
+	unifiedViewFlex *tview.Flex
+	contentFlex     *tview.Flex
+	app             *tview.Application
 
 	// State
 	cursorY               *int
