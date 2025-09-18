@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -36,6 +37,8 @@ type DiffViewContext struct {
 	currentStatus         *string
 	savedTargetFile       *string
 	preferUnstagedSection *bool
+	currentSelection      *int
+	fileList              *[]FileEntry
 
 	// Paths
 	repoRoot  string
@@ -221,14 +224,21 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				return nil
 			case 'j':
 				// 下移動
-				maxLines := len(*ctx.currentDiffText) - 1
+				maxLines := 0
 				if *ctx.isSplitView {
 					// Split Viewの場合は有効な行数を取得
 					splitViewLines := getSplitViewLineCount(*ctx.currentDiffText)
 					if splitViewLines > 0 {
 						maxLines = splitViewLines - 1
-					} else {
-						maxLines = 0
+					}
+				} else {
+					// 通常ビューの場合は表示行数を取得
+					if len(strings.TrimSpace(*ctx.currentDiffText)) > 0 {
+						coloredDiff := ColorizeDiff(*ctx.currentDiffText)
+						diffLines := util.SplitLines(coloredDiff)
+						if len(diffLines) > 0 {
+							maxLines = len(diffLines) - 1
+						}
 					}
 				}
 
@@ -290,11 +300,30 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				// 結果を反映
 				*ctx.currentDiffText = result.NewDiffText
 
-				// 選択を解除してカーソルリセット
+				// 選択を解除してカーソル位置を更新
 				*ctx.isSelecting = false
 				*ctx.selectStart = -1
 				*ctx.selectEnd = -1
-				*ctx.cursorY = 0
+
+				// カーソル位置の境界チェック
+				newCursorPos := result.NewCursorPos
+				if len(strings.TrimSpace(*ctx.currentDiffText)) > 0 {
+					coloredDiff := ColorizeDiff(*ctx.currentDiffText)
+					diffLines := util.SplitLines(coloredDiff)
+					maxLines := len(diffLines) - 1
+					if maxLines < 0 {
+						maxLines = 0
+					}
+					if newCursorPos > maxLines {
+						newCursorPos = maxLines
+					}
+					if newCursorPos < 0 {
+						newCursorPos = 0
+					}
+				} else {
+					newCursorPos = 0
+				}
+				*ctx.cursorY = newCursorPos
 
 				// 再描画
 				if ctx.viewUpdater != nil {
@@ -306,9 +335,33 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 
 				// 差分が残っている場合
 				if !result.ShouldUpdate {
-					// 現在のファイルの位置を維持するため、savedTargetFileを設定
-					*ctx.savedTargetFile = *ctx.currentFile
+					// 現在の選択ファイルとステータスを保存
+					var currentlySelectedFile string
+					var currentlySelectedStatus string
+					if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
+						fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+						currentlySelectedFile = fileEntry.Path
+						currentlySelectedStatus = fileEntry.StageStatus
+					}
+
 					// ファイルリストを再描画
+					ctx.updateFileListView()
+
+					// 選択位置を復元（ファイル名とステータスの両方で検索）
+					newSelection := -1
+					for i, fileEntry := range *ctx.fileList {
+						if fileEntry.Path == currentlySelectedFile && fileEntry.StageStatus == currentlySelectedStatus {
+							newSelection = i
+							break
+						}
+					}
+					if newSelection >= 0 {
+						*ctx.currentSelection = newSelection
+					} else if *ctx.currentSelection >= len(*ctx.fileList) {
+						*ctx.currentSelection = len(*ctx.fileList) - 1
+					}
+
+					// 選択位置が変更された場合は再度ファイルリストを更新
 					ctx.updateFileListView()
 				} else {
 					// 差分がなくなった場合は、完全に更新

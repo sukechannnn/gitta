@@ -23,11 +23,12 @@ type CommandAParams struct {
 
 // CommandAResult contains the results from commandA execution
 type CommandAResult struct {
-	Success      bool
-	NewDiffText  string
-	ColoredDiff  string
-	DiffLines    []string
-	ShouldUpdate bool
+	Success       bool
+	NewDiffText   string
+	ColoredDiff   string
+	DiffLines     []string
+	ShouldUpdate  bool
+	NewCursorPos  int  // ステージング後の推奨カーソル位置
 }
 
 // CommandA handles the 'a' command for staging selected lines
@@ -90,11 +91,12 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 		}
 		// 成功として扱うが、変更はなし
 		result := &CommandAResult{
-			Success:      true,
-			NewDiffText:  params.CurrentDiffText,
-			ColoredDiff:  coloredDiff,
-			DiffLines:    displayLines,
-			ShouldUpdate: false,
+			Success:       true,
+			NewDiffText:   params.CurrentDiffText,
+			ColoredDiff:   coloredDiff,
+			DiffLines:     displayLines,
+			ShouldUpdate:  false,
+			NewCursorPos:  params.SelectStart, // 変更がない場合は元の位置を保持
 		}
 		return result, nil
 	}
@@ -154,14 +156,43 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 	newColoredDiff := ColorizeDiff(newDiffText)
 	newDiffLines := util.SplitLines(newColoredDiff)
 
+	// ステージング後の推奨カーソル位置を計算
+	newCursorPos := calculateNewCursorPosition(params.CurrentDiffText, newDiffText, params.SelectStart, params.SelectEnd)
+
 	// 結果を返す
 	result := &CommandAResult{
-		Success:      true,
-		NewDiffText:  newDiffText,
-		ColoredDiff:  newColoredDiff,
-		DiffLines:    newDiffLines,
-		ShouldUpdate: len(strings.TrimSpace(newDiffText)) == 0,
+		Success:       true,
+		NewDiffText:   newDiffText,
+		ColoredDiff:   newColoredDiff,
+		DiffLines:     newDiffLines,
+		ShouldUpdate:  len(strings.TrimSpace(newDiffText)) == 0,
+		NewCursorPos:  newCursorPos,
 	}
 
 	return result, nil
+}
+
+// calculateNewCursorPosition calculates the recommended cursor position after staging
+func calculateNewCursorPosition(oldDiffText, newDiffText string, selectStart, selectEnd int) int {
+	if len(strings.TrimSpace(newDiffText)) == 0 {
+		return 0 // 差分がなくなった場合は先頭
+	}
+
+	newLines := strings.Split(newDiffText, "\n")
+	maxLines := len(newLines) - 1
+
+	// 基本的に元のカーソル位置（選択開始位置）を維持
+	newCursorPos := selectStart
+
+	// 新しい差分の行数が減った場合は調整
+	if newCursorPos > maxLines {
+		newCursorPos = maxLines
+	}
+
+	// 負の値にならないよう調整
+	if newCursorPos < 0 {
+		newCursorPos = 0
+	}
+
+	return newCursorPos
 }
