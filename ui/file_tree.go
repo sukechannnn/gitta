@@ -505,6 +505,32 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					ctx.updateSelectedFileDiff()
 				}
 				return nil
+			case 'd': // 'd' で選択したファイルの差分を破棄
+				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
+					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+
+					// CommandDParamsを作成
+					params := commands.CommandDParams{
+						CurrentFile:        fileEntry.Path,
+						CurrentStatus:      fileEntry.StageStatus,
+						RepoRoot:           ctx.repoRoot,
+						UpdateGlobalStatus: ctx.updateGlobalStatus,
+					}
+
+					// CommandD実行
+					err := commands.CommandD(params, ctx.app)
+					if err != nil {
+						if ctx.updateGlobalStatus != nil {
+							ctx.updateGlobalStatus("Failed to discard changes", "tomato")
+						}
+					} else {
+						// 成功時はファイルリストを更新
+						ctx.refreshFileList()
+						ctx.updateFileListView()
+						ctx.updateSelectedFileDiff()
+					}
+				}
+				return nil
 			case 'q': // 'q' でアプリ終了
 				go func() {
 					time.Sleep(100 * time.Millisecond)
