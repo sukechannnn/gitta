@@ -217,6 +217,8 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	// 左右分割のフレックス
 	contentFlex := tview.NewFlex()
 	contentFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+
+	// レイアウト設定
 	// 左右のペインをフレックスに追加（左:縦線:右 = FileListFlexRatio:0:DiffViewFlexRatio）
 	// 右側の縦線は unifiedViewFlex と splitViewFlex で定義している
 	contentFlex.
@@ -392,6 +394,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		unifiedViewFlex: unifiedViewFlex,
 		contentFlex:     contentFlex,
 		app:             app,
+		mainView:        mainFlex, // メインビューの参照を追加
 
 		// State
 		currentSelection: &currentSelection,
