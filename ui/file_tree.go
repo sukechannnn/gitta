@@ -1,10 +1,8 @@
 package ui
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
-	"sort"
 	"strings"
 	"time"
 
@@ -12,75 +10,11 @@ import (
 	"github.com/rivo/tview"
 	"github.com/sukechannnn/gitta/git"
 	"github.com/sukechannnn/gitta/ui/commands"
-	"github.com/sukechannnn/gitta/util"
 )
-
-// FileEntry represents a file entry in the file list with ID, path and status
-type FileEntry struct {
-	ID          string
-	Path        string
-	StageStatus string // "staged", "unstaged", "untracked"
-}
-
-// formatFileWithStatus adds status decoration to filename
-func formatFileWithStatus(filename string, status string) string {
-	switch status {
-	case "added", "untracked":
-		return filename + " " + "(+)"
-	case "deleted":
-		return filename + " " + "(-)"
-	case "modified":
-		return filename + " " + "(•)"
-	default:
-		return filename
-	}
-}
-
-// TreeNode represents a node in the file tree structure
-type TreeNode struct {
-	Name     string
-	IsFile   bool
-	Children map[string]*TreeNode
-	FullPath string // ファイルの場合のみ使用
-}
 
 // buildFileTree converts a list of file paths into a tree structure
 func buildFileTree(files []git.FileInfo) *TreeNode {
-	root := &TreeNode{
-		Name:     "",
-		IsFile:   false,
-		Children: make(map[string]*TreeNode),
-	}
-
-	for _, fileInfo := range files {
-		file := strings.TrimSpace(fileInfo.Path)
-		if file == "" {
-			continue
-		}
-
-		parts := strings.Split(file, "/")
-		currentNode := root
-
-		for i, part := range parts {
-			isLastPart := i == len(parts)-1
-
-			if _, exists := currentNode.Children[part]; !exists {
-				newNode := &TreeNode{
-					Name:     part,
-					IsFile:   isLastPart,
-					Children: make(map[string]*TreeNode),
-				}
-				if isLastPart {
-					newNode.FullPath = file
-				}
-				currentNode.Children[part] = newNode
-			}
-
-			currentNode = currentNode.Children[part]
-		}
-	}
-
-	return root
+	return buildFileTreeFromGitFiles(files)
 }
 
 // renderFileTree recursively renders the tree structure with proper indentation
@@ -97,7 +31,7 @@ func renderFileTree(
 	currentLine *int,
 	fileInfos []git.FileInfo,
 ) {
-	renderFileTreeWithPrefix(
+	renderFileTreeForGitFiles(
 		node,
 		depth,
 		"",
@@ -111,99 +45,6 @@ func renderFileTree(
 		currentLine,
 		fileInfos,
 	)
-}
-
-// renderFileTreeWithPrefix renders the tree with proper line prefixes
-func renderFileTreeWithPrefix(
-	node *TreeNode,
-	depth int,
-	prefix string,
-	sb *strings.Builder,
-	fileList *[]FileEntry,
-	stageStatus string,
-	regionIndex *int,
-	currentSelection int,
-	focusedPane bool,
-	lineNumberMap map[int]int,
-	currentLine *int,
-	fileInfos []git.FileInfo,
-) {
-	// Sort children for consistent ordering
-	var sortedKeys []string
-	for key := range node.Children {
-		sortedKeys = append(sortedKeys, key)
-	}
-	sort.Strings(sortedKeys)
-
-	// ディレクトリとファイルを分離
-	var directories []string
-	var files []string
-
-	for _, key := range sortedKeys {
-		child := node.Children[key]
-		if child.IsFile {
-			files = append(files, key)
-		} else {
-			directories = append(directories, key)
-		}
-	}
-
-	// 全ての要素（ディレクトリ＋ファイル）を処理
-	allItems := append(directories, files...)
-
-	for i, key := range allItems {
-		isLast := i == len(allItems)-1
-		child := node.Children[key]
-
-		// 現在の要素の接続記号
-		connector := "├─"
-		if isLast {
-			connector = "└─"
-		}
-
-		// 次の階層のためのプレフィックス
-		childPrefix := prefix + "│ "
-		if isLast {
-			childPrefix = prefix + "  "
-		}
-
-		if child.IsFile {
-			// ファイルの場合
-			regionID := fmt.Sprintf("file-%d", *regionIndex)
-			*fileList = append(*fileList, FileEntry{
-				ID:          regionID,
-				Path:        child.FullPath,
-				StageStatus: stageStatus,
-			})
-
-			// ファイル名に装飾を追加
-			displayName := child.Name
-			// ファイルのステータスを検索して装飾を追加
-			for _, fileInfo := range fileInfos {
-				if fileInfo.Path == child.FullPath {
-					displayName = formatFileWithStatus(child.Name, fileInfo.ChangeStatus)
-					break
-				}
-			}
-
-			if focusedPane && *regionIndex == currentSelection {
-				sb.WriteString(fmt.Sprintf(`%s[white:blue]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, displayName))
-			} else if !focusedPane && *regionIndex == currentSelection {
-				sb.WriteString(fmt.Sprintf(`%s[black:white]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, displayName))
-			} else {
-				sb.WriteString(fmt.Sprintf(`%s[white:%s]["file-%d"]%s%s[""][-:-]`+"\n", prefix, util.NotSelectedFileLineColor, *regionIndex, connector, displayName))
-			}
-			lineNumberMap[*regionIndex] = *currentLine
-			(*regionIndex)++
-			(*currentLine)++
-		} else {
-			// ディレクトリの場合
-			sb.WriteString(fmt.Sprintf("%s%s%s/\n", prefix, connector, child.Name))
-			(*currentLine)++
-			renderFileTreeWithPrefix(child, depth+1, childPrefix, sb, fileList,
-				stageStatus, regionIndex, currentSelection, focusedPane, lineNumberMap, currentLine, fileInfos)
-		}
-	}
 }
 
 // BuildFileListContent builds the colored file list content
@@ -270,6 +111,7 @@ type FileListKeyContext struct {
 	unifiedViewFlex *tview.Flex
 	contentFlex     *tview.Flex
 	app             *tview.Application
+	mainView        tview.Primitive // メインビューの参照
 
 	// State
 	currentSelection *int
@@ -364,6 +206,29 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 						ctx.updateGlobalStatus("Failed to copy path to clipboard", "tomato")
 					}
 				}
+			}
+			return nil
+		case tcell.KeyCtrlA:
+			cmd := exec.Command("git", "-c", "core.quotepath=false", "add", "--all")
+			cmd.Dir = ctx.repoRoot
+			if err := cmd.Run(); err != nil {
+				if ctx.updateGlobalStatus != nil {
+					ctx.updateGlobalStatus("Failed to stage all files", "tomato")
+				}
+				return nil
+			}
+
+			ctx.refreshFileList()
+			ctx.updateFileListView()
+			if len(*ctx.fileList) == 0 {
+				*ctx.currentSelection = 0
+			} else if *ctx.currentSelection >= len(*ctx.fileList) {
+				*ctx.currentSelection = len(*ctx.fileList) - 1
+				ctx.updateFileListView()
+			}
+			ctx.updateSelectedFileDiff()
+			if ctx.updateGlobalStatus != nil {
+				ctx.updateGlobalStatus("Staged all files", "forestgreen")
 			}
 			return nil
 		case tcell.KeyRune:
@@ -511,25 +376,38 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 
 					// CommandDParamsを作成
 					params := commands.CommandDParams{
-						CurrentFile:        fileEntry.Path,
-						CurrentStatus:      fileEntry.StageStatus,
-						RepoRoot:           ctx.repoRoot,
-						UpdateGlobalStatus: ctx.updateGlobalStatus,
+						CurrentFile:   fileEntry.Path,
+						CurrentStatus: fileEntry.StageStatus,
+						RepoRoot:      ctx.repoRoot,
 					}
 
 					// CommandD実行
-					err := commands.CommandD(params, ctx.app)
+					err := commands.CommandD(params)
 					if err != nil {
 						if ctx.updateGlobalStatus != nil {
-							ctx.updateGlobalStatus("Failed to discard changes", "tomato")
+							ctx.updateGlobalStatus(err.Error(), "tomato")
 						}
 					} else {
 						// 成功時はファイルリストを更新
 						ctx.refreshFileList()
 						ctx.updateFileListView()
 						ctx.updateSelectedFileDiff()
+						if ctx.updateGlobalStatus != nil {
+							ctx.updateGlobalStatus("Changes discarded successfully!", "forestgreen")
+						}
 					}
 				}
+				return nil
+			case 't': // 't' でgit logビューを表示
+				// Git Log Viewを作成
+				gitLogView := NewGitLogView(ctx.app, ctx.repoRoot, func() {
+					// Git Log Viewを終了して元のビューに戻る
+					ctx.app.SetRoot(ctx.mainView, true)
+					ctx.app.SetFocus(ctx.fileListView)
+				})
+
+				// Git Log Viewに切り替え
+				ctx.app.SetRoot(gitLogView.GetView(), true)
 				return nil
 			case 'q': // 'q' でアプリ終了
 				go func() {
