@@ -17,7 +17,7 @@ var preferUnstagedSection bool = false
 
 // globalStatusView をグローバルに定義
 var globalStatusView *tview.TextView
-var listKeyBindingMessage = "Press 'Enter' to switch panes, 'q' to quit, 'a' to stage selected lines, 'A' to stage/unstage file, 'V' to select lines, 'Ctrl+K' to commit, and 'j/k' to navigate."
+var listKeyBindingMessage = "Press 'Enter' to switch panes, 'q' to quit, 'a' to stage selected lines, 'A' to stage/unstage file, 'V' to select lines, 'Ctrl+A' to stage all files, 'Ctrl+K' to commit, and 'j/k' to navigate."
 
 func updateGlobalStatus(message string, color string) {
 	if globalStatusView != nil {
