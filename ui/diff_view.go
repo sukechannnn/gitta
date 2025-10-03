@@ -275,6 +275,65 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					}
 				}
 				return nil
+			case 'y':
+				lines := getSelectableDiffLines(*ctx.currentDiffText)
+				if len(lines) == 0 {
+					ctx.updateGlobalStatus("No diff content to copy", "tomato")
+					return nil
+				}
+
+				start := *ctx.cursorY
+				end := *ctx.cursorY
+				if *ctx.isSelecting && *ctx.selectStart >= 0 && *ctx.selectEnd >= 0 {
+					start = *ctx.selectStart
+					end = *ctx.selectEnd
+				}
+
+				if start > end {
+					start, end = end, start
+				}
+
+				if start < 0 {
+					start = 0
+				}
+				if end < 0 {
+					end = 0
+				}
+				if start >= len(lines) {
+					ctx.updateGlobalStatus("Selection is out of range", "tomato")
+					return nil
+				}
+				if end >= len(lines) {
+					end = len(lines) - 1
+				}
+
+				selected := lines[start : end+1]
+				sanitized := make([]string, 0, len(selected))
+				for _, line := range selected {
+					sanitized = append(sanitized, stripDiffPrefix(line))
+				}
+				text := strings.Join(sanitized, "\n")
+				if err := commands.CopyToClipboard(text); err != nil {
+					ctx.updateGlobalStatus("Failed to copy diff lines", "tomato")
+				} else {
+					message := "Copied line to clipboard"
+					if len(selected) > 1 {
+						message = "Copied lines to clipboard"
+					}
+					ctx.updateGlobalStatus(message, "forestgreen")
+				}
+
+				if *ctx.isSelecting {
+					*ctx.isSelecting = false
+					*ctx.selectStart = -1
+					*ctx.selectEnd = -1
+				}
+
+				if ctx.viewUpdater != nil {
+					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+				}
+
+				return nil
 			case 'u':
 				ctx.updateGlobalStatus("undo is not implemented!", "tomato")
 			case 'a':
@@ -453,4 +512,28 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 	// DiffViewとSplitViewFlexの両方に同じキーハンドラーを設定
 	ctx.diffView.SetInputCapture(keyHandler)
 	ctx.splitViewFlex.SetInputCapture(keyHandler)
+}
+
+func getSelectableDiffLines(diffText string) []string {
+	rawLines := util.SplitLines(diffText)
+	visible := make([]string, 0, len(rawLines))
+	for _, line := range rawLines {
+		if isUnifiedHeaderLine(line) {
+			continue
+		}
+		visible = append(visible, line)
+	}
+	return visible
+}
+
+func stripDiffPrefix(line string) string {
+	if len(line) == 0 {
+		return line
+	}
+	switch line[0] {
+	case '+', '-':
+		return line[1:]
+	default:
+		return line
+	}
 }
