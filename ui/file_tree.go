@@ -374,28 +374,53 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 
-					// CommandDParamsを作成
-					params := commands.CommandDParams{
-						CurrentFile:   fileEntry.Path,
-						CurrentStatus: fileEntry.StageStatus,
-						RepoRoot:      ctx.repoRoot,
+					// stagedファイルの場合はエラーメッセージを表示
+					if fileEntry.StageStatus == "staged" {
+						if ctx.updateGlobalStatus != nil {
+							ctx.updateGlobalStatus("Cannot discard staged changes. Use 'u' to unstage first.", "tomato")
+						}
+						return nil
 					}
 
-					// CommandD実行
-					err := commands.CommandD(params)
-					if err != nil {
-						if ctx.updateGlobalStatus != nil {
-							ctx.updateGlobalStatus(err.Error(), "tomato")
-						}
-					} else {
-						// 成功時はファイルリストを更新
-						ctx.refreshFileList()
-						ctx.updateFileListView()
-						ctx.updateSelectedFileDiff()
-						if ctx.updateGlobalStatus != nil {
-							ctx.updateGlobalStatus("Changes discarded successfully!", "forestgreen")
-						}
-					}
+					// 確認ダイアログを表示
+					modal := tview.NewModal().
+						SetText("Discard all changes in " + fileEntry.Path + "?\n\nThis action cannot be undone!").
+						AddButtons([]string{"Discard", "Cancel"}).
+						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+							if buttonLabel == "Discard" {
+								// CommandDParamsを作成
+								params := commands.CommandDParams{
+									CurrentFile:   fileEntry.Path,
+									CurrentStatus: fileEntry.StageStatus,
+									RepoRoot:      ctx.repoRoot,
+								}
+
+								// CommandD実行
+								err := commands.CommandD(params)
+								if err != nil {
+									if ctx.updateGlobalStatus != nil {
+										ctx.updateGlobalStatus(err.Error(), "tomato")
+									}
+								} else {
+									// 成功時はファイルリストを更新
+									ctx.refreshFileList()
+									ctx.updateFileListView()
+									ctx.updateSelectedFileDiff()
+									if ctx.updateGlobalStatus != nil {
+										ctx.updateGlobalStatus("Changes discarded successfully!", "forestgreen")
+									}
+								}
+							}
+							// 元のビューに戻る
+							ctx.app.SetRoot(ctx.mainView, true)
+							ctx.app.SetFocus(ctx.fileListView)
+						})
+
+					// モーダルの背景色を設定
+					modal.SetBackgroundColor(tcell.ColorDefault)
+
+					// モーダルを表示
+					ctx.app.SetRoot(modal, true)
 				}
 				return nil
 			case 't': // 't' でgit logビューを表示
