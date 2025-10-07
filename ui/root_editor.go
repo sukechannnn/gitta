@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -33,6 +35,14 @@ func updateGlobalStatus(message string, color string) {
 func updateCurrentDiffText(filePath string, status string, repoRoot string, currentDiffText *string) {
 	var diffText string
 	var err error
+
+	// ディレクトリかどうかをチェック
+	fullPath := filepath.Join(repoRoot, filePath)
+	fileInfo, statErr := os.Stat(fullPath)
+	if statErr == nil && fileInfo.IsDir() {
+		// ディレクトリの場合は何もしない
+		return
+	}
 
 	switch status {
 	case "staged":
