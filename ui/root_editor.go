@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -19,7 +20,7 @@ var preferUnstagedSection bool = false
 
 // globalStatusView をグローバルに定義
 var globalStatusView *tview.TextView
-var listKeyBindingMessage = "Press 'Enter' to switch panes, 'q' to quit, 'a' to stage selected lines, 'A' to stage/unstage file, 'V' to select lines, 'Ctrl+A' to stage all files, 'Ctrl+K' to commit, and 'j/k' to navigate."
+var listKeyBindingMessage = "Press 'Enter' to switch panes, 'q' to quit, 'a' to stage selected lines, 'A' to stage/unstage file, 'V' to select lines, 'Ctrl+A' to stage all files, 'Ctrl+K' to commit, 'Ctrl+J' to amend, and 'j/k' to navigate."
 
 func updateGlobalStatus(message string, color string) {
 	if globalStatusView != nil {
@@ -80,6 +81,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	// コミット関連の状態
 	var isCommitMode bool = false
+	var isAmendMode bool = false
 	var commitMessage string = ""
 	// 現在のファイル情報を保持
 	var currentFile string
@@ -483,37 +485,38 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			for {
 				select {
 				case <-ticker.C:
-					app.QueueUpdateDraw(func() {
-						// 新しいファイルリストを取得
-						newStaged, newModified, newUntracked, err := git.GetChangedFiles(repoRoot)
-						if err != nil {
-							return // エラーが発生した場合は何もしない
-						}
+					// 新しいファイルリストを取得
+					newStaged, newModified, newUntracked, err := git.GetChangedFiles(repoRoot)
+					if err != nil {
+						continue // エラーが発生した場合は何もしない
+					}
 
-						// 現在選択中のファイルの差分変更もチェック
-						var currentFileDiffChanged bool = false
-						if currentFile != "" && !leftPaneFocused {
-							var newDiffText string
-							if currentStatus == "staged" {
-								newDiffText, _ = git.GetStagedDiff(currentFile, repoRoot)
-							} else if currentStatus == "untracked" {
-								content, readErr := util.ReadFileContent(currentFile, repoRoot)
-								if readErr == nil {
-									newDiffText = util.FormatAsAddedLines(content, currentFile)
-								}
-							} else {
-								newDiffText, _ = git.GetFileDiff(currentFile, repoRoot)
+					// 現在選択中のファイルの差分変更もチェック
+					var currentFileDiffChanged bool = false
+					var newDiffText string
+					if currentFile != "" && !leftPaneFocused {
+						if currentStatus == "staged" {
+							newDiffText, _ = git.GetStagedDiff(currentFile, repoRoot)
+						} else if currentStatus == "untracked" {
+							content, readErr := util.ReadFileContent(currentFile, repoRoot)
+							if readErr == nil {
+								newDiffText = util.FormatAsAddedLines(content, currentFile)
 							}
-							currentFileDiffChanged = (newDiffText != currentDiffText)
+						} else {
+							newDiffText, _ = git.GetFileDiff(currentFile, repoRoot)
 						}
+						currentFileDiffChanged = (newDiffText != currentDiffText)
+					}
 
-						// ファイルリストに変更があるかチェック
-						fileListChanged := hasFileListChanged(newStaged, newModified, newUntracked)
+					// ファイルリストに変更があるかチェック
+					fileListChanged := hasFileListChanged(newStaged, newModified, newUntracked)
 
-						// ファイルリストの変更も現在のファイルの差分変更もない場合は何もしない
-						if !fileListChanged && !currentFileDiffChanged {
-							return
-						}
+					// ファイルリストの変更も現在のファイルの差分変更もない場合は何もしない
+					if !fileListChanged && !currentFileDiffChanged {
+						continue
+					}
+
+					app.QueueUpdateDraw(func() {
 
 						// 現在の選択ファイルとステータスを保存
 						var currentlySelectedFile string
@@ -628,8 +631,10 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	exitCommitMode := func() {
 		isCommitMode = false
+		isAmendMode = false
 		leftPaneFocused = true
 		commitTextArea.SetText("", false)
+		commitTextArea.SetTitle("Commit Message")
 		mainFlex.RemoveItem(commitTextArea)
 		app.SetFocus(fileListView)
 	}
@@ -643,15 +648,28 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 				return nil
 			}
 
-			err := git.Commit(commitMessage, repoRoot)
+			var err error
+			if isAmendMode {
+				err = git.CommitAmend(commitMessage, repoRoot)
+			} else {
+				err = git.Commit(commitMessage, repoRoot)
+			}
 			if err != nil {
-				updateGlobalStatus("Failed to commit: "+err.Error(), "tomato")
+				if isAmendMode {
+					updateGlobalStatus("Failed to amend commit: "+err.Error(), "tomato")
+				} else {
+					updateGlobalStatus("Failed to commit: "+err.Error(), "tomato")
+				}
 				// エラー時もコミットモードを終了してフォーカスを戻す
 				exitCommitMode()
 				return nil
 			}
 
-			updateGlobalStatus("Successfully committed", "forestgreen")
+			if isAmendMode {
+				updateGlobalStatus("Successfully amended commit", "forestgreen")
+			} else {
+				updateGlobalStatus("Successfully committed", "forestgreen")
+			}
 			// コミット後にファイルリストを更新
 			refreshFileList()
 
@@ -699,7 +717,30 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		if event.Key() == tcell.KeyCtrlK {
 			if !isCommitMode {
 				isCommitMode = true
+				isAmendMode = false
 				mainFlex.AddItem(commitTextArea, 7, 0, true) // TextAreaは高さを7に増やして複数行に対応
+				app.SetFocus(commitTextArea)
+			} else {
+				app.SetFocus(commitTextArea)
+			}
+			return nil
+		}
+		if event.Key() == tcell.KeyCtrlJ {
+			// 最新のコミットメッセージを取得
+			cmd := exec.Command("git", "log", "-1", "--pretty=%B")
+			cmd.Dir = repoRoot
+			output, err := cmd.Output()
+			var lastCommitMsg string
+			if err == nil {
+				lastCommitMsg = strings.TrimSpace(string(output))
+			}
+
+			if !isCommitMode {
+				isCommitMode = true
+				isAmendMode = true
+				commitTextArea.SetTitle("Commit Message (Amend)")
+				commitTextArea.SetText(lastCommitMsg, false)
+				mainFlex.AddItem(commitTextArea, 7, 0, true)
 				app.SetFocus(commitTextArea)
 			} else {
 				app.SetFocus(commitTextArea)
