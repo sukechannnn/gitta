@@ -205,7 +205,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	// コミットメッセージ入力エリア
 	commitTextArea := tview.NewTextArea().
-		SetPlaceholder("Enter commit message (Press Ctrl+S to commit, Ctrl+l to focus file list, Esc to cancel)")
+		SetPlaceholder("Enter commit message (Press Option+Enter to commit, Ctrl+L to focus file list, Esc to cancel)")
 
 	// TextAreaのスタイル設定
 	// テキストスタイル（入力される文字）
@@ -479,7 +479,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		}
 
 		go func() {
-			ticker := time.NewTicker(300 * time.Millisecond)
+			ticker := time.NewTicker(1 * time.Second)
 			defer ticker.Stop()
 
 			for {
@@ -641,62 +641,66 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	commitTextArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
-		case tcell.KeyCtrlO:
-			commitMessage = commitTextArea.GetText()
-			if commitMessage == "" {
-				updateGlobalStatus("Commit message cannot be empty", "tomato")
-				return nil
-			}
-
-			var err error
-			if isAmendMode {
-				err = git.CommitAmend(commitMessage, repoRoot)
-			} else {
-				err = git.Commit(commitMessage, repoRoot)
-			}
-			if err != nil {
-				if isAmendMode {
-					updateGlobalStatus("Failed to amend commit: "+err.Error(), "tomato")
-				} else {
-					updateGlobalStatus("Failed to commit: "+err.Error(), "tomato")
+		case tcell.KeyEnter:
+			// Option+Enter (Alt+Enter) でコミット実行
+			if event.Modifiers()&tcell.ModAlt != 0 {
+				commitMessage = commitTextArea.GetText()
+				if commitMessage == "" {
+					updateGlobalStatus("Commit message cannot be empty", "tomato")
+					return nil
 				}
-				// エラー時もコミットモードを終了してフォーカスを戻す
+
+				var err error
+				if isAmendMode {
+					err = git.CommitAmend(commitMessage, repoRoot)
+				} else {
+					err = git.Commit(commitMessage, repoRoot)
+				}
+				if err != nil {
+					if isAmendMode {
+						updateGlobalStatus("Failed to amend commit: "+err.Error(), "tomato")
+					} else {
+						updateGlobalStatus("Failed to commit: "+err.Error(), "tomato")
+					}
+					// エラー時はコミットモードを終了せず、メッセージを保持したまま再試行できるようにする
+					return nil
+				}
+
+				if isAmendMode {
+					updateGlobalStatus("Successfully amended commit", "forestgreen")
+				} else {
+					updateGlobalStatus("Successfully committed", "forestgreen")
+				}
+				// コミット後にファイルリストを更新
+				refreshFileList()
+
+				// ファイルリストが更新された後、選択位置を調整
+				// fileListの再構築のためにupdateFileListViewを呼ぶ
+				updateFileListView()
+
+				// 選択位置が範囲外の場合は調整
+				if len(fileList) > 0 {
+					// ファイルがまだ残っている場合
+					if currentSelection >= len(fileList) {
+						currentSelection = len(fileList) - 1
+					}
+					if currentSelection < 0 {
+						currentSelection = 0
+					}
+				} else {
+					// ファイルリストが空になった場合
+					currentSelection = 0
+				}
+
+				// 再度ビューを更新して正しい選択位置を反映
+				updateFileListView()
+				updateSelectedFileDiff()
+
 				exitCommitMode()
 				return nil
 			}
-
-			if isAmendMode {
-				updateGlobalStatus("Successfully amended commit", "forestgreen")
-			} else {
-				updateGlobalStatus("Successfully committed", "forestgreen")
-			}
-			// コミット後にファイルリストを更新
-			refreshFileList()
-
-			// ファイルリストが更新された後、選択位置を調整
-			// fileListの再構築のためにupdateFileListViewを呼ぶ
-			updateFileListView()
-
-			// 選択位置が範囲外の場合は調整
-			if len(fileList) > 0 {
-				// ファイルがまだ残っている場合
-				if currentSelection >= len(fileList) {
-					currentSelection = len(fileList) - 1
-				}
-				if currentSelection < 0 {
-					currentSelection = 0
-				}
-			} else {
-				// ファイルリストが空になった場合
-				currentSelection = 0
-			}
-
-			// 再度ビューを更新して正しい選択位置を反映
-			updateFileListView()
-			updateSelectedFileDiff()
-
-			exitCommitMode()
-			return nil
+			// 通常のEnterは改行として処理
+			return event
 		case tcell.KeyCtrlL:
 			app.SetFocus(fileListView)
 			return nil
@@ -715,6 +719,12 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlK {
+			// staged な差分があるかチェック
+			if len(*stagedFilesPtr) == 0 {
+				updateGlobalStatus("No changes are staged for commit", "tomato")
+				return nil
+			}
+
 			if !isCommitMode {
 				isCommitMode = true
 				isAmendMode = false
