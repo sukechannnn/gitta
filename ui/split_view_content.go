@@ -31,6 +31,17 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 	// 行番号の最大桁数を計算
 	maxDigits := calculateMaxLineNumberDigits(oldLineMap, newLineMap)
 
+	// 削除行と追加行をペアリングするための前処理
+	type diffLine struct {
+		content      string
+		displayIndex int
+		oldLineNum   int
+		newLineNum   int
+		lineType     string // "-", "+", " ", "other"
+	}
+
+	var diffLines []diffLine
+
 	for _, line := range lines {
 		// ヘッダー行を非表示にする
 		if isHeaderLine(line) {
@@ -42,8 +53,145 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 			inHunk = true
 			continue
 		} else if inHunk {
-			processHunkLine(line, displayLine, maxDigits, oldLineMap, newLineMap, content)
+			lineType := "other"
+			if strings.HasPrefix(line, "-") {
+				lineType = "-"
+			} else if strings.HasPrefix(line, "+") {
+				lineType = "+"
+			} else if strings.HasPrefix(line, " ") {
+				lineType = " "
+			}
+
+			oldNum := -1
+			newNum := -1
+			if num, ok := oldLineMap[displayLine]; ok {
+				oldNum = num
+			}
+			if num, ok := newLineMap[displayLine]; ok {
+				newNum = num
+			}
+
+			diffLines = append(diffLines, diffLine{
+				content:      line,
+				displayIndex: displayLine,
+				oldLineNum:   oldNum,
+				newLineNum:   newNum,
+				lineType:     lineType,
+			})
 			displayLine++
+		}
+	}
+
+	// ペアリング処理：連続する-と+のグループをペアリング
+	i := 0
+	for i < len(diffLines) {
+		line := diffLines[i]
+
+		if line.lineType == "-" {
+			// 連続する-行を収集
+			deletions := []diffLine{line}
+			j := i + 1
+			for j < len(diffLines) && diffLines[j].lineType == "-" {
+				deletions = append(deletions, diffLines[j])
+				j++
+			}
+
+			// 連続する+行を収集
+			additions := []diffLine{}
+			for j < len(diffLines) && diffLines[j].lineType == "+" {
+				additions = append(additions, diffLines[j])
+				j++
+			}
+
+			// ペアリング：削除と追加をペアにする
+			maxLen := len(deletions)
+			if len(additions) > maxLen {
+				maxLen = len(additions)
+			}
+
+			for k := 0; k < maxLen; k++ {
+				beforeLine := ""
+				beforeLineNum := ""
+				afterLine := ""
+				afterLineNum := ""
+
+				if k < len(deletions) {
+					beforeLine = "[red]" + tview.Escape(deletions[k].content) + "[-]"
+					if deletions[k].oldLineNum >= 0 {
+						beforeLineNum = fmt.Sprintf("%*d", maxDigits, deletions[k].oldLineNum)
+					} else {
+						beforeLineNum = strings.Repeat(" ", maxDigits)
+					}
+				} else {
+					beforeLine = "[dimgray] [-]"
+					beforeLineNum = strings.Repeat(" ", maxDigits)
+				}
+
+				if k < len(additions) {
+					afterLine = "[green]" + tview.Escape(additions[k].content) + "[-]"
+					if additions[k].newLineNum >= 0 {
+						afterLineNum = fmt.Sprintf("%*d", maxDigits, additions[k].newLineNum)
+					} else {
+						afterLineNum = strings.Repeat(" ", maxDigits)
+					}
+				} else {
+					afterLine = "[dimgray] [-]"
+					afterLineNum = strings.Repeat(" ", maxDigits)
+				}
+
+				content.BeforeLines = append(content.BeforeLines, beforeLine)
+				content.AfterLines = append(content.AfterLines, afterLine)
+				content.BeforeLineNums = append(content.BeforeLineNums, beforeLineNum)
+				content.AfterLineNums = append(content.AfterLineNums, afterLineNum)
+			}
+
+			i = j
+		} else if line.lineType == "+" {
+			// ペアになっていない+行（-なしで+のみ）
+			content.BeforeLines = append(content.BeforeLines, "[dimgray] [-]")
+			content.AfterLines = append(content.AfterLines, "[green]"+tview.Escape(line.content)+"[-]")
+
+			content.BeforeLineNums = append(content.BeforeLineNums, strings.Repeat(" ", maxDigits))
+			if line.newLineNum >= 0 {
+				content.AfterLineNums = append(content.AfterLineNums, fmt.Sprintf("%*d", maxDigits, line.newLineNum))
+			} else {
+				content.AfterLineNums = append(content.AfterLineNums, strings.Repeat(" ", maxDigits))
+			}
+			i++
+		} else if line.lineType == " " {
+			// 変更なし行
+			escapedLine := tview.Escape(line.content[1:])
+			content.BeforeLines = append(content.BeforeLines, " "+escapedLine)
+			content.AfterLines = append(content.AfterLines, " "+escapedLine)
+
+			if line.oldLineNum >= 0 {
+				content.BeforeLineNums = append(content.BeforeLineNums, fmt.Sprintf("%*d", maxDigits, line.oldLineNum))
+			} else {
+				content.BeforeLineNums = append(content.BeforeLineNums, strings.Repeat(" ", maxDigits))
+			}
+			if line.newLineNum >= 0 {
+				content.AfterLineNums = append(content.AfterLineNums, fmt.Sprintf("%*d", maxDigits, line.newLineNum))
+			} else {
+				content.AfterLineNums = append(content.AfterLineNums, strings.Repeat(" ", maxDigits))
+			}
+			i++
+		} else {
+			// その他の行
+			escapedLine := tview.Escape(line.content)
+			content.BeforeLines = append(content.BeforeLines, " "+escapedLine)
+			content.AfterLines = append(content.AfterLines, " "+escapedLine)
+
+			if line.oldLineNum >= 0 {
+				content.BeforeLineNums = append(content.BeforeLineNums, fmt.Sprintf("%*d", maxDigits, line.oldLineNum))
+			} else {
+				content.BeforeLineNums = append(content.BeforeLineNums, strings.Repeat(" ", maxDigits))
+			}
+			if line.newLineNum >= 0 {
+				content.AfterLineNums = append(content.AfterLineNums, fmt.Sprintf("%*d", maxDigits, line.newLineNum))
+			} else {
+				content.AfterLineNums = append(content.AfterLineNums, strings.Repeat(" ", maxDigits))
+			}
+			i++
 		}
 	}
 
@@ -56,71 +204,4 @@ func isHeaderLine(line string) bool {
 		strings.HasPrefix(line, "index ") ||
 		strings.HasPrefix(line, "--- ") ||
 		strings.HasPrefix(line, "+++ ")
-}
-
-// processHunkLine processes a single line within a hunk
-func processHunkLine(line string, displayLine, maxDigits int, oldLineMap, newLineMap map[int]int, content *SplitViewContent) {
-	if strings.HasPrefix(line, "-") {
-		// 削除行（左側のみに表示、- 記号を含める）
-		// Escape the line content to prevent tview from interpreting brackets as color tags
-		content.BeforeLines = append(content.BeforeLines, "[red]"+tview.Escape(line)+"[-]")
-		content.AfterLines = append(content.AfterLines, "[dimgray] [-]") // 右側には左側の行数と合わせるためのスペースを表示
-
-		// 左側に実際の行番号、右側は空
-		if num, ok := oldLineMap[displayLine]; ok {
-			content.BeforeLineNums = append(content.BeforeLineNums, fmt.Sprintf("%*d", maxDigits, num))
-		} else {
-			content.BeforeLineNums = append(content.BeforeLineNums, strings.Repeat(" ", maxDigits))
-		}
-		content.AfterLineNums = append(content.AfterLineNums, strings.Repeat(" ", maxDigits))
-	} else if strings.HasPrefix(line, "+") {
-		// 追加行（右側のみに表示、+ 記号を含める）
-		content.BeforeLines = append(content.BeforeLines, "[dimgray] [-]") // 左側には右側の行数と合わせるためのスペースを表示
-		// Escape the line content to prevent tview from interpreting brackets as color tags
-		content.AfterLines = append(content.AfterLines, "[green]"+tview.Escape(line)+"[-]")
-
-		// 左側は空、右側に実際の行番号
-		content.BeforeLineNums = append(content.BeforeLineNums, strings.Repeat(" ", maxDigits))
-		if num, ok := newLineMap[displayLine]; ok {
-			content.AfterLineNums = append(content.AfterLineNums, fmt.Sprintf("%*d", maxDigits, num))
-		} else {
-			content.AfterLineNums = append(content.AfterLineNums, strings.Repeat(" ", maxDigits))
-		}
-	} else if strings.HasPrefix(line, " ") {
-		// 変更なし行（両側に表示、先頭のスペースを保持）
-		// Escape the line content to prevent tview from interpreting brackets as color tags
-		escapedLine := tview.Escape(line[1:])
-		content.BeforeLines = append(content.BeforeLines, " "+escapedLine)
-		content.AfterLines = append(content.AfterLines, " "+escapedLine)
-
-		// 両側に実際の行番号
-		if num, ok := oldLineMap[displayLine]; ok {
-			content.BeforeLineNums = append(content.BeforeLineNums, fmt.Sprintf("%*d", maxDigits, num))
-		} else {
-			content.BeforeLineNums = append(content.BeforeLineNums, strings.Repeat(" ", maxDigits))
-		}
-		if num, ok := newLineMap[displayLine]; ok {
-			content.AfterLineNums = append(content.AfterLineNums, fmt.Sprintf("%*d", maxDigits, num))
-		} else {
-			content.AfterLineNums = append(content.AfterLineNums, strings.Repeat(" ", maxDigits))
-		}
-	} else {
-		// その他の行
-		// Escape the line content to prevent tview from interpreting brackets as color tags
-		escapedLine := tview.Escape(line)
-		content.BeforeLines = append(content.BeforeLines, " "+escapedLine)
-		content.AfterLines = append(content.AfterLines, " "+escapedLine)
-
-		// 両側に実際の行番号
-		if num, ok := oldLineMap[displayLine]; ok {
-			content.BeforeLineNums = append(content.BeforeLineNums, fmt.Sprintf("%*d", maxDigits, num))
-		} else {
-			content.BeforeLineNums = append(content.BeforeLineNums, strings.Repeat(" ", maxDigits))
-		}
-		if num, ok := newLineMap[displayLine]; ok {
-			content.AfterLineNums = append(content.AfterLineNums, fmt.Sprintf("%*d", maxDigits, num))
-		} else {
-			content.AfterLineNums = append(content.AfterLineNums, strings.Repeat(" ", maxDigits))
-		}
-	}
 }
