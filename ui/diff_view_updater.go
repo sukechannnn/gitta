@@ -126,30 +126,10 @@ func updateDiffViewWithSelectionAndMapping(diffView *tview.TextView, diffText st
 
 // getSplitViewLineCount gets valid line count for split view
 func getSplitViewLineCount(diffText string) int {
-	lines := strings.Split(diffText, "\n")
-	count := 0
-	inHunk := false
-
-	for _, line := range lines {
-		// ヘッダー行をスキップ
-		if strings.HasPrefix(line, "diff --git") ||
-			strings.HasPrefix(line, "index ") ||
-			strings.HasPrefix(line, "--- ") ||
-			strings.HasPrefix(line, "+++ ") {
-			continue
-		}
-
-		if strings.HasPrefix(line, "@@") {
-			inHunk = true
-			continue
-		}
-
-		if inHunk {
-			count++
-		}
-	}
-
-	return count
+	// ペアリング後の実際の行数を取得するため、generateSplitViewContentを使用
+	oldLineMap, newLineMap := createLineNumberMapping(diffText)
+	content := generateSplitViewContent(diffText, oldLineMap, newLineMap)
+	return len(content.BeforeLines)
 }
 
 func updateSplitViewWithoutCursor(beforeView, afterView *tview.TextView, diffText string) {

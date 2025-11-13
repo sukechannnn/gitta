@@ -213,8 +213,22 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			case 'G': // 大文字G → 最下部へ
-				coloredDiff := ColorizeDiff(*ctx.currentDiffText)
-				*ctx.cursorY = len(util.SplitLines(coloredDiff)) - 1
+				maxLines := 0
+				if *ctx.isSplitView {
+					// Split Viewの場合は有効な行数を取得
+					splitViewLines := getSplitViewLineCount(*ctx.currentDiffText)
+					if splitViewLines > 0 {
+						maxLines = splitViewLines - 1
+					}
+				} else {
+					// 通常ビューの場合は表示行数を取得
+					coloredDiff := ColorizeDiff(*ctx.currentDiffText)
+					diffLines := util.SplitLines(coloredDiff)
+					if len(diffLines) > 0 {
+						maxLines = len(diffLines) - 1
+					}
+				}
+				*ctx.cursorY = maxLines
 				if *ctx.isSelecting {
 					*ctx.selectEnd = *ctx.cursorY
 				}
