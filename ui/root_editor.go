@@ -97,6 +97,9 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	var lastGTime time.Time
 	var isSplitView bool = false // Split Viewモードのフラグ
 
+	// Fold state for managing expandable ranges (will be used later)
+	_ = NewFoldState() // TODO: wire this up when implementing expand functionality
+
 	// listStatusView を作成
 	globalStatusView = tview.NewTextView().
 		SetDynamicColors(true).

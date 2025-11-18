@@ -221,11 +221,10 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 						maxLines = splitViewLines - 1
 					}
 				} else {
-					// 通常ビューの場合は表示行数を取得
-					coloredDiff := ColorizeDiff(*ctx.currentDiffText)
-					diffLines := util.SplitLines(coloredDiff)
-					if len(diffLines) > 0 {
-						maxLines = len(diffLines) - 1
+					// 通常ビューの場合は表示行数を取得（折りたたみを含む）
+					lineCount := GetUnifiedViewLineCount(*ctx.currentDiffText)
+					if lineCount > 0 {
+						maxLines = lineCount - 1
 					}
 				}
 				*ctx.cursorY = maxLines
@@ -246,12 +245,11 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 						maxLines = splitViewLines - 1
 					}
 				} else {
-					// 通常ビューの場合は表示行数を取得
+					// 通常ビューの場合は表示行数を取得（折りたたみを含む）
 					if len(strings.TrimSpace(*ctx.currentDiffText)) > 0 {
-						coloredDiff := ColorizeDiff(*ctx.currentDiffText)
-						diffLines := util.SplitLines(coloredDiff)
-						if len(diffLines) > 0 {
-							maxLines = len(diffLines) - 1
+						lineCount := GetUnifiedViewLineCount(*ctx.currentDiffText)
+						if lineCount > 0 {
+							maxLines = lineCount - 1
 						}
 					}
 				}
