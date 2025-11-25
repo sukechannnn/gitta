@@ -19,6 +19,7 @@ type CommandAParams struct {
 	CurrentDiffText    string
 	RepoRoot           string
 	UpdateGlobalStatus func(string, string)
+	IsSplitView        bool // Whether the view is split view or unified view
 }
 
 // CommandAResult contains the results from commandA execution

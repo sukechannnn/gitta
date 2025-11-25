@@ -350,14 +350,30 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				ctx.updateGlobalStatus("undo is not implemented!", "tomato")
 			case 'a':
 				// commandA関数を呼び出す
+				// Unified viewの場合、fold indicatorを除外した実際の差分行インデックスに変換
+				selectStart := *ctx.selectStart
+				selectEnd := *ctx.selectEnd
+				if !*ctx.isSplitView {
+					// Fold indicatorを除外したマッピングを取得
+					displayMapping := MapUnifiedDisplayToOriginalIdx(*ctx.currentDiffText)
+					// 選択範囲をfold indicatorを除外したインデックスに変換
+					if mappedStart, ok := displayMapping[selectStart]; ok {
+						selectStart = mappedStart
+					}
+					if mappedEnd, ok := displayMapping[selectEnd]; ok {
+						selectEnd = mappedEnd
+					}
+				}
+
 				params := commands.CommandAParams{
-					SelectStart:        *ctx.selectStart,
-					SelectEnd:          *ctx.selectEnd,
+					SelectStart:        selectStart,
+					SelectEnd:          selectEnd,
 					CurrentFile:        *ctx.currentFile,
 					CurrentStatus:      *ctx.currentStatus,
 					CurrentDiffText:    *ctx.currentDiffText,
 					RepoRoot:           ctx.repoRoot,
 					UpdateGlobalStatus: ctx.updateGlobalStatus,
+					IsSplitView:        *ctx.isSplitView,
 				}
 
 				result, err := commands.CommandA(params)

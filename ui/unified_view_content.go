@@ -10,8 +10,9 @@ import (
 
 // UnifiedViewLine represents a single line in unified view
 type UnifiedViewLine struct {
-	Content    string
-	LineNumber string
+	Content         string
+	LineNumber      string
+	IsFoldIndicator bool // True if this is a fold indicator line (not a real diff line)
 }
 
 // UnifiedViewContent represents the content for unified view
@@ -32,6 +33,27 @@ func GetUnifiedViewLineCount(diffText string) int {
 	oldLineMap, newLineMap := createLineNumberMapping(diffText)
 	content := generateUnifiedViewContent(diffText, oldLineMap, newLineMap)
 	return len(content.Lines)
+}
+
+// MapUnifiedDisplayToOriginalIdx maps unified view display indices (including fold indicators)
+// to original diff line indices (excluding headers)
+func MapUnifiedDisplayToOriginalIdx(diffText string) map[int]int {
+	oldLineMap, newLineMap := createLineNumberMapping(diffText)
+	content := generateUnifiedViewContent(diffText, oldLineMap, newLineMap)
+
+	mapping := make(map[int]int)
+	originalIdx := 0
+
+	for displayIdx, line := range content.Lines {
+		if !line.IsFoldIndicator {
+			// This is a real diff line, map it to the original index
+			mapping[displayIdx] = originalIdx
+			originalIdx++
+		}
+		// Fold indicator lines are not mapped (they don't correspond to any original line)
+	}
+
+	return mapping
 }
 
 // detectFoldableRanges detects ranges that can be folded
@@ -109,16 +131,18 @@ func generateUnifiedViewContent(diffText string, oldLineMap, newLineMap map[int]
 	for i, line := range coloredLines {
 		lineNum := generateLineNumber(line, i, maxDigits, oldLineMap, newLineMap)
 		content.Lines = append(content.Lines, UnifiedViewLine{
-			Content:    line,
-			LineNumber: lineNum,
+			Content:         line,
+			LineNumber:      lineNum,
+			IsFoldIndicator: false,
 		})
 
 		// Check if we should insert a fold indicator after this line
 		if fold, exists := foldMap[i]; exists {
 			foldIndicator := fmt.Sprintf("[dimgray]... %d lines hidden (press 'e' to expand) ...[-]", fold.LineCount)
 			content.Lines = append(content.Lines, UnifiedViewLine{
-				Content:    foldIndicator,
-				LineNumber: strings.Repeat(" ", maxDigits) + " │ ",
+				Content:         foldIndicator,
+				LineNumber:      strings.Repeat(" ", maxDigits) + " │ ",
+				IsFoldIndicator: true,
 			})
 		}
 	}
