@@ -2,27 +2,27 @@ package ui
 
 // FoldState manages the expansion state of foldable ranges
 type FoldState struct {
-	expandedLines map[int]bool // Map of display line index -> expanded state
+	expandedFolds map[string]bool // Map of fold ID -> expanded state
 }
 
 // NewFoldState creates a new FoldState
 func NewFoldState() *FoldState {
 	return &FoldState{
-		expandedLines: make(map[int]bool),
+		expandedFolds: make(map[string]bool),
 	}
 }
 
-// IsExpanded checks if a fold at the given line is expanded
-func (fs *FoldState) IsExpanded(lineIndex int) bool {
-	return fs.expandedLines[lineIndex]
+// IsExpanded checks if a fold with the given ID is expanded
+func (fs *FoldState) IsExpanded(foldID string) bool {
+	return fs.expandedFolds[foldID]
 }
 
 // ToggleExpand toggles the expansion state of a fold
-func (fs *FoldState) ToggleExpand(lineIndex int) {
-	fs.expandedLines[lineIndex] = !fs.expandedLines[lineIndex]
+func (fs *FoldState) ToggleExpand(foldID string) {
+	fs.expandedFolds[foldID] = !fs.expandedFolds[foldID]
 }
 
 // Reset clears all expansion state
 func (fs *FoldState) Reset() {
-	fs.expandedLines = make(map[int]bool)
+	fs.expandedFolds = make(map[string]bool)
 }

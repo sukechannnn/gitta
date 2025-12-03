@@ -51,6 +51,9 @@ type DiffViewContext struct {
 	// View updater
 	viewUpdater DiffViewUpdater
 
+	// Fold state
+	foldState *FoldState
+
 	// Callbacks
 	updateFileListView func()
 	updateGlobalStatus func(string, string)
@@ -127,7 +130,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 		if *ctx.isSplitView {
 			ctx.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
 		} else {
-			ctx.viewUpdater = NewUnifiedViewUpdater(ctx.diffView)
+			ctx.viewUpdater = NewUnifiedViewUpdater(ctx.diffView, ctx.foldState, ctx.currentFile, ctx.repoRoot)
 		}
 	}
 
@@ -184,7 +187,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					}
 				} else {
 					// 通常の差分表示に戻す
-					ctx.viewUpdater = NewUnifiedViewUpdater(ctx.diffView)
+					ctx.viewUpdater = NewUnifiedViewUpdater(ctx.diffView, ctx.foldState, ctx.currentFile, ctx.repoRoot)
 					ctx.contentFlex.RemoveItem(ctx.splitViewFlex)
 					ctx.contentFlex.AddItem(ctx.unifiedViewFlex, 0, DiffViewFlexRatio, false)
 					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
@@ -222,7 +225,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					}
 				} else {
 					// 通常ビューの場合は表示行数を取得（折りたたみを含む）
-					lineCount := GetUnifiedViewLineCount(*ctx.currentDiffText)
+					lineCount := GetUnifiedViewLineCount(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
 					if lineCount > 0 {
 						maxLines = lineCount - 1
 					}
@@ -247,7 +250,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				} else {
 					// 通常ビューの場合は表示行数を取得（折りたたみを含む）
 					if len(strings.TrimSpace(*ctx.currentDiffText)) > 0 {
-						lineCount := GetUnifiedViewLineCount(*ctx.currentDiffText)
+						lineCount := GetUnifiedViewLineCount(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
 						if lineCount > 0 {
 							maxLines = lineCount - 1
 						}
@@ -348,6 +351,26 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				return nil
 			case 'u':
 				ctx.updateGlobalStatus("undo is not implemented!", "tomato")
+			case 'e':
+				// Expand/collapse fold at cursor
+				if !*ctx.isSplitView && ctx.foldState != nil {
+					foldID := GetFoldIDAtLine(*ctx.currentDiffText, *ctx.cursorY, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
+					if foldID != "" {
+						wasExpanded := ctx.foldState.IsExpanded(foldID)
+						ctx.foldState.ToggleExpand(foldID)
+
+						// If collapsing, move cursor to the fold indicator position
+						if wasExpanded {
+							newPos := GetFoldIndicatorPosition(*ctx.currentDiffText, foldID, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
+							*ctx.cursorY = newPos
+						}
+
+						if ctx.viewUpdater != nil {
+							ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+						}
+					}
+				}
+				return nil
 			case 'a':
 				// commandA関数を呼び出す
 				// Unified viewの場合、fold indicatorを除外した実際の差分行インデックスに変換
@@ -355,7 +378,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				selectEnd := *ctx.selectEnd
 				if !*ctx.isSplitView {
 					// Fold indicatorを除外したマッピングを取得
-					displayMapping := MapUnifiedDisplayToOriginalIdx(*ctx.currentDiffText)
+					displayMapping := MapUnifiedDisplayToOriginalIdx(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
 					// 選択範囲をfold indicatorを除外したインデックスに変換
 					if mappedStart, ok := displayMapping[selectStart]; ok {
 						selectStart = mappedStart

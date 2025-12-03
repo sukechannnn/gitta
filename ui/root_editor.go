@@ -97,8 +97,8 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	var lastGTime time.Time
 	var isSplitView bool = false // Split Viewモードのフラグ
 
-	// Fold state for managing expandable ranges (will be used later)
-	_ = NewFoldState() // TODO: wire this up when implementing expand functionality
+	// Fold state for managing expandable ranges
+	foldState := NewFoldState()
 
 	// listStatusView を作成
 	globalStatusView = tview.NewTextView().
@@ -339,7 +339,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		if isSplitView {
 			updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
 		} else {
-			updateDiffViewWithoutCursor(diffView, currentDiffText)
+			updateDiffViewWithoutCursor(diffView, currentDiffText, foldState, currentFile, repoRoot)
 		}
 	}
 
@@ -388,7 +388,10 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		lastGTime: &lastGTime,
 
 		// View updater
-		viewUpdater: NewUnifiedViewUpdater(diffView),
+		viewUpdater: NewUnifiedViewUpdater(diffView, foldState, &currentFile, repoRoot),
+
+		// Fold state
+		foldState: foldState,
 
 		// Callbacks
 		updateFileListView: updateFileListView,
@@ -620,7 +623,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 								if isSplitView {
 									updateSplitViewWithCursor(beforeView, afterView, currentDiffText, cursorY)
 								} else {
-									updateDiffViewWithCursor(diffView, currentDiffText, cursorY)
+									updateDiffViewWithCursor(diffView, currentDiffText, cursorY, foldState, currentFile, repoRoot)
 								}
 							}
 						}
