@@ -83,6 +83,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	var isCommitMode bool = false
 	var isAmendMode bool = false
 	var commitMessage string = ""
+	var focusBeforeCommit tview.Primitive = nil // コミットモード前のフォーカス位置
 	// 現在のファイル情報を保持
 	var currentFile string
 	var currentStatus string
@@ -208,7 +209,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	// コミットメッセージ入力エリア
 	commitTextArea := tview.NewTextArea().
-		SetPlaceholder("Enter commit message (Press Option+Enter to commit, Ctrl+L to focus file list, Esc to cancel)")
+		SetPlaceholder("Enter commit message (Option+Enter to commit, Ctrl+O to return, Ctrl+L to file list, Esc to cancel)")
 
 	// TextAreaのスタイル設定
 	// テキストスタイル（入力される文字）
@@ -255,34 +256,25 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		)
 	}
 
+	// スクロール位置を保持するための変数
+	var preserveScrollRow int = -1
+
 	// 初期表示を更新
 	updateFileListView := func() {
-		// 現在の横スクロール位置を保存
-		_, currentCol := fileListView.GetScrollOffset()
+		// 現在のスクロール位置を保存
+		currentRow, currentCol := fileListView.GetScrollOffset()
+
+		// preserveScrollRowが設定されている場合はそれを使用
+		if preserveScrollRow >= 0 {
+			currentRow = preserveScrollRow
+			preserveScrollRow = -1 // リセット
+		}
 
 		fileListView.Clear()
 		fileListView.SetText(buildFileListContent(leftPaneFocused))
 
-		// 最初のファイルが選択されている場合は一番上にスクロール（横スクロール位置は維持）
-		if currentSelection == 0 {
-			fileListView.ScrollTo(0, currentCol)
-			return
-		}
-
-		// スクロール位置を調整（選択行が見える範囲に）
-		if actualLine, exists := lineNumberMap[currentSelection]; exists {
-			_, _, _, height := fileListView.GetInnerRect()
-			currentRow, _ := fileListView.GetScrollOffset()
-
-			// 選択行が画面より下にある場合
-			if actualLine >= currentRow+height-1 {
-				fileListView.ScrollTo(actualLine-height+2, currentCol)
-			}
-			// 選択行が画面より上にある場合
-			if actualLine < currentRow {
-				fileListView.ScrollTo(actualLine, currentCol)
-			}
-		}
+		// スクロール位置を復元
+		fileListView.ScrollTo(currentRow, currentCol)
 	}
 
 	// ファイルリストを内部的に更新する関数
@@ -378,6 +370,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		preferUnstagedSection: &preferUnstagedSection,
 		currentSelection:      &currentSelection,
 		fileList:              &fileList,
+		preserveScrollRow:     &preserveScrollRow,
 
 		// Paths
 		repoRoot:  repoRoot,
@@ -415,16 +408,17 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		mainView:        mainFlex, // メインビューの参照を追加
 
 		// State
-		currentSelection: &currentSelection,
-		cursorY:          &cursorY,
-		isSelecting:      &isSelecting,
-		selectStart:      &selectStart,
-		selectEnd:        &selectEnd,
-		isSplitView:      &isSplitView,
-		leftPaneFocused:  &leftPaneFocused,
-		currentFile:      &currentFile,
-		currentStatus:    &currentStatus,
-		currentDiffText:  &currentDiffText,
+		currentSelection:  &currentSelection,
+		cursorY:           &cursorY,
+		isSelecting:       &isSelecting,
+		selectStart:       &selectStart,
+		selectEnd:         &selectEnd,
+		isSplitView:       &isSplitView,
+		leftPaneFocused:   &leftPaneFocused,
+		currentFile:       &currentFile,
+		currentStatus:     &currentStatus,
+		currentDiffText:   &currentDiffText,
+		preserveScrollRow: &preserveScrollRow,
 
 		// Collections
 		fileList: &fileList,
@@ -710,6 +704,12 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		case tcell.KeyCtrlL:
 			app.SetFocus(fileListView)
 			return nil
+		case tcell.KeyCtrlO:
+			// Return to previous focus position before commit mode
+			if focusBeforeCommit != nil {
+				app.SetFocus(focusBeforeCommit)
+			}
+			return nil
 		case tcell.KeyEsc:
 			exitCommitMode()
 			return nil
@@ -732,6 +732,14 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			}
 
 			if !isCommitMode {
+				// Save current focus before entering commit mode
+				if leftPaneFocused {
+					focusBeforeCommit = fileListView
+				} else if isSplitView {
+					focusBeforeCommit = splitViewFlex
+				} else {
+					focusBeforeCommit = diffView
+				}
 				isCommitMode = true
 				isAmendMode = false
 				mainFlex.AddItem(commitTextArea, 7, 0, true) // TextAreaは高さを7に増やして複数行に対応
@@ -752,6 +760,14 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			}
 
 			if !isCommitMode {
+				// Save current focus before entering commit mode
+				if leftPaneFocused {
+					focusBeforeCommit = fileListView
+				} else if isSplitView {
+					focusBeforeCommit = splitViewFlex
+				} else {
+					focusBeforeCommit = diffView
+				}
 				isCommitMode = true
 				isAmendMode = true
 				commitTextArea.SetTitle("Commit Message (Amend)")
