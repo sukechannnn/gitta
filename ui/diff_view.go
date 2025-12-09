@@ -166,8 +166,15 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			scrollDiffView(ctx, 1)
 			return nil
 		case tcell.KeyCtrlY:
-			// Ctrl+Y: 1行上にスクロール（カーソルは最下部になったら追従）
-			scrollDiffView(ctx, -1)
+			// Ctrl+Y: ファイルパスをクリップボードにコピー
+			if *ctx.currentFile != "" {
+				err := commands.CopyFilePath(*ctx.currentFile)
+				if err == nil {
+					ctx.updateGlobalStatus("Copied path to clipboard", "forestgreen")
+				} else {
+					ctx.updateGlobalStatus("Failed to copy path to clipboard", "tomato")
+				}
+			}
 			return nil
 		case tcell.KeyRune:
 			switch event.Rune() {
