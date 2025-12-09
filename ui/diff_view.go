@@ -39,6 +39,7 @@ type DiffViewContext struct {
 	preferUnstagedSection *bool
 	currentSelection      *int
 	fileList              *[]FileEntry
+	preserveScrollRow     *int // ファイルリストのスクロール位置を保持
 
 	// Paths
 	repoRoot  string
@@ -152,11 +153,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			*ctx.isSelecting = false
 			*ctx.selectStart = -1
 			*ctx.selectEnd = -1
-			// 表示を更新
-			if ctx.viewUpdater != nil {
-				ctx.viewUpdater.UpdateWithoutCursor(*ctx.currentDiffText)
-			}
-			// 左ペインにフォーカスを戻す
+			// 左ペインにフォーカスを戻す（viewerの表示は更新しない - スクロール位置を保持）
 			*ctx.leftPaneFocused = true
 			ctx.updateFileListView()
 			ctx.app.SetFocus(ctx.fileListView)

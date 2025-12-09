@@ -114,16 +114,17 @@ type FileListKeyContext struct {
 	mainView        tview.Primitive // メインビューの参照
 
 	// State
-	currentSelection *int
-	cursorY          *int
-	isSelecting      *bool
-	selectStart      *int
-	selectEnd        *int
-	isSplitView      *bool
-	leftPaneFocused  *bool
-	currentFile      *string
-	currentStatus    *string
-	currentDiffText  *string
+	currentSelection  *int
+	cursorY           *int
+	isSelecting       *bool
+	selectStart       *int
+	selectEnd         *int
+	isSplitView       *bool
+	leftPaneFocused   *bool
+	currentFile       *string
+	currentStatus     *string
+	currentDiffText   *string
+	preserveScrollRow *int // ファイルリストのスクロール位置を保持
 
 	// Collections
 	fileList *[]FileEntry
@@ -166,24 +167,35 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				file := fileEntry.Path
 				status := fileEntry.StageStatus
 
+				// 同じファイルかどうかをチェック
+				sameFile := (*ctx.currentFile == file && *ctx.currentStatus == status)
+
 				// 現在のファイル情報を更新
 				*ctx.currentFile = file
 				*ctx.currentStatus = status
 
-				// カーソルと選択をリセット
-				*ctx.cursorY = 0
-				*ctx.isSelecting = false
-				*ctx.selectStart = -1
-				*ctx.selectEnd = -1
+				// 異なるファイルの場合のみカーソルと選択をリセット
+				if !sameFile {
+					*ctx.cursorY = 0
+					*ctx.isSelecting = false
+					*ctx.selectStart = -1
+					*ctx.selectEnd = -1
 
-				ctx.updateCurrentDiffText(file, status, ctx.repoRoot, ctx.currentDiffText)
+					ctx.updateCurrentDiffText(file, status, ctx.repoRoot, ctx.currentDiffText)
+				}
 
-				// Split Viewの場合はカーソル付きで更新
+				// viewerを更新（カーソル表示のため）
 				if *ctx.isSplitView {
 					updateSplitViewWithCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, *ctx.cursorY)
 				} else {
 					foldState := ctx.diffViewContext.foldState
 					updateDiffViewWithCursor(ctx.diffView, *ctx.currentDiffText, *ctx.cursorY, foldState, *ctx.currentFile, ctx.repoRoot)
+				}
+
+				// viewerに移動する前にスクロール位置を保存
+				if ctx.preserveScrollRow != nil {
+					currentRow, _ := ctx.fileListView.GetScrollOffset()
+					*ctx.preserveScrollRow = currentRow
 				}
 
 				// フォーカスを右ペインに移動
