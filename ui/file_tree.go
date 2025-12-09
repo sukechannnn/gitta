@@ -372,7 +372,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					ctx.updateSelectedFileDiff()
 				}
 				return nil
-			case 'd': // 'd' で選択したファイルの差分を破棄
+			case 'd': // 'd' で選択したファイルの差分を破棄（untracked fileの場合は削除）
 				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 
@@ -384,9 +384,17 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 						return nil
 					}
 
+					// 確認ダイアログのメッセージを設定
+					var modalText string
+					if fileEntry.StageStatus == "untracked" {
+						modalText = "Delete " + fileEntry.Path + "?\n\nThis action cannot be undone!"
+					} else {
+						modalText = "Discard all changes in " + fileEntry.Path + "?\n\nThis action cannot be undone!"
+					}
+
 					// 確認ダイアログを表示
 					modal := tview.NewModal().
-						SetText("Discard all changes in " + fileEntry.Path + "?\n\nThis action cannot be undone!").
+						SetText(modalText).
 						AddButtons([]string{"Discard", "Cancel"}).
 						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 							if buttonLabel == "Discard" {
@@ -409,7 +417,11 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 									ctx.updateFileListView()
 									ctx.updateSelectedFileDiff()
 									if ctx.updateGlobalStatus != nil {
-										ctx.updateGlobalStatus("Changes discarded successfully!", "forestgreen")
+										if fileEntry.StageStatus == "untracked" {
+											ctx.updateGlobalStatus("File deleted successfully!", "forestgreen")
+										} else {
+											ctx.updateGlobalStatus("Changes discarded successfully!", "forestgreen")
+										}
 									}
 								}
 							}
