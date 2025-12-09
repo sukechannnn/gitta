@@ -308,6 +308,17 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					end = *ctx.selectEnd
 				}
 
+				// Unified viewの場合、fold indicatorを除外した実際の差分行インデックスに変換
+				if !*ctx.isSplitView {
+					displayMapping := MapUnifiedDisplayToOriginalIdx(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
+					if mappedStart, ok := displayMapping[start]; ok {
+						start = mappedStart
+					}
+					if mappedEnd, ok := displayMapping[end]; ok {
+						end = mappedEnd
+					}
+				}
+
 				if start > end {
 					start, end = end, start
 				}
