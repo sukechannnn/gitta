@@ -33,7 +33,7 @@ func updateGlobalStatus(message string, color string) {
 }
 
 // ファイルの差分を取得
-func updateCurrentDiffText(filePath string, status string, repoRoot string, currentDiffText *string) {
+func updateCurrentDiffText(filePath string, status string, repoRoot string, currentDiffText *string, ignoreWhitespace bool) {
 	var diffText string
 	var err error
 
@@ -48,7 +48,7 @@ func updateCurrentDiffText(filePath string, status string, repoRoot string, curr
 	switch status {
 	case "staged":
 		// stagedファイルの場合はstaged差分を取得
-		diffText, err = git.GetStagedDiff(filePath, repoRoot)
+		diffText, err = git.GetStagedDiffWithOptions(filePath, repoRoot, ignoreWhitespace)
 	case "untracked":
 		// untrackedファイルの場合はファイル内容を読み取って全て追加として表示
 		content, readErr := util.ReadFileContent(filePath, repoRoot)
@@ -59,7 +59,7 @@ func updateCurrentDiffText(filePath string, status string, repoRoot string, curr
 		}
 	default:
 		// unstagedファイルの場合は通常の差分を取得
-		diffText, err = git.GetFileDiff(filePath, repoRoot)
+		diffText, err = git.GetFileDiffWithOptions(filePath, repoRoot, ignoreWhitespace)
 	}
 
 	if err != nil {
@@ -96,10 +96,28 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	var leftPaneFocused bool = true
 	var gPressed bool = false
 	var lastGTime time.Time
-	var isSplitView bool = false // Split Viewモードのフラグ
+	var isSplitView bool = false       // Split Viewモードのフラグ
+	var ignoreWhitespace bool = false  // Whitespace無視モードのフラグ
 
 	// Fold state for managing expandable ranges
 	foldState := NewFoldState()
+
+	// ステータスバーのタイトルを更新する関数
+	updateStatusTitle := func() {
+		var titleParts []string
+		if enableAutoRefresh {
+			titleParts = append(titleParts, "Watch: on")
+		}
+		if ignoreWhitespace {
+			titleParts = append(titleParts, "Hide whitespace: on")
+		}
+		if len(titleParts) > 0 {
+			globalStatusView.SetTitle(" " + strings.Join(titleParts, " | ") + " ")
+			globalStatusView.SetTitleAlign(tview.AlignLeft)
+		} else {
+			globalStatusView.SetTitle("")
+		}
+	}
 
 	// listStatusView を作成
 	globalStatusView = tview.NewTextView().
@@ -264,8 +282,9 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		// 現在のスクロール位置を保存
 		currentRow, currentCol := fileListView.GetScrollOffset()
 
-		// preserveScrollRowが設定されている場合はそれを使用
-		if preserveScrollRow >= 0 {
+		// preserveScrollRowが設定されている場合はそれを使用（viewerから戻った時）
+		shouldPreserveScroll := preserveScrollRow >= 0
+		if shouldPreserveScroll {
 			currentRow = preserveScrollRow
 			preserveScrollRow = -1 // リセット
 		}
@@ -273,8 +292,32 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		fileListView.Clear()
 		fileListView.SetText(buildFileListContent(leftPaneFocused))
 
-		// スクロール位置を復元
-		fileListView.ScrollTo(currentRow, currentCol)
+		// スクロール位置の処理
+		if shouldPreserveScroll {
+			// viewerから戻った時はスクロール位置を復元
+			fileListView.ScrollTo(currentRow, currentCol)
+		} else {
+			// 通常の操作時は選択行が見える範囲にスクロール
+			if actualLine, exists := lineNumberMap[currentSelection]; exists {
+				_, _, _, height := fileListView.GetInnerRect()
+
+				// 選択行が画面より下にある場合
+				if actualLine >= currentRow+height-1 {
+					fileListView.ScrollTo(actualLine-height+2, currentCol)
+				} else if actualLine < currentRow {
+					// 選択行が画面より上にある場合
+					// 一番上のファイル（currentSelection == 0）の場合は先頭にスクロールしてヘッダーを表示
+					if currentSelection == 0 {
+						fileListView.ScrollTo(0, currentCol)
+					} else {
+						fileListView.ScrollTo(actualLine, currentCol)
+					}
+				} else {
+					// 選択行が見える範囲内にある場合は、現在のスクロール位置を維持
+					fileListView.ScrollTo(currentRow, currentCol)
+				}
+			}
+		}
 	}
 
 	// ファイルリストを内部的に更新する関数
@@ -326,7 +369,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		selectStart = -1
 		selectEnd = -1
 
-		updateCurrentDiffText(file, status, repoRoot, &currentDiffText)
+		updateCurrentDiffText(file, status, repoRoot, &currentDiffText, ignoreWhitespace)
 
 		if isSplitView {
 			updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
@@ -342,6 +385,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	// 初期メッセージを設定
 	globalStatusView.SetText(listKeyBindingMessage)
+	updateStatusTitle()
 
 	// 右ペインのキー入力処理を設定（file_view.goと同じ動作）
 	// diffViewのキーバインディングを設定
@@ -371,6 +415,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		currentSelection:      &currentSelection,
 		fileList:              &fileList,
 		preserveScrollRow:     &preserveScrollRow,
+		ignoreWhitespace:      &ignoreWhitespace,
 
 		// Paths
 		repoRoot:  repoRoot,
@@ -387,10 +432,12 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		foldState: foldState,
 
 		// Callbacks
-		updateFileListView: updateFileListView,
-		updateGlobalStatus: updateGlobalStatus,
-		refreshFileList:    refreshFileList,
-		onUpdate:           onUpdate,
+		updateFileListView:    updateFileListView,
+		updateGlobalStatus:    updateGlobalStatus,
+		refreshFileList:       refreshFileList,
+		onUpdate:              onUpdate,
+		updateCurrentDiffText: updateCurrentDiffText,
+		updateStatusTitle:     updateStatusTitle,
 	}
 	SetupDiffViewKeyBindings(diffViewContext)
 
@@ -419,6 +466,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		currentStatus:     &currentStatus,
 		currentDiffText:   &currentDiffText,
 		preserveScrollRow: &preserveScrollRow,
+		ignoreWhitespace:  &ignoreWhitespace,
 
 		// Collections
 		fileList: &fileList,
@@ -496,14 +544,14 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 					var newDiffText string
 					if currentFile != "" && !leftPaneFocused {
 						if currentStatus == "staged" {
-							newDiffText, _ = git.GetStagedDiff(currentFile, repoRoot)
+							newDiffText, _ = git.GetStagedDiffWithOptions(currentFile, repoRoot, ignoreWhitespace)
 						} else if currentStatus == "untracked" {
 							content, readErr := util.ReadFileContent(currentFile, repoRoot)
 							if readErr == nil {
 								newDiffText = util.FormatAsAddedLines(content, currentFile)
 							}
 						} else {
-							newDiffText, _ = git.GetFileDiff(currentFile, repoRoot)
+							newDiffText, _ = git.GetFileDiffWithOptions(currentFile, repoRoot, ignoreWhitespace)
 						}
 						currentFileDiffChanged = (newDiffText != currentDiffText)
 					}
@@ -567,14 +615,14 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 							// 右ペインにフォーカスがある場合は現在のカーソル位置を保持して更新
 							var newDiffText string
 							if currentStatus == "staged" {
-								newDiffText, _ = git.GetStagedDiff(currentFile, repoRoot)
+								newDiffText, _ = git.GetStagedDiffWithOptions(currentFile, repoRoot, ignoreWhitespace)
 							} else if currentStatus == "untracked" {
 								content, readErr := util.ReadFileContent(currentFile, repoRoot)
 								if readErr == nil {
 									newDiffText = util.FormatAsAddedLines(content, currentFile)
 								}
 							} else {
-								newDiffText, _ = git.GetFileDiff(currentFile, repoRoot)
+								newDiffText, _ = git.GetFileDiffWithOptions(currentFile, repoRoot, ignoreWhitespace)
 							}
 
 							// 差分が変更された場合のみ更新

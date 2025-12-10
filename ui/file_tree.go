@@ -124,7 +124,8 @@ type FileListKeyContext struct {
 	currentFile       *string
 	currentStatus     *string
 	currentDiffText   *string
-	preserveScrollRow *int // ファイルリストのスクロール位置を保持
+	preserveScrollRow *int  // ファイルリストのスクロール位置を保持
+	ignoreWhitespace  *bool // Whitespace無視モード
 
 	// Collections
 	fileList *[]FileEntry
@@ -139,7 +140,7 @@ type FileListKeyContext struct {
 	updateFileListView     func()
 	updateSelectedFileDiff func()
 	refreshFileList        func()
-	updateCurrentDiffText  func(string, string, string, *string)
+	updateCurrentDiffText  func(string, string, string, *string, bool)
 	updateGlobalStatus     func(string, string)
 }
 
@@ -181,7 +182,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					*ctx.selectStart = -1
 					*ctx.selectEnd = -1
 
-					ctx.updateCurrentDiffText(file, status, ctx.repoRoot, ctx.currentDiffText)
+					ctx.updateCurrentDiffText(file, status, ctx.repoRoot, ctx.currentDiffText, *ctx.ignoreWhitespace)
 				}
 
 				// viewerを更新（カーソル表示のため）
@@ -329,46 +330,43 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 
 					err := cmd.Run()
 					if err != nil {
-						// エラーハンドリング（ここでは簡単にスキップ）
+						if ctx.updateGlobalStatus != nil {
+							if status == "staged" {
+								ctx.updateGlobalStatus("Failed to unstage file", "tomato")
+							} else {
+								ctx.updateGlobalStatus("Failed to stage file", "tomato")
+							}
+						}
 						return nil
+					}
+
+					// 現在のスクロール位置を保存
+					currentRow, _ := ctx.fileListView.GetScrollOffset()
+					if ctx.preserveScrollRow != nil {
+						*ctx.preserveScrollRow = currentRow
 					}
 
 					// 現在のカーソル位置の次のファイルを探す
 					var nextFile string
-					var nextStatus string
 					if *ctx.currentSelection < len(*ctx.fileList)-1 {
 						nextFileEntry := (*ctx.fileList)[*ctx.currentSelection+1]
 						nextFile = nextFileEntry.Path
-						nextStatus = nextFileEntry.StageStatus
 					}
 
 					// ファイルリストを更新
 					ctx.refreshFileList()
+					ctx.updateFileListView()
 
-					// カーソル位置を復元（UpdateFileListViewの前に実行）
+					// 次のファイルをパスのみで探す（ステータスは変わる可能性があるため無視）
 					foundNext := false
 					if nextFile != "" {
-						// UpdateFileListViewを呼ぶ前に一時的に選択を保存
-						tempSelection := -1
-
-						// ファイルリストを再構築（UpdateFileListViewを呼ぶ）
-						ctx.updateFileListView()
-
-						// 次のファイルを探す
 						for i, fileEntry := range *ctx.fileList {
-							if fileEntry.Path == nextFile && fileEntry.StageStatus == nextStatus {
-								tempSelection = i
+							if fileEntry.Path == nextFile {
+								*ctx.currentSelection = i
 								foundNext = true
 								break
 							}
 						}
-
-						if foundNext {
-							*ctx.currentSelection = tempSelection
-						}
-					} else {
-						// nextFileがない場合は通常通り更新
-						ctx.updateFileListView()
 					}
 
 					if !foundNext {
@@ -379,7 +377,10 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 						}
 					}
 
-					// 画面を再度更新して選択位置を反映
+					// スクロール位置を保持して画面を更新
+					if ctx.preserveScrollRow != nil {
+						*ctx.preserveScrollRow = currentRow
+					}
 					ctx.updateFileListView()
 					ctx.updateSelectedFileDiff()
 				}

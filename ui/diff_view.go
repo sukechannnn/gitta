@@ -39,7 +39,8 @@ type DiffViewContext struct {
 	preferUnstagedSection *bool
 	currentSelection      *int
 	fileList              *[]FileEntry
-	preserveScrollRow     *int // ファイルリストのスクロール位置を保持
+	preserveScrollRow     *int  // ファイルリストのスクロール位置を保持
+	ignoreWhitespace      *bool // Whitespace無視モード
 
 	// Paths
 	repoRoot  string
@@ -56,10 +57,12 @@ type DiffViewContext struct {
 	foldState *FoldState
 
 	// Callbacks
-	updateFileListView func()
-	updateGlobalStatus func(string, string)
-	refreshFileList    func()
-	onUpdate           func()
+	updateFileListView    func()
+	updateGlobalStatus    func(string, string)
+	refreshFileList       func()
+	onUpdate              func()
+	updateCurrentDiffText func(string, string, string, *string, bool)
+	updateStatusTitle     func()
 }
 
 // scrollDiffView scrolls the diff view by the specified direction and handles cursor following
@@ -199,6 +202,33 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					if !*ctx.leftPaneFocused {
 						ctx.app.SetFocus(ctx.diffView)
 					}
+				}
+				return nil
+			case 'w':
+				// Whitespace無視モードのトグル
+				*ctx.ignoreWhitespace = !*ctx.ignoreWhitespace
+
+				// 差分を再取得
+				ctx.updateCurrentDiffText(*ctx.currentFile, *ctx.currentStatus, ctx.repoRoot, ctx.currentDiffText, *ctx.ignoreWhitespace)
+
+				// カーソル位置をリセット
+				*ctx.cursorY = 0
+
+				// 表示を更新
+				if ctx.viewUpdater != nil {
+					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+				}
+
+				// ステータスタイトルを更新
+				if ctx.updateStatusTitle != nil {
+					ctx.updateStatusTitle()
+				}
+
+				// ステータス表示
+				if *ctx.ignoreWhitespace {
+					ctx.updateGlobalStatus("Whitespace changes hidden", "forestgreen")
+				} else {
+					ctx.updateGlobalStatus("Whitespace changes shown", "forestgreen")
 				}
 				return nil
 			case 'g':
