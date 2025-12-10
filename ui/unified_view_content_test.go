@@ -128,13 +128,16 @@ index 123..456 789
 				2: 99,
 				3: 100,
 			},
+			// fold機能により、行番号1-97のfold indicatorが表示される
 			wantContent: []string{
+				"[dimgray]... 97 lines hidden (press 'e' to expand) ...[-]",
 				" line98",
 				"[red]-line99[-]",
 				"[green]+line99_modified[-]",
 				" line100",
 			},
 			wantLineNums: []string{
+				"    │ ",
 				" 98 │ ",
 				" 99 │ ",
 				" 99 │ ",
@@ -193,7 +196,7 @@ index 123..456 789
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			content := generateUnifiedViewContent(tt.diffText, tt.oldLineMap, tt.newLineMap)
+			content := generateUnifiedViewContent(tt.diffText, tt.oldLineMap, tt.newLineMap, nil, "", "")
 
 			// Check number of lines
 			if len(content.Lines) != len(tt.wantContent) {

@@ -157,27 +157,24 @@ index 123..456 789
 				2: 2,
 				3: 3,
 			},
+			// ペアリングロジック: 削除行と追加行が同じ行に表示される
 			wantBefore: []string{
 				" line1",
 				"[red]-line2[-]",
-				"[dimgray] [-]",
 				" line3",
 			},
 			wantAfter: []string{
 				" line1",
-				"[dimgray] [-]",
 				"[green]+line2_modified[-]",
 				" line3",
 			},
 			wantBeforeNums: []string{
 				"1",
 				"2",
-				" ",
 				"3",
 			},
 			wantAfterNums: []string{
 				"1",
-				" ",
 				"2",
 				"3",
 			},
@@ -203,27 +200,24 @@ index 123..456 789
 				2: 99,
 				3: 100,
 			},
+			// ペアリングロジック: 削除行と追加行が同じ行に表示される
 			wantBefore: []string{
 				" line98",
 				"[red]-line99[-]",
-				"[dimgray] [-]",
 				" line100",
 			},
 			wantAfter: []string{
 				" line98",
-				"[dimgray] [-]",
 				"[green]+line99_modified[-]",
 				" line100",
 			},
 			wantBeforeNums: []string{
 				" 98",
 				" 99",
-				"   ",
 				"100",
 			},
 			wantAfterNums: []string{
 				" 98",
-				"   ",
 				" 99",
 				"100",
 			},
@@ -243,20 +237,17 @@ index 123..456 789
 			newLineMap: map[int]int{
 				1: 1,
 			},
+			// ペアリングロジック: 削除行と追加行が同じ行に表示される
 			wantBefore: []string{
 				"[red]-old[-]",
-				"[dimgray] [-]",
 			},
 			wantAfter: []string{
-				"[dimgray] [-]",
 				"[green]+new[-]",
 			},
 			wantBeforeNums: []string{
 				"1",
-				" ",
 			},
 			wantAfterNums: []string{
-				" ",
 				"1",
 			},
 		},
@@ -275,20 +266,17 @@ index 123..456 789
 			newLineMap: map[int]int{
 				1: 1,
 			},
+			// ペアリングロジック: 削除行と追加行が同じ行に表示される
 			wantBefore: []string{
 				"[red]-var foo [int[]string[-]",
-				"[dimgray] [-]",
 			},
 			wantAfter: []string{
-				"[dimgray] [-]",
 				"[green]+var foo [white[]string[-]",
 			},
 			wantBeforeNums: []string{
 				"1",
-				" ",
 			},
 			wantAfterNums: []string{
-				" ",
 				"1",
 			},
 		},
@@ -366,80 +354,3 @@ func TestIsHeaderLine(t *testing.T) {
 	}
 }
 
-func TestProcessHunkLine(t *testing.T) {
-	tests := []struct {
-		name           string
-		line           string
-		displayLine    int
-		maxDigits      int
-		oldLineMap     map[int]int
-		newLineMap     map[int]int
-		wantBeforeLine string
-		wantAfterLine  string
-		wantBeforeNum  string
-		wantAfterNum   string
-	}{
-		{
-			name:           "削除行",
-			line:           "-deleted",
-			displayLine:    0,
-			maxDigits:      2,
-			oldLineMap:     map[int]int{0: 10},
-			newLineMap:     map[int]int{},
-			wantBeforeLine: "[red]-deleted[-]",
-			wantAfterLine:  "[dimgray] [-]",
-			wantBeforeNum:  "10",
-			wantAfterNum:   "  ",
-		},
-		{
-			name:           "追加行",
-			line:           "+added",
-			displayLine:    1,
-			maxDigits:      2,
-			oldLineMap:     map[int]int{},
-			newLineMap:     map[int]int{1: 11},
-			wantBeforeLine: "[dimgray] [-]",
-			wantAfterLine:  "[green]+added[-]",
-			wantBeforeNum:  "  ",
-			wantAfterNum:   "11",
-		},
-		{
-			name:           "変更なし行",
-			line:           " unchanged",
-			displayLine:    2,
-			maxDigits:      3,
-			oldLineMap:     map[int]int{2: 100},
-			newLineMap:     map[int]int{2: 100},
-			wantBeforeLine: " unchanged",
-			wantAfterLine:  " unchanged",
-			wantBeforeNum:  "100",
-			wantAfterNum:   "100",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			content := &SplitViewContent{
-				BeforeLines:    []string{},
-				AfterLines:     []string{},
-				BeforeLineNums: []string{},
-				AfterLineNums:  []string{},
-			}
-
-			processHunkLine(tt.line, tt.displayLine, tt.maxDigits, tt.oldLineMap, tt.newLineMap, content)
-
-			if len(content.BeforeLines) > 0 && content.BeforeLines[0] != tt.wantBeforeLine {
-				t.Errorf("BeforeLine: got %q, want %q", content.BeforeLines[0], tt.wantBeforeLine)
-			}
-			if len(content.AfterLines) > 0 && content.AfterLines[0] != tt.wantAfterLine {
-				t.Errorf("AfterLine: got %q, want %q", content.AfterLines[0], tt.wantAfterLine)
-			}
-			if len(content.BeforeLineNums) > 0 && content.BeforeLineNums[0] != tt.wantBeforeNum {
-				t.Errorf("BeforeLineNum: got %q, want %q", content.BeforeLineNums[0], tt.wantBeforeNum)
-			}
-			if len(content.AfterLineNums) > 0 && content.AfterLineNums[0] != tt.wantAfterNum {
-				t.Errorf("AfterLineNum: got %q, want %q", content.AfterLineNums[0], tt.wantAfterNum)
-			}
-		})
-	}
-}
