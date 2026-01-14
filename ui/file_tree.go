@@ -328,13 +328,29 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 						cmd.Dir = ctx.repoRoot
 					}
 
-					err := cmd.Run()
+					// Git インデックスのロック競合を考慮してリトライ
+					var err error
+					for retry := 0; retry < 3; retry++ {
+						err = cmd.Run()
+						if err == nil {
+							break
+						}
+						// リトライ前に少し待機
+						time.Sleep(50 * time.Millisecond)
+						// コマンドを再作成（Cmdは一度実行すると再利用できない）
+						if status == "staged" {
+							cmd = exec.Command("git", "-c", "core.quotepath=false", "reset", "HEAD", file)
+						} else {
+							cmd = exec.Command("git", "-c", "core.quotepath=false", "add", file)
+						}
+						cmd.Dir = ctx.repoRoot
+					}
 					if err != nil {
 						if ctx.updateGlobalStatus != nil {
 							if status == "staged" {
-								ctx.updateGlobalStatus("Failed to unstage file", "tomato")
+								ctx.updateGlobalStatus("Failed to unstage file. Please retry.", "tomato")
 							} else {
-								ctx.updateGlobalStatus("Failed to stage file", "tomato")
+								ctx.updateGlobalStatus("Failed to stage file. Please retry.", "tomato")
 							}
 						}
 						return nil
@@ -392,7 +408,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					// stagedファイルの場合はエラーメッセージを表示
 					if fileEntry.StageStatus == "staged" {
 						if ctx.updateGlobalStatus != nil {
-							ctx.updateGlobalStatus("Cannot discard staged changes. Use 'u' to unstage first.", "tomato")
+							ctx.updateGlobalStatus("Cannot discard staged changes. Use 'A' to unstage first.", "tomato")
 						}
 						return nil
 					}

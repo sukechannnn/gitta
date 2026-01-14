@@ -18,7 +18,7 @@ type CommandDParams struct {
 func CommandD(params CommandDParams) error {
 	// stagedファイルの場合はサポートされていないことを通知
 	if params.CurrentStatus == "staged" {
-		return fmt.Errorf("Cannot discard staged changes. Use 'u' to unstage first.")
+		return fmt.Errorf("Cannot discard staged changes. Use 'A' to unstage first.")
 	}
 
 	// ファイルが選択されていない場合
