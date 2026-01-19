@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/rivo/tview"
 	"github.com/sukechannnn/gitta/git"
 	"github.com/sukechannnn/gitta/util"
 )
@@ -181,19 +182,23 @@ func renderFileTreeForGitFiles(
 				}
 			}
 
+			// tviewの色タグをエスケープ
+			escapedDisplayName := escapeTviewTags(displayName)
+
 			if focusedPane && *regionIndex == currentSelection {
-				sb.WriteString(fmt.Sprintf(`%s[white:blue]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, displayName))
+				sb.WriteString(fmt.Sprintf(`%s[white:blue]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, escapedDisplayName))
 			} else if !focusedPane && *regionIndex == currentSelection {
-				sb.WriteString(fmt.Sprintf(`%s[black:white]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, displayName))
+				sb.WriteString(fmt.Sprintf(`%s[black:white]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, escapedDisplayName))
 			} else {
-				sb.WriteString(fmt.Sprintf(`%s[white:%s]["file-%d"]%s%s[""][-:-]`+"\n", prefix, util.NotSelectedFileLineColor, *regionIndex, connector, displayName))
+				sb.WriteString(fmt.Sprintf(`%s[white:%s]["file-%d"]%s%s[""][-:-]`+"\n", prefix, util.NotSelectedFileLineColor, *regionIndex, connector, escapedDisplayName))
 			}
 			lineNumberMap[*regionIndex] = *currentLine
 			(*regionIndex)++
 			(*currentLine)++
 		} else {
 			// ディレクトリの場合
-			sb.WriteString(fmt.Sprintf("%s%s%s/\n", prefix, connector, child.Name))
+			escapedDirName := escapeTviewTags(child.Name)
+			sb.WriteString(fmt.Sprintf("%s%s%s/\n", prefix, connector, escapedDirName))
 			(*currentLine)++
 			renderFileTreeForGitFiles(child, depth+1, childPrefix, sb, fileList,
 				stageStatus, regionIndex, currentSelection, focusedPane, lineNumberMap, currentLine, fileInfos)
@@ -266,19 +271,23 @@ func renderFileTreeForCommitFiles(
 				}
 			}
 
+			// tviewの色タグをエスケープ
+			escapedDisplayName := escapeTviewTags(displayName)
+
 			if *regionIndex == currentSelection && focusedPane {
-				sb.WriteString(fmt.Sprintf(`%s[white:blue]%s%s[""][-:-]`+"\n", prefix, connector, displayName))
+				sb.WriteString(fmt.Sprintf(`%s[white:blue]%s%s[""][-:-]`+"\n", prefix, connector, escapedDisplayName))
 			} else if *regionIndex == currentSelection {
-				sb.WriteString(fmt.Sprintf(`%s[black:white]%s%s[""][-:-]`+"\n", prefix, connector, displayName))
+				sb.WriteString(fmt.Sprintf(`%s[black:white]%s%s[""][-:-]`+"\n", prefix, connector, escapedDisplayName))
 			} else {
-				sb.WriteString(fmt.Sprintf(`%s[white:%s]%s%s[""][-:-]`+"\n", prefix, util.NotSelectedFileLineColor, connector, displayName))
+				sb.WriteString(fmt.Sprintf(`%s[white:%s]%s%s[""][-:-]`+"\n", prefix, util.NotSelectedFileLineColor, connector, escapedDisplayName))
 			}
 			lineNumberMap[*regionIndex] = *currentLine
 			(*regionIndex)++
 			(*currentLine)++
 		} else {
 			// ディレクトリの場合
-			sb.WriteString(fmt.Sprintf("%s%s%s/\n", prefix, connector, child.Name))
+			escapedDirName := escapeTviewTags(child.Name)
+			sb.WriteString(fmt.Sprintf("%s%s%s/\n", prefix, connector, escapedDirName))
 			(*currentLine)++
 			renderFileTreeForCommitFiles(child, depth+1, childPrefix, sb, fileList,
 				regionIndex, currentSelection, focusedPane, lineNumberMap, currentLine, commitFiles)
@@ -298,4 +307,9 @@ func formatFileWithStatus(filename string, status string) string {
 	default:
 		return filename
 	}
+}
+
+// escapeTviewTags escapes tview color tag characters in text
+func escapeTviewTags(text string) string {
+	return tview.Escape(text)
 }

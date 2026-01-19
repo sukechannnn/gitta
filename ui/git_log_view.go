@@ -429,11 +429,11 @@ func (glv *GitLogView) showFileDiff(commitHash string) {
 
 	glv.currentDiffText = string(output)
 	glv.diffCursorY = 0
-	glv.updateCommitDiffWithCursor()
+	glv.updateCommitDiff()
 }
 
-// updateCommitDiffWithCursor updates the commit diff view with cursor
-func (glv *GitLogView) updateCommitDiffWithCursor() {
+// updateCommitDiff updates the commit diff view (with or without cursor based on focus)
+func (glv *GitLogView) updateCommitDiff() {
 	glv.commitDiffView.Clear()
 
 	// 行番号マッピングを作成
@@ -443,7 +443,8 @@ func (glv *GitLogView) updateCommitDiffWithCursor() {
 	content := generateUnifiedViewContent(glv.currentDiffText, oldLineMap, newLineMap, nil, "", "")
 
 	for i, line := range content.Lines {
-		if i == glv.diffCursorY {
+		// 左ペーンにフォーカスがある場合はカーソルを表示しない
+		if !glv.leftPaneFocused && i == glv.diffCursorY {
 			// カーソル行を青でハイライト
 			glv.commitDiffView.Write([]byte("[white:blue]" + line.LineNumber + line.Content + "[-:-]\n"))
 		} else {
@@ -451,15 +452,17 @@ func (glv *GitLogView) updateCommitDiffWithCursor() {
 		}
 	}
 
-	// スクロール位置を調整
-	_, _, _, height := glv.commitDiffView.GetInnerRect()
-	currentRow, _ := glv.commitDiffView.GetScrollOffset()
+	// スクロール位置を調整（右ペーンにフォーカスがある場合のみ）
+	if !glv.leftPaneFocused {
+		_, _, _, height := glv.commitDiffView.GetInnerRect()
+		currentRow, _ := glv.commitDiffView.GetScrollOffset()
 
-	if glv.diffCursorY >= currentRow+height-1 {
-		glv.commitDiffView.ScrollTo(glv.diffCursorY-height+2, 0)
-	}
-	if glv.diffCursorY < currentRow {
-		glv.commitDiffView.ScrollTo(glv.diffCursorY, 0)
+		if glv.diffCursorY >= currentRow+height-1 {
+			glv.commitDiffView.ScrollTo(glv.diffCursorY-height+2, 0)
+		}
+		if glv.diffCursorY < currentRow {
+			glv.commitDiffView.ScrollTo(glv.diffCursorY, 0)
+		}
 	}
 }
 
@@ -575,6 +578,7 @@ func (glv *GitLogView) setupKeyBindings() {
 		case tcell.KeyEnter:
 			glv.leftPaneFocused = false
 			glv.updateCommitFileList()
+			glv.updateCommitDiff()
 			glv.app.SetFocus(glv.commitDiffView)
 			return nil
 		}
@@ -619,6 +623,7 @@ func (glv *GitLogView) setupKeyBindings() {
 		case tcell.KeyEnter:
 			glv.leftPaneFocused = true
 			glv.updateCommitFileList()
+			glv.updateCommitDiff()
 			glv.app.SetFocus(glv.commitFileList)
 			return nil
 		}
@@ -632,14 +637,14 @@ func (glv *GitLogView) setupKeyBindings() {
 			maxLines := glv.getDiffLineCount()
 			if glv.diffCursorY < maxLines-1 {
 				glv.diffCursorY++
-				glv.updateCommitDiffWithCursor()
+				glv.updateCommitDiff()
 			}
 			return nil
 		case 'k':
 			// 上に移動
 			if glv.diffCursorY > 0 {
 				glv.diffCursorY--
-				glv.updateCommitDiffWithCursor()
+				glv.updateCommitDiff()
 			}
 			return nil
 		case 'g':
@@ -647,7 +652,7 @@ func (glv *GitLogView) setupKeyBindings() {
 			now := time.Now()
 			if *glv.gPressed && now.Sub(*glv.lastGTime) < 500*time.Millisecond {
 				glv.diffCursorY = 0
-				glv.updateCommitDiffWithCursor()
+				glv.updateCommitDiff()
 				*glv.gPressed = false
 			} else {
 				*glv.gPressed = true
@@ -659,7 +664,7 @@ func (glv *GitLogView) setupKeyBindings() {
 			maxLines := glv.getDiffLineCount()
 			if maxLines > 0 {
 				glv.diffCursorY = maxLines - 1
-				glv.updateCommitDiffWithCursor()
+				glv.updateCommitDiff()
 			}
 			return nil
 		case 'y':
