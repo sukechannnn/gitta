@@ -96,8 +96,8 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	var leftPaneFocused bool = true
 	var gPressed bool = false
 	var lastGTime time.Time
-	var isSplitView bool = false       // Split Viewモードのフラグ
-	var ignoreWhitespace bool = false  // Whitespace無視モードのフラグ
+	var isSplitView bool = false      // Split Viewモードのフラグ
+	var ignoreWhitespace bool = false // Whitespace無視モードのフラグ
 
 	// Fold state for managing expandable ranges
 	foldState := NewFoldState()
@@ -135,6 +135,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		SetDynamicColors(true).
 		SetRegions(true).
 		SetWrap(false)
+	fileListView.SetBorder(true).SetTitle("j/k: navigate, Enter: switch to diff")
 	fileListView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// 右ペイン（差分表示）のテキストビューを作成
@@ -142,12 +143,13 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		SetDynamicColors(true).
 		SetRegions(true).
 		SetWrap(false)
+	diffView.SetBorder(true).SetTitle("Enter: back to list")
 	diffView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+	diffView.SetBorderStyle(tcell.StyleDefault)
 
-	// Unified View用のフレックスコンテナ（diffViewと右端の縦線を含む）
+	// Unified View用のフレックスコンテナ
 	unifiedViewFlex := tview.NewFlex().
-		AddItem(diffView, 0, 1, false).
-		AddItem(CreateVerticalBorder(), 1, 0, false)
+		AddItem(diffView, 0, 1, false)
 	unifiedViewFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// Split View用のテキストビューを作成
@@ -155,20 +157,20 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		SetDynamicColors(true).
 		SetRegions(true).
 		SetWrap(false)
+	beforeView.SetBorder(true).SetTitle("Before")
 	beforeView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	afterView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetRegions(true).
 		SetWrap(false)
+	afterView.SetBorder(true).SetTitle("After")
 	afterView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// Split View用のフレックスコンテナ
 	splitViewFlex := tview.NewFlex().
 		AddItem(beforeView, 0, 1, false).
-		AddItem(CreateVerticalBorder(), 1, 0, false).
-		AddItem(afterView, 0, 1, false).
-		AddItem(CreateVerticalBorder(), 1, 0, false)
+		AddItem(afterView, 0, 1, false)
 	splitViewFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// 保存されたカーソル位置を復元
@@ -219,12 +221,6 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	var fileList []FileEntry
 	var lineNumberMap = make(map[int]int)
 
-	// ボーダーを作成
-	verticalBorder := CreateVerticalBorder()
-	horizontalTopBorder := CreateHorizontalTopBorder()
-	horizontalBottomBorder := CreateHorizontalBottomBorder()
-	verticalBorderLeft := CreateVerticalBorder()
-
 	// コミットメッセージ入力エリア
 	commitTextArea := tview.NewTextArea().
 		SetPlaceholder("Enter commit message (Option+Enter to commit, Ctrl+O to return, Ctrl+L to file list, Esc to cancel)")
@@ -253,12 +249,8 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	contentFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
 	// レイアウト設定
-	// 左右のペインをフレックスに追加（左:縦線:右 = FileListFlexRatio:0:DiffViewFlexRatio）
-	// 右側の縦線は unifiedViewFlex と splitViewFlex で定義している
 	contentFlex.
-		AddItem(verticalBorderLeft, 1, 0, false).
 		AddItem(fileListView, 0, FileListFlexRatio, true).
-		AddItem(verticalBorder, 1, 0, false).
 		AddItem(unifiedViewFlex, 0, DiffViewFlexRatio, false)
 
 	// ファイル一覧の内容を構築（色付き）
@@ -767,9 +759,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	// mainFlex にステータスビューとコンテンツを追加
 	mainFlex.AddItem(globalStatusView, 5, 0, false).
-		AddItem(horizontalTopBorder, 1, 0, false).
-		AddItem(contentFlex, 0, 1, true).
-		AddItem(horizontalBottomBorder, 1, 0, false)
+		AddItem(contentFlex, 0, 1, true)
 
 	mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlK {
