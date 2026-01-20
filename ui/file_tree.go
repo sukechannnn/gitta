@@ -459,12 +459,33 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 							ctx.app.SetFocus(ctx.fileListView)
 						})
 
-					// 画面下部に小さく表示するためのレイアウト
-					flex := tview.NewFlex().SetDirection(tview.FlexRow).
-						AddItem(ctx.mainView, 0, 1, false).
-						AddItem(modal, 5, 0, true)
+					// mainViewを全画面で表示し、その上にmodalを重ねて表示
+					pages := tview.NewPages().
+						AddPage("main", ctx.mainView, true, true).
+						AddPage("modal", modal, true, true)
 
-					ctx.app.SetRoot(flex, true)
+					ctx.app.SetRoot(pages, true)
+				}
+				return nil
+			case 'v': // 'v' でvimでファイルを開く
+				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
+					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+					filePath := fileEntry.Path
+
+					// アプリケーションを一時停止してvimを起動
+					ctx.app.Suspend(func() {
+						cmd := exec.Command("vim", "-c", "set title titlestring=[gitta]\\ %f", filePath)
+						cmd.Dir = ctx.repoRoot
+						cmd.Stdin = os.Stdin
+						cmd.Stdout = os.Stdout
+						cmd.Stderr = os.Stderr
+						cmd.Run()
+					})
+
+					// vimから戻ったらファイルリストを更新
+					ctx.refreshFileList()
+					ctx.updateFileListView()
+					ctx.updateSelectedFileDiff()
 				}
 				return nil
 			case 't': // 't' でgit logビューを表示
