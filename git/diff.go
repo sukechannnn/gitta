@@ -6,9 +6,19 @@ import (
 )
 
 func GetFileDiff(filePath string, repoRoot string) (string, error) {
+	return GetFileDiffWithOptions(filePath, repoRoot, false)
+}
+
+func GetFileDiffWithOptions(filePath string, repoRoot string, ignoreWhitespace bool) (string, error) {
 	// `git diff` を実行（削除されたファイルでも動作するように -- を追加）
 	// -c core.quotepath=false でマルチバイトファイル名をエスケープしないようにする
-	cmd := exec.Command("git", "-c", "core.quotepath=false", "diff", "--", filePath)
+	args := []string{"-c", "core.quotepath=false", "diff"}
+	if ignoreWhitespace {
+		args = append(args, "-w")
+	}
+	args = append(args, "--", filePath)
+
+	cmd := exec.Command("git", args...)
 	cmd.Dir = repoRoot
 	output, err := cmd.Output()
 	if err != nil {

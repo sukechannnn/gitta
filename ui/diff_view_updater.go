@@ -16,29 +16,47 @@ type DiffViewUpdater interface {
 
 // UnifiedViewUpdater implements DiffViewUpdater for unified diff view
 type UnifiedViewUpdater struct {
-	diffView *tview.TextView
+	diffView  *tview.TextView
+	foldState *FoldState
+	filePath  *string
+	repoRoot  string
 }
 
 // NewUnifiedViewUpdater creates a new UnifiedViewUpdater
-func NewUnifiedViewUpdater(diffView *tview.TextView) *UnifiedViewUpdater {
+func NewUnifiedViewUpdater(diffView *tview.TextView, foldState *FoldState, filePath *string, repoRoot string) *UnifiedViewUpdater {
 	return &UnifiedViewUpdater{
-		diffView: diffView,
+		diffView:  diffView,
+		foldState: foldState,
+		filePath:  filePath,
+		repoRoot:  repoRoot,
 	}
 }
 
 // UpdateWithoutCursor updates unified view without cursor
 func (u *UnifiedViewUpdater) UpdateWithoutCursor(diffText string) {
-	updateDiffViewWithoutCursor(u.diffView, diffText)
+	filePath := ""
+	if u.filePath != nil {
+		filePath = *u.filePath
+	}
+	updateDiffViewWithoutCursor(u.diffView, diffText, u.foldState, filePath, u.repoRoot)
 }
 
 // UpdateWithCursor updates unified view with cursor
 func (u *UnifiedViewUpdater) UpdateWithCursor(diffText string, cursorY int) {
-	updateDiffViewWithCursor(u.diffView, diffText, cursorY)
+	filePath := ""
+	if u.filePath != nil {
+		filePath = *u.filePath
+	}
+	updateDiffViewWithCursor(u.diffView, diffText, cursorY, u.foldState, filePath, u.repoRoot)
 }
 
 // UpdateWithSelection updates unified view with selection
 func (u *UnifiedViewUpdater) UpdateWithSelection(diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool) {
-	updateDiffViewWithSelection(u.diffView, diffText, cursorY, selectStart, selectEnd, isSelecting)
+	filePath := ""
+	if u.filePath != nil {
+		filePath = *u.filePath
+	}
+	updateDiffViewWithSelection(u.diffView, diffText, cursorY, selectStart, selectEnd, isSelecting, u.foldState, filePath, u.repoRoot)
 }
 
 // SplitViewUpdater implements DiffViewUpdater for split diff view
@@ -71,28 +89,28 @@ func (s *SplitViewUpdater) UpdateWithSelection(diffText string, cursorY int, sel
 }
 
 // ----------↓↓↓ unified_view_functions ↓↓↓----------
-func updateDiffViewWithoutCursor(diffView *tview.TextView, diffText string) {
+func updateDiffViewWithoutCursor(diffView *tview.TextView, diffText string, foldState *FoldState, filePath, repoRoot string) {
 	oldLineMap, newLineMap := createLineNumberMapping(diffText)
-	updateDiffViewWithSelectionAndMapping(diffView, diffText, -1, -1, -1, false, oldLineMap, newLineMap)
+	updateDiffViewWithSelectionAndMapping(diffView, diffText, -1, -1, -1, false, oldLineMap, newLineMap, foldState, filePath, repoRoot)
 }
 
-func updateDiffViewWithCursor(diffView *tview.TextView, diffText string, cursorY int) {
+func updateDiffViewWithCursor(diffView *tview.TextView, diffText string, cursorY int, foldState *FoldState, filePath, repoRoot string) {
 	oldLineMap, newLineMap := createLineNumberMapping(diffText)
-	updateDiffViewWithSelectionAndMapping(diffView, diffText, cursorY, -1, -1, false, oldLineMap, newLineMap)
+	updateDiffViewWithSelectionAndMapping(diffView, diffText, cursorY, -1, -1, false, oldLineMap, newLineMap, foldState, filePath, repoRoot)
 }
 
-func updateDiffViewWithSelection(diffView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool) {
+func updateDiffViewWithSelection(diffView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool, foldState *FoldState, filePath, repoRoot string) {
 	// 行番号マッピングを作成
 	oldLineMap, newLineMap := createLineNumberMapping(diffText)
-	updateDiffViewWithSelectionAndMapping(diffView, diffText, cursorY, selectStart, selectEnd, isSelecting, oldLineMap, newLineMap)
+	updateDiffViewWithSelectionAndMapping(diffView, diffText, cursorY, selectStart, selectEnd, isSelecting, oldLineMap, newLineMap, foldState, filePath, repoRoot)
 }
 
 // updateDiffViewWithSelectionAndMapping updates diff view with selection and line mapping
-func updateDiffViewWithSelectionAndMapping(diffView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool, oldLineMap, newLineMap map[int]int) {
+func updateDiffViewWithSelectionAndMapping(diffView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool, oldLineMap, newLineMap map[int]int, foldState *FoldState, filePath, repoRoot string) {
 	diffView.Clear()
 
 	// Generate content using the new function
-	content := generateUnifiedViewContent(diffText, oldLineMap, newLineMap)
+	content := generateUnifiedViewContent(diffText, oldLineMap, newLineMap, foldState, filePath, repoRoot)
 
 	for i, line := range content.Lines {
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
@@ -126,30 +144,10 @@ func updateDiffViewWithSelectionAndMapping(diffView *tview.TextView, diffText st
 
 // getSplitViewLineCount gets valid line count for split view
 func getSplitViewLineCount(diffText string) int {
-	lines := strings.Split(diffText, "\n")
-	count := 0
-	inHunk := false
-
-	for _, line := range lines {
-		// ヘッダー行をスキップ
-		if strings.HasPrefix(line, "diff --git") ||
-			strings.HasPrefix(line, "index ") ||
-			strings.HasPrefix(line, "--- ") ||
-			strings.HasPrefix(line, "+++ ") {
-			continue
-		}
-
-		if strings.HasPrefix(line, "@@") {
-			inHunk = true
-			continue
-		}
-
-		if inHunk {
-			count++
-		}
-	}
-
-	return count
+	// ペアリング後の実際の行数を取得するため、generateSplitViewContentを使用
+	oldLineMap, newLineMap := createLineNumberMapping(diffText)
+	content := generateSplitViewContent(diffText, oldLineMap, newLineMap)
+	return len(content.BeforeLines)
 }
 
 func updateSplitViewWithoutCursor(beforeView, afterView *tview.TextView, diffText string) {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"github.com/sukechannnn/gitta/ui/commands"
 	"github.com/sukechannnn/gitta/util"
 )
 
@@ -42,6 +43,9 @@ type GitLogView struct {
 	// ggコマンド用の状態
 	gPressed  *bool
 	lastGTime *time.Time
+	// Diffビューのカーソル位置
+	diffCursorY    int
+	currentDiffText string
 }
 
 // NewGitLogView creates a new git log viewer
@@ -414,7 +418,7 @@ func (glv *GitLogView) showFileDiff(commitHash string) {
 	}
 
 	file := glv.commitFiles[glv.selectedFile]
-	cmd := exec.Command("git", "show", "--color=always", commitHash, "--", file.FileName)
+	cmd := exec.Command("git", "show", commitHash, "--", file.FileName)
 	cmd.Dir = glv.repoRoot
 
 	output, err := cmd.CombinedOutput()
@@ -423,9 +427,50 @@ func (glv *GitLogView) showFileDiff(commitHash string) {
 		return
 	}
 
-	// Convert ANSI codes in the output
-	cleanOutput := convertANSIToTviewColors(string(output))
-	glv.commitDiffView.SetText(cleanOutput)
+	glv.currentDiffText = string(output)
+	glv.diffCursorY = 0
+	glv.updateCommitDiff()
+}
+
+// updateCommitDiff updates the commit diff view (with or without cursor based on focus)
+func (glv *GitLogView) updateCommitDiff() {
+	glv.commitDiffView.Clear()
+
+	// 行番号マッピングを作成
+	oldLineMap, newLineMap := createLineNumberMapping(glv.currentDiffText)
+
+	// generateUnifiedViewContentを使用（foldStateはnilで）
+	content := generateUnifiedViewContent(glv.currentDiffText, oldLineMap, newLineMap, nil, "", "")
+
+	for i, line := range content.Lines {
+		// 左ペーンにフォーカスがある場合はカーソルを表示しない
+		if !glv.leftPaneFocused && i == glv.diffCursorY {
+			// カーソル行を青でハイライト
+			glv.commitDiffView.Write([]byte("[white:blue]" + line.LineNumber + line.Content + "[-:-]\n"))
+		} else {
+			glv.commitDiffView.Write([]byte("[dimgray]" + line.LineNumber + "[-]" + line.Content + "\n"))
+		}
+	}
+
+	// スクロール位置を調整（右ペーンにフォーカスがある場合のみ）
+	if !glv.leftPaneFocused {
+		_, _, _, height := glv.commitDiffView.GetInnerRect()
+		currentRow, _ := glv.commitDiffView.GetScrollOffset()
+
+		if glv.diffCursorY >= currentRow+height-1 {
+			glv.commitDiffView.ScrollTo(glv.diffCursorY-height+2, 0)
+		}
+		if glv.diffCursorY < currentRow {
+			glv.commitDiffView.ScrollTo(glv.diffCursorY, 0)
+		}
+	}
+}
+
+// getDiffLineCount returns the number of lines in the diff
+func (glv *GitLogView) getDiffLineCount() int {
+	oldLineMap, newLineMap := createLineNumberMapping(glv.currentDiffText)
+	content := generateUnifiedViewContent(glv.currentDiffText, oldLineMap, newLineMap, nil, "", "")
+	return len(content.Lines)
 }
 
 // showCommitDetails shows the details of the selected commit
@@ -533,6 +578,7 @@ func (glv *GitLogView) setupKeyBindings() {
 		case tcell.KeyEnter:
 			glv.leftPaneFocused = false
 			glv.updateCommitFileList()
+			glv.updateCommitDiff()
 			glv.app.SetFocus(glv.commitDiffView)
 			return nil
 		}
@@ -577,6 +623,7 @@ func (glv *GitLogView) setupKeyBindings() {
 		case tcell.KeyEnter:
 			glv.leftPaneFocused = true
 			glv.updateCommitFileList()
+			glv.updateCommitDiff()
 			glv.app.SetFocus(glv.commitFileList)
 			return nil
 		}
@@ -584,6 +631,54 @@ func (glv *GitLogView) setupKeyBindings() {
 		switch event.Rune() {
 		case 'q':
 			glv.quitApplication()
+			return nil
+		case 'j':
+			// 下に移動
+			maxLines := glv.getDiffLineCount()
+			if glv.diffCursorY < maxLines-1 {
+				glv.diffCursorY++
+				glv.updateCommitDiff()
+			}
+			return nil
+		case 'k':
+			// 上に移動
+			if glv.diffCursorY > 0 {
+				glv.diffCursorY--
+				glv.updateCommitDiff()
+			}
+			return nil
+		case 'g':
+			// ggで最上部に移動
+			now := time.Now()
+			if *glv.gPressed && now.Sub(*glv.lastGTime) < 500*time.Millisecond {
+				glv.diffCursorY = 0
+				glv.updateCommitDiff()
+				*glv.gPressed = false
+			} else {
+				*glv.gPressed = true
+				*glv.lastGTime = now
+			}
+			return nil
+		case 'G':
+			// 最下部に移動
+			maxLines := glv.getDiffLineCount()
+			if maxLines > 0 {
+				glv.diffCursorY = maxLines - 1
+				glv.updateCommitDiff()
+			}
+			return nil
+		case 'y':
+			// 現在のカーソル行をコピー
+			lines := getSelectableDiffLines(glv.currentDiffText)
+			if len(lines) == 0 || glv.diffCursorY >= len(lines) {
+				return nil
+			}
+
+			line := lines[glv.diffCursorY]
+			sanitized := stripDiffPrefix(line)
+			if err := commands.CopyToClipboard(sanitized); err == nil {
+				// コピー成功
+			}
 			return nil
 		}
 

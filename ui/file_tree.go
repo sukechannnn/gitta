@@ -114,16 +114,18 @@ type FileListKeyContext struct {
 	mainView        tview.Primitive // メインビューの参照
 
 	// State
-	currentSelection *int
-	cursorY          *int
-	isSelecting      *bool
-	selectStart      *int
-	selectEnd        *int
-	isSplitView      *bool
-	leftPaneFocused  *bool
-	currentFile      *string
-	currentStatus    *string
-	currentDiffText  *string
+	currentSelection  *int
+	cursorY           *int
+	isSelecting       *bool
+	selectStart       *int
+	selectEnd         *int
+	isSplitView       *bool
+	leftPaneFocused   *bool
+	currentFile       *string
+	currentStatus     *string
+	currentDiffText   *string
+	preserveScrollRow *int  // ファイルリストのスクロール位置を保持
+	ignoreWhitespace  *bool // Whitespace無視モード
 
 	// Collections
 	fileList *[]FileEntry
@@ -138,7 +140,7 @@ type FileListKeyContext struct {
 	updateFileListView     func()
 	updateSelectedFileDiff func()
 	refreshFileList        func()
-	updateCurrentDiffText  func(string, string, string, *string)
+	updateCurrentDiffText  func(string, string, string, *string, bool)
 	updateGlobalStatus     func(string, string)
 }
 
@@ -166,23 +168,35 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				file := fileEntry.Path
 				status := fileEntry.StageStatus
 
+				// 同じファイルかどうかをチェック
+				sameFile := (*ctx.currentFile == file && *ctx.currentStatus == status)
+
 				// 現在のファイル情報を更新
 				*ctx.currentFile = file
 				*ctx.currentStatus = status
 
-				// カーソルと選択をリセット
-				*ctx.cursorY = 0
-				*ctx.isSelecting = false
-				*ctx.selectStart = -1
-				*ctx.selectEnd = -1
+				// 異なるファイルの場合のみカーソルと選択をリセット
+				if !sameFile {
+					*ctx.cursorY = 0
+					*ctx.isSelecting = false
+					*ctx.selectStart = -1
+					*ctx.selectEnd = -1
 
-				ctx.updateCurrentDiffText(file, status, ctx.repoRoot, ctx.currentDiffText)
+					ctx.updateCurrentDiffText(file, status, ctx.repoRoot, ctx.currentDiffText, *ctx.ignoreWhitespace)
+				}
 
-				// Split Viewの場合はカーソル付きで更新
+				// viewerを更新（カーソル表示のため）
 				if *ctx.isSplitView {
 					updateSplitViewWithCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, *ctx.cursorY)
 				} else {
-					updateDiffViewWithCursor(ctx.diffView, *ctx.currentDiffText, *ctx.cursorY)
+					foldState := ctx.diffViewContext.foldState
+					updateDiffViewWithCursor(ctx.diffView, *ctx.currentDiffText, *ctx.cursorY, foldState, *ctx.currentFile, ctx.repoRoot)
+				}
+
+				// viewerに移動する前にスクロール位置を保存
+				if ctx.preserveScrollRow != nil {
+					currentRow, _ := ctx.fileListView.GetScrollOffset()
+					*ctx.preserveScrollRow = currentRow
 				}
 
 				// フォーカスを右ペインに移動
@@ -276,10 +290,11 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					// 通常の差分表示に戻す
 					ctx.contentFlex.RemoveItem(ctx.splitViewFlex)
 					ctx.contentFlex.AddItem(ctx.unifiedViewFlex, 0, DiffViewFlexRatio, false)
-					updateDiffViewWithoutCursor(ctx.diffView, *ctx.currentDiffText)
+					foldState := ctx.diffViewContext.foldState
+					updateDiffViewWithoutCursor(ctx.diffView, *ctx.currentDiffText, foldState, *ctx.currentFile, ctx.repoRoot)
 					// viewUpdaterをUnifiedView用に更新
 					if ctx.diffViewContext != nil {
-						ctx.diffViewContext.viewUpdater = NewUnifiedViewUpdater(ctx.diffView)
+						ctx.diffViewContext.viewUpdater = NewUnifiedViewUpdater(ctx.diffView, foldState, ctx.currentFile, ctx.repoRoot)
 					}
 				}
 				return nil
@@ -296,7 +311,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					}
 				}
 				return nil
-			case 'A': // 'A' で現在のファイルを git add/reset
+			case 'a': // 'a' で現在のファイルを git add/reset
 				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 					file := fileEntry.Path
@@ -313,48 +328,61 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 						cmd.Dir = ctx.repoRoot
 					}
 
-					err := cmd.Run()
+					// Git インデックスのロック競合を考慮してリトライ
+					var err error
+					for retry := 0; retry < 3; retry++ {
+						err = cmd.Run()
+						if err == nil {
+							break
+						}
+						// リトライ前に少し待機
+						time.Sleep(50 * time.Millisecond)
+						// コマンドを再作成（Cmdは一度実行すると再利用できない）
+						if status == "staged" {
+							cmd = exec.Command("git", "-c", "core.quotepath=false", "reset", "HEAD", file)
+						} else {
+							cmd = exec.Command("git", "-c", "core.quotepath=false", "add", file)
+						}
+						cmd.Dir = ctx.repoRoot
+					}
 					if err != nil {
-						// エラーハンドリング（ここでは簡単にスキップ）
+						if ctx.updateGlobalStatus != nil {
+							if status == "staged" {
+								ctx.updateGlobalStatus("Failed to unstage file. Please retry.", "tomato")
+							} else {
+								ctx.updateGlobalStatus("Failed to stage file. Please retry.", "tomato")
+							}
+						}
 						return nil
+					}
+
+					// 現在のスクロール位置を保存
+					currentRow, _ := ctx.fileListView.GetScrollOffset()
+					if ctx.preserveScrollRow != nil {
+						*ctx.preserveScrollRow = currentRow
 					}
 
 					// 現在のカーソル位置の次のファイルを探す
 					var nextFile string
-					var nextStatus string
 					if *ctx.currentSelection < len(*ctx.fileList)-1 {
 						nextFileEntry := (*ctx.fileList)[*ctx.currentSelection+1]
 						nextFile = nextFileEntry.Path
-						nextStatus = nextFileEntry.StageStatus
 					}
 
 					// ファイルリストを更新
 					ctx.refreshFileList()
+					ctx.updateFileListView()
 
-					// カーソル位置を復元（UpdateFileListViewの前に実行）
+					// 次のファイルをパスのみで探す（ステータスは変わる可能性があるため無視）
 					foundNext := false
 					if nextFile != "" {
-						// UpdateFileListViewを呼ぶ前に一時的に選択を保存
-						tempSelection := -1
-
-						// ファイルリストを再構築（UpdateFileListViewを呼ぶ）
-						ctx.updateFileListView()
-
-						// 次のファイルを探す
 						for i, fileEntry := range *ctx.fileList {
-							if fileEntry.Path == nextFile && fileEntry.StageStatus == nextStatus {
-								tempSelection = i
+							if fileEntry.Path == nextFile {
+								*ctx.currentSelection = i
 								foundNext = true
 								break
 							}
 						}
-
-						if foundNext {
-							*ctx.currentSelection = tempSelection
-						}
-					} else {
-						// nextFileがない場合は通常通り更新
-						ctx.updateFileListView()
 					}
 
 					if !foundNext {
@@ -365,49 +393,64 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 						}
 					}
 
-					// 画面を再度更新して選択位置を反映
+					// スクロール位置を保持して画面を更新
+					if ctx.preserveScrollRow != nil {
+						*ctx.preserveScrollRow = currentRow
+					}
 					ctx.updateFileListView()
 					ctx.updateSelectedFileDiff()
 				}
 				return nil
-			case 'd': // 'd' で選択したファイルの差分を破棄
+			case 'd': // 'd' で選択したファイルの差分を破棄（untracked fileの場合は削除）
 				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 
 					// stagedファイルの場合はエラーメッセージを表示
 					if fileEntry.StageStatus == "staged" {
 						if ctx.updateGlobalStatus != nil {
-							ctx.updateGlobalStatus("Cannot discard staged changes. Use 'u' to unstage first.", "tomato")
+							ctx.updateGlobalStatus("Cannot discard staged changes. Use 'a' to unstage first.", "tomato")
 						}
 						return nil
 					}
 
-					// 確認ダイアログを表示
+					// 確認メッセージを設定
+					var confirmMsg string
+					var buttonLabel string
+					if fileEntry.StageStatus == "untracked" {
+						confirmMsg = "Delete " + fileEntry.Path + "?"
+						buttonLabel = "Delete"
+					} else {
+						confirmMsg = "Discard changes in " + fileEntry.Path + "?"
+						buttonLabel = "Discard"
+					}
+
+					// 小さい確認モーダルを作成
 					modal := tview.NewModal().
-						SetText("Discard all changes in " + fileEntry.Path + "?\n\nThis action cannot be undone!").
-						AddButtons([]string{"Discard", "Cancel"}).
+						SetText(confirmMsg).
+						AddButtons([]string{buttonLabel, "Cancel"}).
 						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-							if buttonLabel == "Discard" {
-								// CommandDParamsを作成
+							if buttonLabel == "Discard" || buttonLabel == "Delete" {
 								params := commands.CommandDParams{
 									CurrentFile:   fileEntry.Path,
 									CurrentStatus: fileEntry.StageStatus,
 									RepoRoot:      ctx.repoRoot,
 								}
 
-								// CommandD実行
 								err := commands.CommandD(params)
 								if err != nil {
 									if ctx.updateGlobalStatus != nil {
 										ctx.updateGlobalStatus(err.Error(), "tomato")
 									}
 								} else {
-									// 成功時はファイルリストを更新
 									ctx.refreshFileList()
 									ctx.updateFileListView()
 									ctx.updateSelectedFileDiff()
 									if ctx.updateGlobalStatus != nil {
-										ctx.updateGlobalStatus("Changes discarded successfully!", "forestgreen")
+										if fileEntry.StageStatus == "untracked" {
+											ctx.updateGlobalStatus("File deleted successfully!", "forestgreen")
+										} else {
+											ctx.updateGlobalStatus("Changes discarded successfully!", "forestgreen")
+										}
 									}
 								}
 							}
@@ -416,11 +459,33 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 							ctx.app.SetFocus(ctx.fileListView)
 						})
 
-					// モーダルの背景色を設定
-					modal.SetBackgroundColor(tcell.ColorDefault)
+					// mainViewを全画面で表示し、その上にmodalを重ねて表示
+					pages := tview.NewPages().
+						AddPage("main", ctx.mainView, true, true).
+						AddPage("modal", modal, true, true)
 
-					// モーダルを表示
-					ctx.app.SetRoot(modal, true)
+					ctx.app.SetRoot(pages, true)
+				}
+				return nil
+			case 'v': // 'v' でvimでファイルを開く
+				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
+					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+					filePath := fileEntry.Path
+
+					// アプリケーションを一時停止してvimを起動
+					ctx.app.Suspend(func() {
+						cmd := exec.Command("vim", "-c", "set title titlestring=[gitta]\\ %f", filePath)
+						cmd.Dir = ctx.repoRoot
+						cmd.Stdin = os.Stdin
+						cmd.Stdout = os.Stdout
+						cmd.Stderr = os.Stderr
+						cmd.Run()
+					})
+
+					// vimから戻ったらファイルリストを更新
+					ctx.refreshFileList()
+					ctx.updateFileListView()
+					ctx.updateSelectedFileDiff()
 				}
 				return nil
 			case 't': // 't' でgit logビューを表示

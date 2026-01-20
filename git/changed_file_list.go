@@ -95,7 +95,33 @@ func GetChangedFiles(repoPath string) ([]FileInfo, []FileInfo, []FileInfo, error
 			modifiedFiles = append(modifiedFiles, FileInfo{Path: newFile, ChangeStatus: "added"})
 		} else if indexStatus == '?' && worktreeStatus == '?' {
 			// untrackedファイル
-			untrackedFiles = append(untrackedFiles, FileInfo{Path: filename, ChangeStatus: "untracked"})
+			// ディレクトリかどうかをチェック
+			fullPath := filepath.Join(gitRoot, filename)
+			fileInfo, statErr := os.Stat(fullPath)
+			if statErr == nil && fileInfo.IsDir() {
+				// ディレクトリの場合は配下のファイルを再帰的に取得
+				err := filepath.Walk(fullPath, func(path string, info os.FileInfo, err error) error {
+					if err != nil {
+						return err
+					}
+					if !info.IsDir() {
+						// 相対パスに変換
+						relPath, err := filepath.Rel(gitRoot, path)
+						if err != nil {
+							return err
+						}
+						untrackedFiles = append(untrackedFiles, FileInfo{Path: relPath, ChangeStatus: "untracked"})
+					}
+					return nil
+				})
+				if err != nil {
+					// エラーが発生してもディレクトリ自体は追加しない
+					continue
+				}
+			} else {
+				// ファイルの場合はそのまま追加
+				untrackedFiles = append(untrackedFiles, FileInfo{Path: filename, ChangeStatus: "untracked"})
+			}
 		} else {
 			// ステータスに応じて適切な情報を追加
 			if indexStatus == 'A' {
