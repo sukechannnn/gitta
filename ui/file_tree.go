@@ -311,7 +311,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					}
 				}
 				return nil
-			case 'A': // 'A' で現在のファイルを git add/reset
+			case 'a': // 'a' で現在のファイルを git add/reset
 				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 					file := fileEntry.Path
@@ -408,40 +408,40 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					// stagedファイルの場合はエラーメッセージを表示
 					if fileEntry.StageStatus == "staged" {
 						if ctx.updateGlobalStatus != nil {
-							ctx.updateGlobalStatus("Cannot discard staged changes. Use 'A' to unstage first.", "tomato")
+							ctx.updateGlobalStatus("Cannot discard staged changes. Use 'a' to unstage first.", "tomato")
 						}
 						return nil
 					}
 
-					// 確認ダイアログのメッセージを設定
-					var modalText string
+					// 確認メッセージを設定
+					var confirmMsg string
+					var buttonLabel string
 					if fileEntry.StageStatus == "untracked" {
-						modalText = "Delete " + fileEntry.Path + "?\n\nThis action cannot be undone!"
+						confirmMsg = "Delete " + fileEntry.Path + "?"
+						buttonLabel = "Delete"
 					} else {
-						modalText = "Discard all changes in " + fileEntry.Path + "?\n\nThis action cannot be undone!"
+						confirmMsg = "Discard changes in " + fileEntry.Path + "?"
+						buttonLabel = "Discard"
 					}
 
-					// 確認ダイアログを表示
+					// 小さい確認モーダルを作成
 					modal := tview.NewModal().
-						SetText(modalText).
-						AddButtons([]string{"Discard", "Cancel"}).
+						SetText(confirmMsg).
+						AddButtons([]string{buttonLabel, "Cancel"}).
 						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-							if buttonLabel == "Discard" {
-								// CommandDParamsを作成
+							if buttonLabel == "Discard" || buttonLabel == "Delete" {
 								params := commands.CommandDParams{
 									CurrentFile:   fileEntry.Path,
 									CurrentStatus: fileEntry.StageStatus,
 									RepoRoot:      ctx.repoRoot,
 								}
 
-								// CommandD実行
 								err := commands.CommandD(params)
 								if err != nil {
 									if ctx.updateGlobalStatus != nil {
 										ctx.updateGlobalStatus(err.Error(), "tomato")
 									}
 								} else {
-									// 成功時はファイルリストを更新
 									ctx.refreshFileList()
 									ctx.updateFileListView()
 									ctx.updateSelectedFileDiff()
@@ -459,11 +459,12 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 							ctx.app.SetFocus(ctx.fileListView)
 						})
 
-					// モーダルの背景色を設定
-					modal.SetBackgroundColor(tcell.ColorDefault)
+					// 画面下部に小さく表示するためのレイアウト
+					flex := tview.NewFlex().SetDirection(tview.FlexRow).
+						AddItem(ctx.mainView, 0, 1, false).
+						AddItem(modal, 5, 0, true)
 
-					// モーダルを表示
-					ctx.app.SetRoot(modal, true)
+					ctx.app.SetRoot(flex, true)
 				}
 				return nil
 			case 't': // 't' でgit logビューを表示
