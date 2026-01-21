@@ -37,15 +37,17 @@ type GitLogView struct {
 	showingCommit   bool
 	onExit          func()
 	scrollOffset    int // スクロールオフセット
-	commitFiles     []CommitFileInfo
+	commitFiles     []FileEntry
 	selectedFile    int
 	leftPaneFocused bool
 	// ggコマンド用の状態
 	gPressed  *bool
 	lastGTime *time.Time
 	// Diffビューのカーソル位置
-	diffCursorY    int
+	diffCursorY     int
 	currentDiffText string
+	// 共通の diff updater
+	diffUpdater *UnifiedViewUpdater
 }
 
 // NewGitLogView creates a new git log viewer
@@ -122,11 +124,12 @@ func NewGitLogView(app *tview.Application, repoRoot string, onExit func()) *GitL
 		showingCommit:   false,
 		onExit:          onExit,
 		scrollOffset:    0,
-		commitFiles:     []CommitFileInfo{},
+		commitFiles:     []FileEntry{},
 		selectedFile:    0,
 		leftPaneFocused: true,
 		gPressed:        new(bool),
 		lastGTime:       new(time.Time),
+		diffUpdater:     NewUnifiedViewUpdater(commitDiffView, nil, nil, ""),
 	}
 
 	glv.setupKeyBindings()
@@ -319,12 +322,12 @@ func (glv *GitLogView) loadCommitFiles(commitHash string) {
 
 	output, err := cmd.Output()
 	if err != nil {
-		glv.commitFiles = []CommitFileInfo{}
+		glv.commitFiles = []FileEntry{}
 		return
 	}
 
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	glv.commitFiles = []CommitFileInfo{}
+	glv.commitFiles = []FileEntry{}
 
 	for _, line := range lines {
 		if line == "" {
@@ -342,9 +345,10 @@ func (glv *GitLogView) loadCommitFiles(commitHash string) {
 			continue
 		}
 
-		fileInfo := CommitFileInfo{
-			Status:   normalizeCommitStatus(rawStatus),
-			FileName: fileName,
+		fileInfo := FileEntry{
+			Path:         fileName,
+			StageStatus:  "commit",
+			ChangeStatus: normalizeCommitStatus(rawStatus),
 		}
 		glv.commitFiles = append(glv.commitFiles, fileInfo)
 	}
@@ -385,20 +389,18 @@ func (glv *GitLogView) updateCommitFileList() {
 	}
 
 	// Build tree from commit files
-	tree := buildFileTreeFromCommitFiles(glv.commitFiles)
+	tree := buildFileTreeFromFileEntries(glv.commitFiles)
 
 	var content strings.Builder
-	var displayFiles []CommitFileInfo
 	regionIndex := 0
 	currentLine := 0
 	lineNumberMap := make(map[int]int)
 
-	renderFileTreeForCommitFiles(
+	renderFileTreeForFileEntries(
 		tree,
 		0,
 		"",
 		&content,
-		&displayFiles,
 		&regionIndex,
 		glv.selectedFile,
 		glv.leftPaneFocused,
@@ -418,7 +420,7 @@ func (glv *GitLogView) showFileDiff(commitHash string) {
 	}
 
 	file := glv.commitFiles[glv.selectedFile]
-	cmd := exec.Command("git", "show", commitHash, "--", file.FileName)
+	cmd := exec.Command("git", "show", commitHash, "--", file.Path)
 	cmd.Dir = glv.repoRoot
 
 	output, err := cmd.CombinedOutput()
@@ -434,43 +436,17 @@ func (glv *GitLogView) showFileDiff(commitHash string) {
 
 // updateCommitDiff updates the commit diff view (with or without cursor based on focus)
 func (glv *GitLogView) updateCommitDiff() {
-	glv.commitDiffView.Clear()
-
-	// 行番号マッピングを作成
-	oldLineMap, newLineMap := createLineNumberMapping(glv.currentDiffText)
-
-	// generateUnifiedViewContentを使用（foldStateはnilで）
-	content := generateUnifiedViewContent(glv.currentDiffText, oldLineMap, newLineMap, nil, "", "")
-
-	for i, line := range content.Lines {
-		// 左ペーンにフォーカスがある場合はカーソルを表示しない
-		if !glv.leftPaneFocused && i == glv.diffCursorY {
-			// カーソル行を青でハイライト
-			glv.commitDiffView.Write([]byte("[white:blue]" + line.LineNumber + line.Content + "[-:-]\n"))
-		} else {
-			glv.commitDiffView.Write([]byte("[dimgray]" + line.LineNumber + "[-]" + line.Content + "\n"))
-		}
-	}
-
-	// スクロール位置を調整（右ペーンにフォーカスがある場合のみ）
-	if !glv.leftPaneFocused {
-		_, _, _, height := glv.commitDiffView.GetInnerRect()
-		currentRow, _ := glv.commitDiffView.GetScrollOffset()
-
-		if glv.diffCursorY >= currentRow+height-1 {
-			glv.commitDiffView.ScrollTo(glv.diffCursorY-height+2, 0)
-		}
-		if glv.diffCursorY < currentRow {
-			glv.commitDiffView.ScrollTo(glv.diffCursorY, 0)
-		}
+	// 左ペーンにフォーカスがある場合はカーソルを表示しない
+	if glv.leftPaneFocused {
+		glv.diffUpdater.UpdateWithoutCursor(glv.currentDiffText)
+	} else {
+		glv.diffUpdater.UpdateWithCursor(glv.currentDiffText, glv.diffCursorY)
 	}
 }
 
 // getDiffLineCount returns the number of lines in the diff
 func (glv *GitLogView) getDiffLineCount() int {
-	oldLineMap, newLineMap := createLineNumberMapping(glv.currentDiffText)
-	content := generateUnifiedViewContent(glv.currentDiffText, oldLineMap, newLineMap, nil, "", "")
-	return len(content.Lines)
+	return getUnifiedViewLineCount(glv.currentDiffText)
 }
 
 // showCommitDetails shows the details of the selected commit

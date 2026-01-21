@@ -138,6 +138,13 @@ func updateDiffViewWithSelectionAndMapping(diffView *tview.TextView, diffText st
 	}
 }
 
+// getUnifiedViewLineCount gets valid line count for unified view
+func getUnifiedViewLineCount(diffText string) int {
+	oldLineMap, newLineMap := createLineNumberMapping(diffText)
+	content := generateUnifiedViewContent(diffText, oldLineMap, newLineMap, nil, "", "")
+	return len(content.Lines)
+}
+
 // ----------↑↑↑ unified_view_functions ↑↑↑----------
 
 // ----------↓↓↓ split_view_functions ↓↓↓----------

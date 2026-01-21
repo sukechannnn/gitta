@@ -12,15 +12,10 @@ import (
 
 // FileEntry represents a file entry in the file list with ID, path and status
 type FileEntry struct {
-	ID          string
-	Path        string
-	StageStatus string // "staged", "unstaged", "untracked"
-}
-
-// CommitFileInfo represents a file in a commit with status
-type CommitFileInfo struct {
-	FileName string
-	Status   string
+	ID           string
+	Path         string
+	StageStatus  string // "staged", "unstaged", "untracked", "commit" (for git log view)
+	ChangeStatus string // "added", "modified", "deleted", "untracked", "renamed", etc.
 }
 
 // TreeNode represents a node in the file tree structure
@@ -70,8 +65,8 @@ func buildFileTreeFromGitFiles(files []git.FileInfo) *TreeNode {
 	return root
 }
 
-// buildFileTreeFromCommitFiles converts a list of CommitFileInfo into a tree structure
-func buildFileTreeFromCommitFiles(files []CommitFileInfo) *TreeNode {
+// buildFileTreeFromFileEntries converts a list of FileEntry into a tree structure
+func buildFileTreeFromFileEntries(files []FileEntry) *TreeNode {
 	root := &TreeNode{
 		Name:     "",
 		IsFile:   false,
@@ -79,7 +74,7 @@ func buildFileTreeFromCommitFiles(files []CommitFileInfo) *TreeNode {
 	}
 
 	for _, fileInfo := range files {
-		file := strings.TrimSpace(fileInfo.FileName)
+		file := strings.TrimSpace(fileInfo.Path)
 		if file == "" {
 			continue
 		}
@@ -206,19 +201,18 @@ func renderFileTreeForGitFiles(
 	}
 }
 
-// renderFileTreeForCommitFiles renders the tree structure for CommitFileInfo
-func renderFileTreeForCommitFiles(
+// renderFileTreeForFileEntries renders the tree structure for FileEntry (used by git log view)
+func renderFileTreeForFileEntries(
 	node *TreeNode,
 	depth int,
 	prefix string,
 	sb *strings.Builder,
-	fileList *[]CommitFileInfo,
 	regionIndex *int,
 	currentSelection int,
 	focusedPane bool,
 	lineNumberMap map[int]int,
 	currentLine *int,
-	commitFiles []CommitFileInfo,
+	fileEntries []FileEntry,
 ) {
 	// Sort children for consistent ordering
 	var sortedKeys []string
@@ -263,10 +257,10 @@ func renderFileTreeForCommitFiles(
 			// ファイルの場合
 			displayName := child.Name
 
-			// ファイルのステータスを検索して装飾を追加（ステータス表示のみ、色は付けない）
-			for _, fileInfo := range commitFiles {
-				if fileInfo.FileName == child.FullPath {
-					displayName = formatFileWithStatus(child.Name, fileInfo.Status)
+			// ファイルのステータスを検索して装飾を追加
+			for _, fileInfo := range fileEntries {
+				if fileInfo.Path == child.FullPath {
+					displayName = formatFileWithStatus(child.Name, fileInfo.ChangeStatus)
 					break
 				}
 			}
@@ -289,8 +283,8 @@ func renderFileTreeForCommitFiles(
 			escapedDirName := escapeTviewTags(child.Name)
 			sb.WriteString(fmt.Sprintf("%s%s%s/\n", prefix, connector, escapedDirName))
 			(*currentLine)++
-			renderFileTreeForCommitFiles(child, depth+1, childPrefix, sb, fileList,
-				regionIndex, currentSelection, focusedPane, lineNumberMap, currentLine, commitFiles)
+			renderFileTreeForFileEntries(child, depth+1, childPrefix, sb,
+				regionIndex, currentSelection, focusedPane, lineNumberMap, currentLine, fileEntries)
 		}
 	}
 }
