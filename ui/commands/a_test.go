@@ -33,17 +33,28 @@ func TestCommandA(t *testing.T) {
 		}
 	})
 
-	t.Run("returns nil when currentStatus is staged", func(t *testing.T) {
+	t.Run("handles file read error for staged files", func(t *testing.T) {
+		statusMessages := []string{}
 		params := CommandAParams{
 			SelectStart:     0,
 			SelectEnd:       5,
-			CurrentFile:     "test.txt",
+			CurrentFile:     "nonexistent.txt",
 			CurrentStatus:   "staged",
 			CurrentDiffText: "some diff",
+			RepoRoot:        "/tmp",
+			UpdateGlobalStatus: func(msg, color string) {
+				statusMessages = append(statusMessages, msg)
+			},
 		}
 		result, err := CommandA(params)
-		if result != nil || err != nil {
-			t.Errorf("Expected nil result and nil error for staged file, got result=%v, err=%v", result, err)
+		if result != nil {
+			t.Errorf("Expected nil result for file read error, got %v", result)
+		}
+		if err == nil {
+			t.Error("Expected error for nonexistent file")
+		}
+		if len(statusMessages) == 0 || !strings.Contains(statusMessages[0], "Failed to read file") {
+			t.Errorf("Expected 'Failed to read file' status message, got %v", statusMessages)
 		}
 	})
 
@@ -318,6 +329,225 @@ func TestCommandA_Integration(t *testing.T) {
 		}
 		if !strings.Contains(unstagedDiff, "-line4") || !strings.Contains(unstagedDiff, "+modified line4") {
 			t.Error("Unstaged diff should still contain the complete line4 modification")
+		}
+	})
+}
+
+func TestCommandA_UnstageIntegration(t *testing.T) {
+	t.Run("unstages selected lines from staged diff", func(t *testing.T) {
+		// Create a temporary test directory
+		tmpDir, err := os.MkdirTemp("", "gitta-unstage-test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		// Initialize git repo
+		initCmd := exec.Command("git", "init")
+		initCmd.Dir = tmpDir
+		if err := initCmd.Run(); err != nil {
+			t.Fatal("Failed to initialize git repo:", err)
+		}
+
+		// Configure git user
+		emailCmd := exec.Command("git", "config", "user.email", "test@example.com")
+		emailCmd.Dir = tmpDir
+		emailCmd.Run()
+
+		nameCmd := exec.Command("git", "config", "user.name", "Test User")
+		nameCmd.Dir = tmpDir
+		nameCmd.Run()
+
+		// Create initial file and commit
+		testFile := filepath.Join(tmpDir, "test.txt")
+		initialContent := "line1\nline2\nline3\nline4\nline5\n"
+		if err := os.WriteFile(testFile, []byte(initialContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		addCmd := exec.Command("git", "add", "test.txt")
+		addCmd.Dir = tmpDir
+		if err := addCmd.Run(); err != nil {
+			t.Fatal("Failed to add file:", err)
+		}
+
+		commitCmd := exec.Command("git", "commit", "-m", "initial")
+		commitCmd.Dir = tmpDir
+		if err := commitCmd.Run(); err != nil {
+			t.Fatal("Failed to commit:", err)
+		}
+
+		// Modify multiple lines and stage all changes
+		modifiedContent := "line1\nmodified line2\nline3\nmodified line4\nline5\n"
+		if err := os.WriteFile(testFile, []byte(modifiedContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Stage all changes
+		addCmd2 := exec.Command("git", "add", "test.txt")
+		addCmd2.Dir = tmpDir
+		if err := addCmd2.Run(); err != nil {
+			t.Fatal("Failed to stage changes:", err)
+		}
+
+		// Get the staged diff
+		stagedDiffCmd := exec.Command("git", "diff", "--cached", "test.txt")
+		stagedDiffCmd.Dir = tmpDir
+		stagedOutput, err := stagedDiffCmd.Output()
+		if err != nil {
+			t.Fatal("Failed to get staged diff:", err)
+		}
+		stagedDiff := string(stagedOutput)
+
+		// Unstage only the first modification (line2)
+		statusMessages := []string{}
+		params := CommandAParams{
+			SelectStart:     2,
+			SelectEnd:       3,
+			CurrentFile:     "test.txt",
+			CurrentStatus:   "staged",
+			CurrentDiffText: stagedDiff,
+			RepoRoot:        tmpDir,
+			UpdateGlobalStatus: func(msg, color string) {
+				statusMessages = append(statusMessages, msg)
+			},
+		}
+
+		result, err := CommandA(params)
+		if err != nil {
+			t.Fatalf("CommandA failed: %v", err)
+		}
+		if result == nil || !result.Success {
+			t.Fatal("Expected successful result")
+		}
+
+		// Check that success message was sent
+		found := false
+		for _, msg := range statusMessages {
+			if strings.Contains(msg, "unstaged successfully") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected 'unstaged successfully' message, got %v", statusMessages)
+		}
+
+		// Check staged content - should only have line4 modification now
+		stagedDiffCmd2 := exec.Command("git", "diff", "--cached", "test.txt")
+		stagedDiffCmd2.Dir = tmpDir
+		stagedOutput2, err := stagedDiffCmd2.Output()
+		if err != nil {
+			t.Fatal("Failed to get staged diff:", err)
+		}
+		stagedDiffAfter := string(stagedOutput2)
+
+		if strings.Contains(stagedDiffAfter, "modified line2") {
+			t.Error("Staged diff should NOT contain 'modified line2' after unstage")
+		}
+		if !strings.Contains(stagedDiffAfter, "modified line4") {
+			t.Error("Staged diff should still contain 'modified line4'")
+		}
+	})
+
+	t.Run("reports no changes when only context lines are selected for unstage", func(t *testing.T) {
+		// Create a temporary test directory
+		tmpDir, err := os.MkdirTemp("", "gitta-unstage-nochange-test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		// Initialize git repo
+		initCmd := exec.Command("git", "init")
+		initCmd.Dir = tmpDir
+		if err := initCmd.Run(); err != nil {
+			t.Fatal("Failed to initialize git repo:", err)
+		}
+
+		// Configure git user
+		emailCmd := exec.Command("git", "config", "user.email", "test@example.com")
+		emailCmd.Dir = tmpDir
+		emailCmd.Run()
+
+		nameCmd := exec.Command("git", "config", "user.name", "Test User")
+		nameCmd.Dir = tmpDir
+		nameCmd.Run()
+
+		// Create initial file and commit
+		testFile := filepath.Join(tmpDir, "test.txt")
+		initialContent := "line1\nline2\nline3\n"
+		if err := os.WriteFile(testFile, []byte(initialContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		addCmd := exec.Command("git", "add", "test.txt")
+		addCmd.Dir = tmpDir
+		if err := addCmd.Run(); err != nil {
+			t.Fatal("Failed to add file:", err)
+		}
+
+		commitCmd := exec.Command("git", "commit", "-m", "initial")
+		commitCmd.Dir = tmpDir
+		if err := commitCmd.Run(); err != nil {
+			t.Fatal("Failed to commit:", err)
+		}
+
+		// Modify and stage
+		modifiedContent := "line1\nmodified line2\nline3\n"
+		if err := os.WriteFile(testFile, []byte(modifiedContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		addCmd2 := exec.Command("git", "add", "test.txt")
+		addCmd2.Dir = tmpDir
+		if err := addCmd2.Run(); err != nil {
+			t.Fatal("Failed to stage changes:", err)
+		}
+
+		// Get the staged diff
+		stagedDiffCmd := exec.Command("git", "diff", "--cached", "test.txt")
+		stagedDiffCmd.Dir = tmpDir
+		stagedOutput, err := stagedDiffCmd.Output()
+		if err != nil {
+			t.Fatal("Failed to get staged diff:", err)
+		}
+		stagedDiff := string(stagedOutput)
+
+		// Try to unstage only context lines
+		statusMessages := []string{}
+		params := CommandAParams{
+			SelectStart:     0, // コンテキスト行
+			SelectEnd:       0,
+			CurrentFile:     "test.txt",
+			CurrentStatus:   "staged",
+			CurrentDiffText: stagedDiff,
+			RepoRoot:        tmpDir,
+			UpdateGlobalStatus: func(msg, color string) {
+				statusMessages = append(statusMessages, msg)
+			},
+		}
+
+		result, err := CommandA(params)
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		if result == nil {
+			t.Error("Expected result, got nil")
+		} else if !result.Success {
+			t.Error("Expected success=true")
+		}
+
+		// Check that "no changes" message was sent
+		found := false
+		for _, msg := range statusMessages {
+			if strings.Contains(msg, "No changes were unstaged") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected 'No changes were unstaged' message, got %v", statusMessages)
 		}
 	})
 }

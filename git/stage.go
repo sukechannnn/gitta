@@ -58,6 +58,97 @@ func GetFileContentFromHEAD(filePath string, repoRoot string) ([]byte, error) {
 	return output, nil
 }
 
+// RevertSelectedChangesFromStaged returns file content with selected changes reverted from staging
+// It takes the staged diff and reverts only the selected lines back to HEAD state
+func RevertSelectedChangesFromStaged(filePath string, repoRoot string, stagedDiffText string, selectedStart, selectedEnd int) (string, error) {
+	// Get HEAD content
+	headContent, err := GetFileContentFromHEAD(filePath, repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("failed to get HEAD content: %w", err)
+	}
+
+	// Parse staged diff to understand changes
+	diffLines := strings.Split(stagedDiffText, "\n")
+
+	// Apply only NON-selected changes on top of HEAD content
+	// (selected changes will be reverted = not applied)
+	result := applyNonSelectedDiffLines(string(headContent), diffLines, selectedStart, selectedEnd)
+
+	return result, nil
+}
+
+// applyNonSelectedDiffLines applies diff lines EXCEPT the selected ones to base content
+// This effectively reverts the selected changes
+func applyNonSelectedDiffLines(baseContent string, diffLines []string, selectedStart, selectedEnd int) string {
+	baseLines := strings.Split(baseContent, "\n")
+	result := make([]string, 0)
+
+	baseIdx := 0
+	inHunk := false
+	var currentLine int
+
+	for i, line := range diffLines {
+		if strings.HasPrefix(line, "@@") {
+			inHunk = true
+			// Parse line number from hunk header
+			var oldStart int
+			fmt.Sscanf(line, "@@ -%d", &oldStart)
+			currentLine = oldStart - 1
+
+			// Add any skipped lines
+			for baseIdx < currentLine && baseIdx < len(baseLines) {
+				result = append(result, baseLines[baseIdx])
+				baseIdx++
+			}
+			continue
+		}
+
+		if !inHunk {
+			continue
+		}
+
+		isSelected := i >= selectedStart && i <= selectedEnd
+
+		if strings.HasPrefix(line, "-") {
+			// Deletion in staged diff
+			if isSelected {
+				// Selected: revert this deletion = keep the line
+				if baseIdx < len(baseLines) {
+					result = append(result, baseLines[baseIdx])
+					baseIdx++
+				}
+			} else {
+				// Not selected: keep the deletion = skip the line
+				baseIdx++
+			}
+		} else if strings.HasPrefix(line, "+") {
+			// Addition in staged diff
+			if isSelected {
+				// Selected: revert this addition = don't add the line
+				// (do nothing)
+			} else {
+				// Not selected: keep the addition
+				result = append(result, line[1:])
+			}
+			// Don't increment baseIdx for additions
+		} else if !strings.HasPrefix(line, "\\") {
+			// Context line
+			if baseIdx < len(baseLines) {
+				result = append(result, baseLines[baseIdx])
+				baseIdx++
+			}
+		}
+	}
+
+	// Add any remaining lines
+	for baseIdx < len(baseLines) {
+		result = append(result, baseLines[baseIdx])
+		baseIdx++
+	}
+
+	return strings.Join(result, "\n")
+}
+
 // applySelectedDiffLines applies selected diff lines to base content
 func applySelectedDiffLines(baseContent string, diffLines []string, selectedStart, selectedEnd int) string {
 	baseLines := strings.Split(baseContent, "\n")

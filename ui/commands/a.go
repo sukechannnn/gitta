@@ -32,19 +32,16 @@ type CommandAResult struct {
 	NewCursorPos  int  // ステージング後の推奨カーソル位置
 }
 
-// CommandA handles the 'a' command for staging selected lines
+// CommandA handles the 'a' command for staging/unstaging selected lines
 func CommandA(params CommandAParams) (*CommandAResult, error) {
 	// Validate inputs
 	if params.SelectStart == -1 || params.SelectEnd == -1 || params.CurrentFile == "" || params.CurrentDiffText == "" {
 		return nil, nil
 	}
 
-	// Staged ファイルでは行単位のunstageは未対応
+	// Staged ファイルの場合は unstage 処理
 	if params.CurrentStatus == "staged" {
-		if params.UpdateGlobalStatus != nil {
-			params.UpdateGlobalStatus("Line-by-line unstaging is not implemented!", "tomato")
-		}
-		return nil, nil
+		return commandAUnstage(params)
 	}
 
 	// ファイルパスを構築
@@ -196,4 +193,129 @@ func calculateNewCursorPosition(oldDiffText, newDiffText string, selectStart, se
 	}
 
 	return newCursorPos
+}
+
+// commandAUnstage handles unstaging selected lines from staged diff
+func commandAUnstage(params CommandAParams) (*CommandAResult, error) {
+	// ファイルパスを構築
+	filePath := filepath.Join(params.RepoRoot, params.CurrentFile)
+
+	// 現在のファイル内容を保存
+	originalContent, err := os.ReadFile(filePath)
+	if err != nil {
+		if params.UpdateGlobalStatus != nil {
+			params.UpdateGlobalStatus("Failed to read file", "tomato")
+		}
+		return nil, err
+	}
+
+	// 選択範囲のマッピングを取得
+	mapping := MapDisplayToOriginalIdx(params.CurrentDiffText)
+	start := mapping[params.SelectStart]
+	end := mapping[params.SelectEnd]
+
+	// 選択範囲に実際の変更が含まれているかチェック
+	coloredDiff := ColorizeDiff(params.CurrentDiffText)
+	displayLines := util.SplitLines(coloredDiff)
+
+	hasChanges := false
+	diffLines := strings.Split(params.CurrentDiffText, "\n")
+
+	for i := params.SelectStart; i <= params.SelectEnd && i < len(displayLines); i++ {
+		if originalIdx, ok := mapping[i]; ok {
+			if originalIdx < len(diffLines) {
+				originalLine := diffLines[originalIdx]
+				if strings.HasPrefix(originalLine, "+") || strings.HasPrefix(originalLine, "-") {
+					hasChanges = true
+					break
+				}
+			}
+		}
+	}
+
+	// 変更が含まれていない場合は早期リターン
+	if !hasChanges {
+		if params.UpdateGlobalStatus != nil {
+			params.UpdateGlobalStatus("No changes were unstaged", "yellow")
+		}
+		result := &CommandAResult{
+			Success:      true,
+			NewDiffText:  params.CurrentDiffText,
+			ColoredDiff:  coloredDiff,
+			DiffLines:    displayLines,
+			ShouldUpdate: false,
+			NewCursorPos: params.SelectStart,
+		}
+		return result, nil
+	}
+
+	// 選択した変更を除外したファイル内容を取得
+	modifiedContent, err := git.RevertSelectedChangesFromStaged(params.CurrentFile, params.RepoRoot, params.CurrentDiffText, start, end)
+	if err != nil {
+		if params.UpdateGlobalStatus != nil {
+			params.UpdateGlobalStatus("Failed to process changes", "tomato")
+		}
+		return nil, err
+	}
+
+	// 一時的に選択した変更を除外したファイルに書き換え
+	err = os.WriteFile(filePath, []byte(modifiedContent), 0644)
+	if err != nil {
+		if params.UpdateGlobalStatus != nil {
+			params.UpdateGlobalStatus("Failed to write file", "tomato")
+		}
+		return nil, err
+	}
+
+	// git add を実行（選択されていない変更のみが staged される = 選択した変更が unstaged される）
+	cmd := exec.Command("git", "-c", "core.quotepath=false", "add", params.CurrentFile)
+	cmd.Dir = params.RepoRoot
+	_, gitErr := cmd.CombinedOutput()
+
+	// 元のファイル内容に戻す
+	restoreErr := os.WriteFile(filePath, originalContent, 0644)
+
+	if gitErr != nil {
+		if params.UpdateGlobalStatus != nil {
+			params.UpdateGlobalStatus("Failed to unstage changes", "tomato")
+			if restoreErr != nil {
+				params.UpdateGlobalStatus("Critical: Failed to restore file!", "tomato")
+			}
+		}
+		return nil, gitErr
+	}
+
+	if restoreErr != nil {
+		if params.UpdateGlobalStatus != nil {
+			params.UpdateGlobalStatus("Warning: Failed to restore file", "yellow")
+		}
+		return nil, restoreErr
+	}
+
+	// staged な差分を再取得
+	newDiffText, _ := git.GetStagedDiff(params.CurrentFile, params.RepoRoot)
+
+	// 成功した場合の処理
+	if params.UpdateGlobalStatus != nil {
+		params.UpdateGlobalStatus("Selected lines unstaged successfully!", "forestgreen")
+	}
+
+	// ColorizeDiffで色付け
+	newColoredDiff := ColorizeDiff(newDiffText)
+	newDiffLines := util.SplitLines(newColoredDiff)
+
+	// unstage後の推奨カーソル位置を計算
+	newCursorPos := calculateNewCursorPosition(params.CurrentDiffText, newDiffText, params.SelectStart, params.SelectEnd)
+
+	// 結果を返す
+	result := &CommandAResult{
+		Success:      true,
+		NewDiffText:  newDiffText,
+		ColoredDiff:  newColoredDiff,
+		DiffLines:    newDiffLines,
+		ShouldUpdate: len(strings.TrimSpace(newDiffText)) == 0,
+		NewCursorPos: newCursorPos,
+	}
+
+	return result, nil
 }
