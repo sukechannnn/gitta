@@ -58,7 +58,7 @@ gitta --debug
 ## 📦 Installation
 
 ```bash
-go install github.com/yourname/gitta@latest
+go install github.com/sukechannnn/gitta@latest
 
 echo 'export PATH="$PATH:$HOME/go/bin"' >> ~/.bashrc
 source ~/.bashrc
@@ -67,7 +67,7 @@ source ~/.bashrc
 Or clone and build:
 
 ```bash
-git clone https://github.com/yourname/gitta.git
+git clone https://github.com/sukechannnn/gitta.git
 cd gitta
 go build -o gitta
 
