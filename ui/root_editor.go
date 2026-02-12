@@ -534,7 +534,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 					// 現在選択中のファイルの差分変更もチェック
 					var currentFileDiffChanged bool = false
 					var newDiffText string
-					if currentFile != "" && !leftPaneFocused {
+					if currentFile != "" {
 						if currentStatus == "staged" {
 							newDiffText, _ = git.GetStagedDiffWithOptions(currentFile, repoRoot, ignoreWhitespace)
 						} else if currentStatus == "untracked" {
@@ -599,24 +599,20 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 						// 右ペインの差分更新
 						if leftPaneFocused {
-							// 左ペインにフォーカスがある場合は通常の更新（ファイルリストが変更された場合のみ）
+							// 左ペインにフォーカスがある場合
 							if fileListChanged {
 								updateSelectedFileDiff()
+							} else if currentFileDiffChanged {
+								// ファイルリストは変わっていないが、差分内容が変わった場合
+								currentDiffText = newDiffText
+								if isSplitView {
+									updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
+								} else {
+									updateDiffViewWithoutCursor(diffView, currentDiffText, foldState, currentFile, repoRoot)
+								}
 							}
 						} else if currentFile != "" {
 							// 右ペインにフォーカスがある場合は現在のカーソル位置を保持して更新
-							var newDiffText string
-							if currentStatus == "staged" {
-								newDiffText, _ = git.GetStagedDiffWithOptions(currentFile, repoRoot, ignoreWhitespace)
-							} else if currentStatus == "untracked" {
-								content, readErr := util.ReadFileContent(currentFile, repoRoot)
-								if readErr == nil {
-									newDiffText = util.FormatAsAddedLines(content, currentFile)
-								}
-							} else {
-								newDiffText, _ = git.GetFileDiffWithOptions(currentFile, repoRoot, ignoreWhitespace)
-							}
-
 							// 差分が変更された場合のみ更新
 							if newDiffText != currentDiffText {
 								currentDiffText = newDiffText
