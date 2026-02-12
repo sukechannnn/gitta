@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	dbg "runtime/debug"
 	"syscall"
 
 	"github.com/gdamore/tcell/v2"
@@ -33,6 +34,11 @@ func main() {
 	flag.Parse()
 
 	if showVersion {
+		if version == "dev" {
+			if info, ok := dbg.ReadBuildInfo(); ok && info.Main.Version != "(devel)" {
+				version = info.Main.Version
+			}
+		}
 		fmt.Printf("%s\n", version)
 		return
 	}
