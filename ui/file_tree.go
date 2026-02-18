@@ -187,7 +187,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 
 				// viewerを更新（カーソル表示のため）
 				if *ctx.isSplitView {
-					updateSplitViewWithCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, *ctx.cursorY)
+					updateSplitViewWithCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, *ctx.cursorY, *ctx.currentFile)
 				} else {
 					foldState := ctx.diffViewContext.foldState
 					updateDiffViewWithCursor(ctx.diffView, *ctx.currentDiffText, *ctx.cursorY, foldState, *ctx.currentFile, ctx.repoRoot)
@@ -279,12 +279,12 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 
 				if *ctx.isSplitView {
 					// Split Viewを表示
-					updateSplitViewWithoutCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText)
+					updateSplitViewWithoutCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, *ctx.currentFile)
 					ctx.contentFlex.RemoveItem(ctx.unifiedViewFlex)
 					ctx.contentFlex.AddItem(ctx.splitViewFlex, 0, DiffViewFlexRatio, false)
 					// viewUpdaterをSplitView用に更新
 					if ctx.diffViewContext != nil {
-						ctx.diffViewContext.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
+						ctx.diffViewContext.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView, ctx.currentFile)
 					}
 				} else {
 					// 通常の差分表示に戻す

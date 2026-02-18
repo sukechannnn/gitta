@@ -132,7 +132,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 	// 初期状態でviewUpdaterを設定
 	if ctx.viewUpdater == nil {
 		if *ctx.isSplitView {
-			ctx.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
+			ctx.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView, ctx.currentFile)
 		} else {
 			ctx.viewUpdater = NewUnifiedViewUpdater(ctx.diffView, ctx.foldState, ctx.currentFile, ctx.repoRoot)
 		}
@@ -184,7 +184,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 
 				if *ctx.isSplitView {
 					// Split Viewを表示（現在のカーソル位置を維持）
-					ctx.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView)
+					ctx.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView, ctx.currentFile)
 					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 					ctx.contentFlex.RemoveItem(ctx.unifiedViewFlex)
 					ctx.contentFlex.AddItem(ctx.splitViewFlex, 0, DiffViewFlexRatio, false)
@@ -403,6 +403,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					if foldID != "" {
 						wasExpanded := ctx.foldState.IsExpanded(foldID)
 						ctx.foldState.ToggleExpand(foldID)
+						InvalidateUnifiedContentCache()
 
 						// If collapsing, move cursor to the fold indicator position
 						if wasExpanded {

@@ -364,7 +364,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		updateCurrentDiffText(file, status, repoRoot, &currentDiffText, ignoreWhitespace)
 
 		if isSplitView {
-			updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
+			updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText, currentFile)
 		} else {
 			updateDiffViewWithoutCursor(diffView, currentDiffText, foldState, currentFile, repoRoot)
 		}
@@ -606,7 +606,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 								// ファイルリストは変わっていないが、差分内容が変わった場合
 								currentDiffText = newDiffText
 								if isSplitView {
-									updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText)
+									updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText, currentFile)
 								} else {
 									updateDiffViewWithoutCursor(diffView, currentDiffText, foldState, currentFile, repoRoot)
 								}
@@ -651,7 +651,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 								// Split Viewモードの場合はSplit View更新、そうでなければ通常の更新
 								if isSplitView {
-									updateSplitViewWithCursor(beforeView, afterView, currentDiffText, cursorY)
+									updateSplitViewWithCursor(beforeView, afterView, currentDiffText, cursorY, currentFile)
 								} else {
 									updateDiffViewWithCursor(diffView, currentDiffText, cursorY, foldState, currentFile, repoRoot)
 								}

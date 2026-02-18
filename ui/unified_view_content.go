@@ -6,14 +6,22 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/rivo/tview"
 	"github.com/sukechannnn/gitta/util"
 )
+
+// ColorizedLine represents a colorized diff line with its type
+type ColorizedLine struct {
+	Content  string // Color-tagged content
+	LineType byte   // '+', '-', ' ', 'o' (other/fold)
+}
 
 // UnifiedViewLine represents a single line in unified view
 type UnifiedViewLine struct {
 	Content         string
 	LineNumber      string
+	LineType        byte   // '+', '-', ' ', 'o' (other/fold)
 	IsFoldIndicator bool   // True if this is a fold indicator line (not a real diff line)
 	FoldID          string // Fold identifier (empty if not a fold indicator)
 }
@@ -152,7 +160,7 @@ func detectFoldableRanges(oldLineMap, newLineMap map[int]int, minGap int, totalL
 // generateUnifiedViewContent generates content for unified view from diff text
 func generateUnifiedViewContent(diffText string, oldLineMap, newLineMap map[int]int, foldState *FoldState, filePath, repoRoot string) *UnifiedViewContent {
 	// First colorize the diff
-	coloredLines := colorizeDiff(diffText)
+	coloredLines := colorizeDiff(diffText, filePath)
 
 	// Calculate max digits for line numbers
 	maxDigits := calculateMaxLineNumberDigits(oldLineMap, newLineMap)
@@ -187,11 +195,12 @@ func generateUnifiedViewContent(diffText string, oldLineMap, newLineMap map[int]
 		appendFoldContent(content, topFold, foldState, filePath, repoRoot, maxDigits)
 	}
 
-	for i, line := range coloredLines {
-		lineNum := generateLineNumber(line, i, maxDigits, oldLineMap, newLineMap)
+	for i, cl := range coloredLines {
+		lineNum := generateLineNumber(cl.LineType, i, maxDigits, oldLineMap, newLineMap)
 		content.Lines = append(content.Lines, UnifiedViewLine{
-			Content:         line,
+			Content:         cl.Content,
 			LineNumber:      lineNum,
+			LineType:        cl.LineType,
 			IsFoldIndicator: false,
 		})
 
@@ -214,13 +223,28 @@ func appendFoldContent(content *UnifiedViewContent, fold *FoldableRange, foldSta
 	if foldState != nil && foldState.IsExpanded(fold.ID) {
 		// Expanded: show actual file content
 		expandedLines := readFileLines(filePath, repoRoot, fold.StartLine, fold.EndLine)
+
+		// Try to syntax highlight expanded lines
+		var allTokens [][]chroma.Token
+		if filePath != "" {
+			allTokens = util.TokenizeCode(filePath, expandedLines)
+		}
+
 		for lineIdx, expandedLine := range expandedLines {
 			actualLineNum := fold.StartLine + lineIdx
 			lineNumStr := fmt.Sprintf("[dimgray]%*d │ [-]", maxDigits, actualLineNum)
-			// Add leading space to align with +/- prefixed lines
+
+			var lineContent string
+			if allTokens != nil && len(allTokens[lineIdx]) > 0 {
+				lineContent = " " + util.RenderHighlightedLine(allTokens[lineIdx], "")
+			} else {
+				lineContent = "[dimgray] " + tview.Escape(expandedLine) + "[-]"
+			}
+
 			content.Lines = append(content.Lines, UnifiedViewLine{
-				Content:         "[dimgray] " + tview.Escape(expandedLine) + "[-]",
+				Content:         lineContent,
 				LineNumber:      lineNumStr,
+				LineType:        'o',
 				IsFoldIndicator: false,
 				FoldID:          fold.ID,
 			})
@@ -231,6 +255,7 @@ func appendFoldContent(content *UnifiedViewContent, fold *FoldableRange, foldSta
 		content.Lines = append(content.Lines, UnifiedViewLine{
 			Content:         foldIndicator,
 			LineNumber:      strings.Repeat(" ", maxDigits) + " │ ",
+			LineType:        'o',
 			IsFoldIndicator: true,
 			FoldID:          fold.ID,
 		})
@@ -303,30 +328,98 @@ func readFileLines(filePath, repoRoot string, startLine, endLine int) []string {
 	return lines[start:end]
 }
 
-// colorizeDiff colorizes diff text and filters out headers
-func colorizeDiff(diff string) []string {
-	var result []string
-	lines := util.SplitLines(diff)
+// colorizeDiff colorizes diff text and filters out headers.
+// If filePath is non-empty, syntax highlighting via chroma is applied.
+func colorizeDiff(diff string, filePath string) []ColorizedLine {
+	rawLines := util.SplitLines(diff)
 
-	for _, line := range lines {
-		// Skip header lines
+	// Collect code lines (without diff prefix) for tokenization
+	var codeLines []string
+	var lineTypes []byte
+	for _, line := range rawLines {
 		if isUnifiedHeaderLine(line) {
 			continue
 		}
+		if len(line) > 0 {
+			switch line[0] {
+			case '-':
+				lineTypes = append(lineTypes, '-')
+				codeLines = append(codeLines, line[1:])
+			case '+':
+				lineTypes = append(lineTypes, '+')
+				codeLines = append(codeLines, line[1:])
+			case ' ':
+				lineTypes = append(lineTypes, ' ')
+				codeLines = append(codeLines, line[1:])
+			default:
+				lineTypes = append(lineTypes, 'o')
+				codeLines = append(codeLines, line)
+			}
+		} else {
+			lineTypes = append(lineTypes, 'o')
+			codeLines = append(codeLines, "")
+		}
+	}
 
-		// Colorize the line
-		coloredLine := colorizeLine(line)
-		result = append(result, coloredLine)
+	// Try to tokenize with chroma
+	var allTokens [][]chroma.Token
+	if filePath != "" {
+		allTokens = util.TokenizeCode(filePath, codeLines)
+	}
+
+	result := make([]ColorizedLine, len(codeLines))
+	for i, codeLine := range codeLines {
+		lt := lineTypes[i]
+		var content string
+
+		if allTokens != nil && len(allTokens[i]) > 0 {
+			// Syntax highlighted rendering
+			var bgColor string
+			switch lt {
+			case '-':
+				bgColor = util.DeletedLineBg
+			case '+':
+				bgColor = util.AddedLineBg
+			}
+			prefix := ""
+			if lt == '-' || lt == '+' || lt == ' ' {
+				prefix = string(lt)
+			}
+			highlighted := util.RenderHighlightedLine(allTokens[i], bgColor)
+			if bgColor != "" {
+				// Prefix with same background
+				content = "[:" + bgColor + "]" + tview.Escape(prefix) + "[-:-]" + highlighted
+			} else {
+				content = tview.Escape(prefix) + highlighted
+			}
+		} else {
+			// Fallback: use simple coloring
+			fullLine := ""
+			if lt == '-' || lt == '+' || lt == ' ' {
+				fullLine = string(lt) + codeLine
+			} else {
+				fullLine = codeLine
+			}
+			content = colorizeLineFallback(fullLine)
+		}
+
+		result[i] = ColorizedLine{
+			Content:  content,
+			LineType: lt,
+		}
 	}
 
 	return result
 }
 
 // ColorizeDiff is a public wrapper for backward compatibility
-// This will be deprecated once all callers are updated
 func ColorizeDiff(diff string) string {
-	lines := colorizeDiff(diff)
-	return strings.Join(lines, "\n") + "\n"
+	lines := colorizeDiff(diff, "")
+	contents := make([]string, len(lines))
+	for i, l := range lines {
+		contents[i] = l.Content
+	}
+	return strings.Join(contents, "\n") + "\n"
 }
 
 // isUnifiedHeaderLine checks if the line is a header that should be skipped
@@ -338,8 +431,8 @@ func isUnifiedHeaderLine(line string) bool {
 		strings.HasPrefix(line, "@@")
 }
 
-// colorizeLine adds color tags to a single line based on its type
-func colorizeLine(line string) string {
+// colorizeLineFallback adds color tags to a single line based on its type (fallback when no syntax highlighting)
+func colorizeLineFallback(line string) string {
 	if len(line) > 0 {
 		switch line[0] {
 		case '-':
@@ -357,11 +450,12 @@ func colorizeLine(line string) string {
 	return ""
 }
 
-// generateLineNumber generates the line number string for a given line
-func generateLineNumber(line string, index int, maxDigits int, oldLineMap, newLineMap map[int]int) string {
+// generateLineNumber generates the line number string for a given line type
+func generateLineNumber(lineType byte, index int, maxDigits int, oldLineMap, newLineMap map[int]int) string {
 	var lineNum string
 
-	if strings.HasPrefix(line, "[red]") || (len(line) > 0 && line[0] == '-') {
+	switch lineType {
+	case '-':
 		// Deletion line
 		if num, ok := oldLineMap[index]; ok {
 			lineNum = fmt.Sprintf("%*d", maxDigits, num)
@@ -369,7 +463,7 @@ func generateLineNumber(line string, index int, maxDigits int, oldLineMap, newLi
 			lineNum = strings.Repeat(" ", maxDigits)
 		}
 		lineNum += " │ "
-	} else if strings.HasPrefix(line, "[green]") || (len(line) > 0 && line[0] == '+') {
+	case '+':
 		// Addition line
 		if num, ok := newLineMap[index]; ok {
 			lineNum = fmt.Sprintf("%*d", maxDigits, num)
@@ -377,7 +471,7 @@ func generateLineNumber(line string, index int, maxDigits int, oldLineMap, newLi
 			lineNum = strings.Repeat(" ", maxDigits)
 		}
 		lineNum += " │ "
-	} else {
+	default:
 		// Common line
 		if num, ok := newLineMap[index]; ok {
 			lineNum = fmt.Sprintf("%*d", maxDigits, num)

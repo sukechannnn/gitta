@@ -299,8 +299,8 @@ func TestColorizeLine(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := colorizeLine(tt.line); got != tt.want {
-				t.Errorf("colorizeLine(%q) = %q, want %q", tt.line, got, tt.want)
+			if got := colorizeLineFallback(tt.line); got != tt.want {
+				t.Errorf("colorizeLineFallback(%q) = %q, want %q", tt.line, got, tt.want)
 			}
 		})
 	}
@@ -309,7 +309,7 @@ func TestColorizeLine(t *testing.T) {
 func TestGenerateLineNumber(t *testing.T) {
 	tests := []struct {
 		name       string
-		line       string
+		lineType   byte
 		index      int
 		maxDigits  int
 		oldLineMap map[int]int
@@ -318,7 +318,7 @@ func TestGenerateLineNumber(t *testing.T) {
 	}{
 		{
 			name:       "削除行",
-			line:       "[red]-deleted[-]",
+			lineType:   '-',
 			index:      0,
 			maxDigits:  2,
 			oldLineMap: map[int]int{0: 10},
@@ -327,7 +327,7 @@ func TestGenerateLineNumber(t *testing.T) {
 		},
 		{
 			name:       "追加行",
-			line:       "[green]+added[-]",
+			lineType:   '+',
 			index:      1,
 			maxDigits:  2,
 			oldLineMap: map[int]int{},
@@ -336,7 +336,7 @@ func TestGenerateLineNumber(t *testing.T) {
 		},
 		{
 			name:       "共通行（新しい行番号）",
-			line:       "common",
+			lineType:   ' ',
 			index:      2,
 			maxDigits:  3,
 			oldLineMap: map[int]int{},
@@ -345,7 +345,7 @@ func TestGenerateLineNumber(t *testing.T) {
 		},
 		{
 			name:       "共通行（古い行番号）",
-			line:       "common",
+			lineType:   ' ',
 			index:      3,
 			maxDigits:  3,
 			oldLineMap: map[int]int{3: 101},
@@ -354,7 +354,7 @@ func TestGenerateLineNumber(t *testing.T) {
 		},
 		{
 			name:       "行番号なし",
-			line:       "no number",
+			lineType:   'o',
 			index:      4,
 			maxDigits:  2,
 			oldLineMap: map[int]int{},
@@ -365,7 +365,7 @@ func TestGenerateLineNumber(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := generateLineNumber(tt.line, tt.index, tt.maxDigits, tt.oldLineMap, tt.newLineMap)
+			got := generateLineNumber(tt.lineType, tt.index, tt.maxDigits, tt.oldLineMap, tt.newLineMap)
 			if got != tt.want {
 				t.Errorf("generateLineNumber() = %q, want %q", got, tt.want)
 			}

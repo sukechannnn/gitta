@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/rivo/tview"
+	"github.com/sukechannnn/gitta/util"
 )
 
 // DiffViewUpdater interface for updating diff views
@@ -63,62 +64,97 @@ func (u *UnifiedViewUpdater) UpdateWithSelection(diffText string, cursorY int, s
 type SplitViewUpdater struct {
 	beforeView *tview.TextView
 	afterView  *tview.TextView
+	filePath   *string
 }
 
 // NewSplitViewUpdater creates a new SplitViewUpdater
-func NewSplitViewUpdater(beforeView, afterView *tview.TextView) *SplitViewUpdater {
+func NewSplitViewUpdater(beforeView, afterView *tview.TextView, filePath *string) *SplitViewUpdater {
 	return &SplitViewUpdater{
 		beforeView: beforeView,
 		afterView:  afterView,
+		filePath:   filePath,
 	}
 }
 
 // UpdateWithoutCursor updates split view without cursor
 func (s *SplitViewUpdater) UpdateWithoutCursor(diffText string) {
-	updateSplitViewWithoutCursor(s.beforeView, s.afterView, diffText)
+	filePath := ""
+	if s.filePath != nil {
+		filePath = *s.filePath
+	}
+	updateSplitViewWithoutCursor(s.beforeView, s.afterView, diffText, filePath)
 }
 
 // UpdateWithCursor updates split view with cursor
 func (s *SplitViewUpdater) UpdateWithCursor(diffText string, cursorY int) {
-	updateSplitViewWithCursor(s.beforeView, s.afterView, diffText, cursorY)
+	filePath := ""
+	if s.filePath != nil {
+		filePath = *s.filePath
+	}
+	updateSplitViewWithCursor(s.beforeView, s.afterView, diffText, cursorY, filePath)
 }
 
 // UpdateWithSelection updates split view with selection
 func (s *SplitViewUpdater) UpdateWithSelection(diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool) {
-	updateSplitViewWithSelection(s.beforeView, s.afterView, diffText, cursorY, selectStart, selectEnd, isSelecting)
+	filePath := ""
+	if s.filePath != nil {
+		filePath = *s.filePath
+	}
+	updateSplitViewWithSelection(s.beforeView, s.afterView, diffText, cursorY, selectStart, selectEnd, isSelecting, filePath)
 }
 
 // ----------↓↓↓ unified_view_functions ↓↓↓----------
-func updateDiffViewWithoutCursor(diffView *tview.TextView, diffText string, foldState *FoldState, filePath, repoRoot string) {
+
+// unifiedContentCache caches the generated unified view content to avoid regeneration on cursor moves
+var unifiedContentCache struct {
+	diffText string
+	filePath string
+	content  *UnifiedViewContent
+}
+
+func getCachedUnifiedContent(diffText string, foldState *FoldState, filePath, repoRoot string) *UnifiedViewContent {
+	if unifiedContentCache.diffText == diffText && unifiedContentCache.filePath == filePath && unifiedContentCache.content != nil {
+		return unifiedContentCache.content
+	}
 	oldLineMap, newLineMap := createLineNumberMapping(diffText)
-	updateDiffViewWithSelectionAndMapping(diffView, diffText, -1, -1, -1, false, oldLineMap, newLineMap, foldState, filePath, repoRoot)
+	content := generateUnifiedViewContent(diffText, oldLineMap, newLineMap, foldState, filePath, repoRoot)
+	unifiedContentCache.diffText = diffText
+	unifiedContentCache.filePath = filePath
+	unifiedContentCache.content = content
+	return content
+}
+
+// InvalidateUnifiedContentCache clears the unified content cache (call when fold state changes)
+func InvalidateUnifiedContentCache() {
+	unifiedContentCache.content = nil
+}
+
+func updateDiffViewWithoutCursor(diffView *tview.TextView, diffText string, foldState *FoldState, filePath, repoRoot string) {
+	renderUnifiedView(diffView, diffText, -1, -1, -1, false, foldState, filePath, repoRoot)
 }
 
 func updateDiffViewWithCursor(diffView *tview.TextView, diffText string, cursorY int, foldState *FoldState, filePath, repoRoot string) {
-	oldLineMap, newLineMap := createLineNumberMapping(diffText)
-	updateDiffViewWithSelectionAndMapping(diffView, diffText, cursorY, -1, -1, false, oldLineMap, newLineMap, foldState, filePath, repoRoot)
+	renderUnifiedView(diffView, diffText, cursorY, -1, -1, false, foldState, filePath, repoRoot)
 }
 
 func updateDiffViewWithSelection(diffView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool, foldState *FoldState, filePath, repoRoot string) {
-	// 行番号マッピングを作成
-	oldLineMap, newLineMap := createLineNumberMapping(diffText)
-	updateDiffViewWithSelectionAndMapping(diffView, diffText, cursorY, selectStart, selectEnd, isSelecting, oldLineMap, newLineMap, foldState, filePath, repoRoot)
+	renderUnifiedView(diffView, diffText, cursorY, selectStart, selectEnd, isSelecting, foldState, filePath, repoRoot)
 }
 
-// updateDiffViewWithSelectionAndMapping updates diff view with selection and line mapping
-func updateDiffViewWithSelectionAndMapping(diffView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool, oldLineMap, newLineMap map[int]int, foldState *FoldState, filePath, repoRoot string) {
+func renderUnifiedView(diffView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool, foldState *FoldState, filePath, repoRoot string) {
 	diffView.Clear()
 
-	// Generate content using the new function
-	content := generateUnifiedViewContent(diffText, oldLineMap, newLineMap, foldState, filePath, repoRoot)
+	content := getCachedUnifiedContent(diffText, foldState, filePath, repoRoot)
 
 	for i, line := range content.Lines {
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
-			// 選択行を黄色でハイライト
-			diffView.Write([]byte("[black:dimgrey]" + line.LineNumber + line.Content + "[-:-]\n"))
+			// 選択行: 背景のみ dimgrey に差し替え
+			highlighted := util.ReplaceBackground(line.Content, "dimgrey")
+			diffView.Write([]byte("[white:dimgrey]" + line.LineNumber + "[-:-]" + highlighted + "[-:-]\n"))
 		} else if i == cursorY {
-			// カーソル行を青でハイライト
-			diffView.Write([]byte("[white:blue]" + line.LineNumber + line.Content + "[-:-]\n"))
+			// カーソル行: 背景のみ blue に差し替え
+			highlighted := util.ReplaceBackground(line.Content, "blue")
+			diffView.Write([]byte("[white:blue]" + line.LineNumber + "[-:-]" + highlighted + "[-:-]\n"))
 		} else {
 			diffView.Write([]byte("[dimgray]" + line.LineNumber + "[-]" + line.Content + "\n"))
 		}
@@ -149,40 +185,49 @@ func getUnifiedViewLineCount(diffText string) int {
 
 // ----------↓↓↓ split_view_functions ↓↓↓----------
 
+// splitContentCache caches the generated split view content to avoid regeneration on cursor moves
+var splitContentCache struct {
+	diffText string
+	filePath string
+	content  *SplitViewContent
+}
+
+func getCachedSplitContent(diffText string, filePath string) *SplitViewContent {
+	if splitContentCache.diffText == diffText && splitContentCache.filePath == filePath && splitContentCache.content != nil {
+		return splitContentCache.content
+	}
+	oldLineMap, newLineMap := createLineNumberMapping(diffText)
+	content := generateSplitViewContent(diffText, oldLineMap, newLineMap, filePath)
+	splitContentCache.diffText = diffText
+	splitContentCache.filePath = filePath
+	splitContentCache.content = content
+	return content
+}
+
 // getSplitViewLineCount gets valid line count for split view
 func getSplitViewLineCount(diffText string) int {
-	// ペアリング後の実際の行数を取得するため、generateSplitViewContentを使用
-	oldLineMap, newLineMap := createLineNumberMapping(diffText)
-	content := generateSplitViewContent(diffText, oldLineMap, newLineMap)
+	content := getCachedSplitContent(diffText, "")
 	return len(content.BeforeLines)
 }
 
-func updateSplitViewWithoutCursor(beforeView, afterView *tview.TextView, diffText string) {
-	// 行番号マッピングを作成
-	oldLineMap, newLineMap := createLineNumberMapping(diffText)
-	updateSplitViewWithSelectionAndMapping(beforeView, afterView, diffText, -1, -1, -1, false, oldLineMap, newLineMap)
+func updateSplitViewWithoutCursor(beforeView, afterView *tview.TextView, diffText string, filePath string) {
+	renderSplitView(beforeView, afterView, diffText, -1, -1, -1, false, filePath)
 }
 
 // updateSplitViewWithCursor updates split view with cursor
-func updateSplitViewWithCursor(beforeView, afterView *tview.TextView, diffText string, cursorY int) {
-	// 行番号マッピングを作成
-	oldLineMap, newLineMap := createLineNumberMapping(diffText)
-	updateSplitViewWithSelectionAndMapping(beforeView, afterView, diffText, cursorY, -1, -1, false, oldLineMap, newLineMap)
+func updateSplitViewWithCursor(beforeView, afterView *tview.TextView, diffText string, cursorY int, filePath string) {
+	renderSplitView(beforeView, afterView, diffText, cursorY, -1, -1, false, filePath)
 }
 
-func updateSplitViewWithSelection(beforeView, afterView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool) {
-	// 行番号マッピングを作成
-	oldLineMap, newLineMap := createLineNumberMapping(diffText)
-	updateSplitViewWithSelectionAndMapping(beforeView, afterView, diffText, cursorY, selectStart, selectEnd, isSelecting, oldLineMap, newLineMap)
+func updateSplitViewWithSelection(beforeView, afterView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool, filePath string) {
+	renderSplitView(beforeView, afterView, diffText, cursorY, selectStart, selectEnd, isSelecting, filePath)
 }
 
-// updateSplitViewWithSelectionAndMapping updates split view with selection and line mapping
-func updateSplitViewWithSelectionAndMapping(beforeView, afterView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool, oldLineMap, newLineMap map[int]int) {
+func renderSplitView(beforeView, afterView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool, filePath string) {
 	beforeView.Clear()
 	afterView.Clear()
 
-	// Generate content using the new function
-	content := generateSplitViewContent(diffText, oldLineMap, newLineMap)
+	content := getCachedSplitContent(diffText, filePath)
 	beforeLines := content.BeforeLines
 	afterLines := content.AfterLines
 	beforeLineNums := content.BeforeLineNums
@@ -201,11 +246,13 @@ func updateSplitViewWithSelectionAndMapping(beforeView, afterView *tview.TextVie
 		lineNum := beforeLineNums[i] + " │ "
 
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
-			// 選択行を黄色でハイライト
-			beforeView.Write([]byte("[black:yellow]" + lineNum + line + "[-:-]\n"))
+			// 選択行: 背景のみ dimgrey に差し替え
+			highlighted := util.ReplaceBackground(line, "dimgrey")
+			beforeView.Write([]byte("[white:dimgrey]" + lineNum + "[-:-]" + highlighted + "[-:-]\n"))
 		} else if cursorIndex >= 0 && i == cursorIndex {
-			// カーソル行を青でハイライト
-			beforeView.Write([]byte("[white:blue]" + lineNum + line + "[-:-]\n"))
+			// カーソル行: 背景のみ blue に差し替え
+			highlighted := util.ReplaceBackground(line, "blue")
+			beforeView.Write([]byte("[white:blue]" + lineNum + "[-:-]" + highlighted + "[-:-]\n"))
 		} else {
 			beforeView.Write([]byte("[dimgray]" + lineNum + "[-]" + line + "\n"))
 		}
@@ -216,11 +263,13 @@ func updateSplitViewWithSelectionAndMapping(beforeView, afterView *tview.TextVie
 		lineNum := afterLineNums[i] + " │ "
 
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
-			// 選択行を黄色でハイライト
-			afterView.Write([]byte("[black:yellow]" + lineNum + line + "[-:-]\n"))
+			// 選択行: 背景のみ dimgrey に差し替え
+			highlighted := util.ReplaceBackground(line, "dimgrey")
+			afterView.Write([]byte("[white:dimgrey]" + lineNum + "[-:-]" + highlighted + "[-:-]\n"))
 		} else if cursorIndex >= 0 && i == cursorIndex {
-			// カーソル行を青でハイライト
-			afterView.Write([]byte("[white:blue]" + lineNum + line + "[-:-]\n"))
+			// カーソル行: 背景のみ blue に差し替え
+			highlighted := util.ReplaceBackground(line, "blue")
+			afterView.Write([]byte("[white:blue]" + lineNum + "[-:-]" + highlighted + "[-:-]\n"))
 		} else {
 			afterView.Write([]byte("[dimgray]" + lineNum + "[-]" + line + "\n"))
 		}
