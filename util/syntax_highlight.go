@@ -19,7 +19,7 @@ const (
 )
 
 // syntaxStyle is the chroma style used for syntax highlighting
-var syntaxStyle = styles.Get("nord")
+var syntaxStyle = styles.Get("catppuccin-frappe")
 
 // defaultTextColor is the fallback text color
 const defaultTextColor = "#f8f8f2"
