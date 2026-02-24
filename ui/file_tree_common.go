@@ -289,6 +289,39 @@ func renderFileTreeForFileEntries(
 	}
 }
 
+// collectPathsInTreeOrder collects file paths in the same order as tree rendering
+// (directories first, then files, both sorted alphabetically at each level)
+func collectPathsInTreeOrder(node *TreeNode) []string {
+	var sortedKeys []string
+	for key := range node.Children {
+		sortedKeys = append(sortedKeys, key)
+	}
+	sort.Strings(sortedKeys)
+
+	var directories []string
+	var files []string
+	for _, key := range sortedKeys {
+		child := node.Children[key]
+		if child.IsFile {
+			files = append(files, key)
+		} else {
+			directories = append(directories, key)
+		}
+	}
+
+	var result []string
+	allItems := append(directories, files...)
+	for _, key := range allItems {
+		child := node.Children[key]
+		if child.IsFile {
+			result = append(result, child.FullPath)
+		} else {
+			result = append(result, collectPathsInTreeOrder(child)...)
+		}
+	}
+	return result
+}
+
 // formatFileWithStatus adds status decoration to filename
 func formatFileWithStatus(filename string, status string) string {
 	switch status {

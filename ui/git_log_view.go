@@ -37,15 +37,17 @@ type GitLogView struct {
 	showingCommit   bool
 	onExit          func()
 	scrollOffset    int // スクロールオフセット
-	commitFiles     []FileEntry
-	selectedFile    int
-	leftPaneFocused bool
+	commitFiles       []FileEntry
+	displayOrderPaths []string // ツリー表示順序でのファイルパス一覧
+	selectedFile      int
+	leftPaneFocused   bool
 	// ggコマンド用の状態
 	gPressed  *bool
 	lastGTime *time.Time
 	// Diffビューのカーソル位置
 	diffCursorY     int
 	currentDiffText string
+	currentFilePath string
 	// 共通の diff updater
 	diffUpdater *UnifiedViewUpdater
 }
@@ -127,10 +129,11 @@ func NewGitLogView(app *tview.Application, repoRoot string, onExit func()) *GitL
 		commitFiles:     []FileEntry{},
 		selectedFile:    0,
 		leftPaneFocused: true,
-		gPressed:        new(bool),
-		lastGTime:       new(time.Time),
-		diffUpdater:     NewUnifiedViewUpdater(commitDiffView, nil, nil, ""),
+		gPressed:  new(bool),
+		lastGTime: new(time.Time),
 	}
+
+	glv.diffUpdater = NewUnifiedViewUpdater(commitDiffView, nil, &glv.currentFilePath, repoRoot)
 
 	glv.setupKeyBindings()
 	glv.loadGitLog()
@@ -391,6 +394,9 @@ func (glv *GitLogView) updateCommitFileList() {
 	// Build tree from commit files
 	tree := buildFileTreeFromFileEntries(glv.commitFiles)
 
+	// ツリー表示順にファイルパスを収集
+	glv.displayOrderPaths = collectPathsInTreeOrder(tree)
+
 	var content strings.Builder
 	regionIndex := 0
 	currentLine := 0
@@ -414,13 +420,13 @@ func (glv *GitLogView) updateCommitFileList() {
 
 // showFileDiff shows the diff for the selected file
 func (glv *GitLogView) showFileDiff(commitHash string) {
-	if glv.selectedFile >= len(glv.commitFiles) {
+	if glv.selectedFile >= len(glv.displayOrderPaths) {
 		glv.commitDiffView.SetText("No file selected")
 		return
 	}
 
-	file := glv.commitFiles[glv.selectedFile]
-	cmd := exec.Command("git", "show", commitHash, "--", file.Path)
+	filePath := glv.displayOrderPaths[glv.selectedFile]
+	cmd := exec.Command("git", "show", "--format=", commitHash, "--", filePath)
 	cmd.Dir = glv.repoRoot
 
 	output, err := cmd.CombinedOutput()
@@ -429,7 +435,8 @@ func (glv *GitLogView) showFileDiff(commitHash string) {
 		return
 	}
 
-	glv.currentDiffText = string(output)
+	glv.currentFilePath = filePath
+	glv.currentDiffText = strings.TrimLeft(string(output), "\n")
 	glv.diffCursorY = 0
 	glv.updateCommitDiff()
 }
@@ -564,7 +571,7 @@ func (glv *GitLogView) setupKeyBindings() {
 			glv.quitApplication()
 			return nil
 		case 'j':
-			if glv.selectedFile < len(glv.commitFiles)-1 {
+			if glv.selectedFile < len(glv.displayOrderPaths)-1 {
 				glv.selectedFile++
 				glv.updateCommitFileList()
 				if currentCommitHash != "" {
