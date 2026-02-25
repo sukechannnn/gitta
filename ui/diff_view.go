@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -166,8 +167,71 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			scrollDiffView(ctx, 1)
 			return nil
 		case tcell.KeyCtrlY:
-			// Ctrl+Y: ファイルパスをクリップボードにコピー
-			if *ctx.currentFile != "" {
+			if *ctx.isSelecting && *ctx.currentFile != "" {
+				// 選択中: file/path:XX-YY をコピー
+				start := *ctx.selectStart
+				end := *ctx.selectEnd
+
+				// Unified viewの場合、fold indicatorを除外
+				if !*ctx.isSplitView {
+					displayMapping := MapUnifiedDisplayToOriginalIdx(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
+					if ms, ok := displayMapping[start]; ok {
+						start = ms
+					}
+					if me, ok := displayMapping[end]; ok {
+						end = me
+					}
+				}
+
+				if start > end {
+					start, end = end, start
+				}
+
+				oldLineMap, newLineMap := createLineNumberMapping(*ctx.currentDiffText)
+
+				// 選択範囲内のファイル行番号を収集（newLineMap優先、なければoldLineMap）
+				startLine := -1
+				endLine := -1
+				for i := start; i <= end; i++ {
+					num := -1
+					if n, ok := newLineMap[i]; ok {
+						num = n
+					} else if n, ok := oldLineMap[i]; ok {
+						num = n
+					}
+					if num >= 0 {
+						if startLine == -1 || num < startLine {
+							startLine = num
+						}
+						if num > endLine {
+							endLine = num
+						}
+					}
+				}
+
+				if startLine >= 0 {
+					var ref string
+					if startLine == endLine {
+						ref = fmt.Sprintf("%s:%d", *ctx.currentFile, startLine)
+					} else {
+						ref = fmt.Sprintf("%s:%d-%d", *ctx.currentFile, startLine, endLine)
+					}
+					if err := commands.CopyToClipboard(ref); err == nil {
+						ctx.updateGlobalStatus("Copied reference to clipboard", "forestgreen")
+					} else {
+						ctx.updateGlobalStatus("Failed to copy reference", "tomato")
+					}
+				}
+
+				// 選択解除
+				*ctx.isSelecting = false
+				*ctx.selectStart = -1
+				*ctx.selectEnd = -1
+				if ctx.viewUpdater != nil {
+					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+				}
+			} else if *ctx.currentFile != "" {
+				// 非選択中: ファイルパスをコピー（既存動作）
 				err := commands.CopyFilePath(*ctx.currentFile)
 				if err == nil {
 					ctx.updateGlobalStatus("Copied path to clipboard", "forestgreen")
