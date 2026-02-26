@@ -147,14 +147,23 @@ func renderUnifiedView(diffView *tview.TextView, diffText string, cursorY int, s
 	content := getCachedUnifiedContent(diffText, foldState, filePath, repoRoot)
 
 	for i, line := range content.Lines {
+		var bg string
+		var lineNumFg string
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
-			// 選択行: 背景のみ dimgrey に差し替え
-			highlighted := util.ReplaceBackground(line.Content, "dimgrey")
-			diffView.Write([]byte("[white:dimgrey]" + line.LineNumber + "[-:-]" + highlighted + "[-:-]\n"))
+			bg = "dimgrey"
+			lineNumFg = "white"
 		} else if i == cursorY {
-			// カーソル行: 背景のみ blue に差し替え
-			highlighted := util.ReplaceBackground(line.Content, "blue")
-			diffView.Write([]byte("[white:blue]" + line.LineNumber + "[-:-]" + highlighted + "[-:-]\n"))
+			bg = "blue"
+			lineNumFg = "white"
+		} else if line.BgColor != "" {
+			bg = line.BgColor
+			lineNumFg = "dimgray"
+		}
+
+		if bg != "" {
+			lineNum := util.ReplaceBackground(line.LineNumber, bg)
+			highlighted := util.ReplaceBackground(line.Content, bg)
+			diffView.Write([]byte("[" + lineNumFg + ":" + bg + "]" + lineNum + highlighted + strings.Repeat(" ", 500) + "[-:-]\n"))
 		} else {
 			diffView.Write([]byte("[dimgray]" + line.LineNumber + "[-]" + line.Content + "\n"))
 		}

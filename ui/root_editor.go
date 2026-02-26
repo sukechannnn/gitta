@@ -173,53 +173,17 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		AddItem(afterView, 0, 1, false)
 	splitViewFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
-	// 保存されたカーソル位置を復元
-	if preferUnstagedSection || savedTargetFile != "" {
-		// カーソル位置を計算
-		targetSelection := 0
-		foundTarget := false
-
-		// 全ファイルを走査
-		for _, fileInfo := range *stagedFilesPtr {
-			if strings.TrimSpace(fileInfo.Path) != "" {
-				if !preferUnstagedSection && fileInfo.Path == savedTargetFile {
-					currentSelection = targetSelection
-					foundTarget = true
-					break
-				}
-				targetSelection++
-			}
-		}
-
-		if !foundTarget {
-			// unstagedセクションの開始位置
-			unstagedStart := targetSelection
-
-			for _, fileInfo := range *modifiedFilesPtr {
-				if strings.TrimSpace(fileInfo.Path) != "" {
-					if preferUnstagedSection && targetSelection == unstagedStart {
-						// unstagedセクションの最初のファイル
-						currentSelection = targetSelection
-						foundTarget = true
-						break
-					} else if !preferUnstagedSection && fileInfo.Path == savedTargetFile {
-						currentSelection = targetSelection
-						foundTarget = true
-						break
-					}
-					targetSelection++
-				}
-			}
-		}
-
-		// カーソル情報をリセット
-		preferUnstagedSection = false
-		savedTargetFile = ""
-	}
+	// カーソル復元フラグを保存（fileList構築後に復元する）
+	needsCursorRestore := preferUnstagedSection || savedTargetFile != ""
+	savedPreferUnstaged := preferUnstagedSection
+	savedTarget := savedTargetFile
+	preferUnstagedSection = false
+	savedTargetFile = ""
 
 	// ファイル一覧を構築するための変数
 	var fileList []FileEntry
 	var lineNumberMap = make(map[int]int)
+	dirCollapseState := NewDirCollapseState()
 
 	// コミットメッセージ入力エリア
 	commitTextArea := tview.NewTextArea().
@@ -263,6 +227,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			focusedPane,
 			&fileList,
 			lineNumberMap,
+			dirCollapseState,
 		)
 	}
 
@@ -348,6 +313,22 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		}
 
 		fileEntry := fileList[currentSelection]
+
+		// ディレクトリ選択時はパスを表示
+		if fileEntry.IsDirectory {
+			currentDiffText = ""
+			currentFile = ""
+			currentStatus = ""
+			dirText := "dir: " + fileEntry.Path + "/"
+			if isSplitView {
+				beforeView.SetText("")
+				afterView.SetText(dirText)
+			} else {
+				diffView.SetText(dirText)
+			}
+			return
+		}
+
 		file := fileEntry.Path
 		status := fileEntry.StageStatus
 
@@ -371,6 +352,24 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	}
 
 	updateFileListView()
+
+	// カーソル位置の復元（fileList構築後に実行）
+	if needsCursorRestore {
+		for i, entry := range fileList {
+			if entry.IsDirectory {
+				continue
+			}
+			if !savedPreferUnstaged && entry.Path == savedTarget {
+				currentSelection = i
+				break
+			}
+			if savedPreferUnstaged && entry.StageStatus == "unstaged" {
+				currentSelection = i
+				break
+			}
+		}
+		updateFileListView()
+	}
 
 	// 初期表示時に最初のファイルの差分を表示
 	updateSelectedFileDiff()
@@ -462,6 +461,9 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 		// Collections
 		fileList: &fileList,
+
+		// Directory collapse state
+		dirCollapseState: dirCollapseState,
 
 		// Paths
 		repoRoot: repoRoot,

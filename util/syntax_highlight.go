@@ -14,8 +14,9 @@ import (
 
 // Diff background colors
 const (
-	AddedLineBg   = "#133813"
-	DeletedLineBg = "#381313"
+	AddedLineBg      = "#133813"
+	DeletedLineBg    = "#381313"
+	ExpandedFoldBg   = "#3a3a3a"
 )
 
 // syntaxStyle is the chroma style used for syntax highlighting

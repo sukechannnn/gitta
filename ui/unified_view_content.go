@@ -24,6 +24,7 @@ type UnifiedViewLine struct {
 	LineType        byte   // '+', '-', ' ', 'o' (other/fold)
 	IsFoldIndicator bool   // True if this is a fold indicator line (not a real diff line)
 	FoldID          string // Fold identifier (empty if not a fold indicator)
+	BgColor         string // Background color for the entire line (empty = default)
 }
 
 // UnifiedViewContent represents the content for unified view
@@ -232,13 +233,13 @@ func appendFoldContent(content *UnifiedViewContent, fold *FoldableRange, foldSta
 
 		for lineIdx, expandedLine := range expandedLines {
 			actualLineNum := fold.StartLine + lineIdx
-			lineNumStr := fmt.Sprintf("[dimgray]%*d │ [-]", maxDigits, actualLineNum)
+			lineNumStr := fmt.Sprintf("[dimgray:%s]%*d │ [-:-]", util.ExpandedFoldBg, maxDigits, actualLineNum)
 
 			var lineContent string
 			if allTokens != nil && len(allTokens[lineIdx]) > 0 {
-				lineContent = " " + util.RenderHighlightedLine(allTokens[lineIdx], "")
+				lineContent = " " + util.RenderHighlightedLine(allTokens[lineIdx], util.ExpandedFoldBg)
 			} else {
-				lineContent = "[dimgray] " + tview.Escape(expandedLine) + "[-]"
+				lineContent = fmt.Sprintf("[dimgray:%s] %s[-:-]", util.ExpandedFoldBg, tview.Escape(expandedLine))
 			}
 
 			content.Lines = append(content.Lines, UnifiedViewLine{
@@ -247,6 +248,7 @@ func appendFoldContent(content *UnifiedViewContent, fold *FoldableRange, foldSta
 				LineType:        'o',
 				IsFoldIndicator: false,
 				FoldID:          fold.ID,
+				BgColor:         util.ExpandedFoldBg,
 			})
 		}
 	} else {

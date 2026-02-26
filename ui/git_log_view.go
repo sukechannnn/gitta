@@ -50,6 +50,8 @@ type GitLogView struct {
 	currentFilePath string
 	// 共通の diff updater
 	diffUpdater *UnifiedViewUpdater
+	// ディレクトリ折りたたみ状態
+	dirCollapseState *DirCollapseState
 }
 
 // NewGitLogView creates a new git log viewer
@@ -129,8 +131,9 @@ func NewGitLogView(app *tview.Application, repoRoot string, onExit func()) *GitL
 		commitFiles:     []FileEntry{},
 		selectedFile:    0,
 		leftPaneFocused: true,
-		gPressed:  new(bool),
-		lastGTime: new(time.Time),
+		gPressed:         new(bool),
+		lastGTime:        new(time.Time),
+		dirCollapseState: NewDirCollapseState(),
 	}
 
 	glv.diffUpdater = NewUnifiedViewUpdater(commitDiffView, nil, &glv.currentFilePath, repoRoot)
@@ -394,10 +397,11 @@ func (glv *GitLogView) updateCommitFileList() {
 	// Build tree from commit files
 	tree := buildFileTreeFromFileEntries(glv.commitFiles)
 
-	// ツリー表示順にファイルパスを収集
-	glv.displayOrderPaths = collectPathsInTreeOrder(tree)
+	// ツリー表示順にパスを収集（ディレクトリ含む）
+	glv.displayOrderPaths = collectPathsInTreeOrder(tree, glv.dirCollapseState, "commit")
 
 	var content strings.Builder
+	var displayFileList []FileEntry
 	regionIndex := 0
 	currentLine := 0
 	lineNumberMap := make(map[int]int)
@@ -407,15 +411,28 @@ func (glv *GitLogView) updateCommitFileList() {
 		0,
 		"",
 		&content,
+		&displayFileList,
+		"commit",
 		&regionIndex,
 		glv.selectedFile,
 		glv.leftPaneFocused,
 		lineNumberMap,
 		&currentLine,
 		glv.commitFiles,
+		glv.dirCollapseState,
 	)
 
 	glv.commitFileList.SetText(content.String())
+}
+
+// isDirectoryPath checks if the given path is a directory (not a file) in commitFiles
+func (glv *GitLogView) isDirectoryPath(path string) bool {
+	for _, f := range glv.commitFiles {
+		if f.Path == path {
+			return false // commitFiles にはファイルのみ入っている
+		}
+	}
+	return true // commitFiles に見つからない = ディレクトリ
 }
 
 // showFileDiff shows the diff for the selected file
@@ -426,6 +443,16 @@ func (glv *GitLogView) showFileDiff(commitHash string) {
 	}
 
 	filePath := glv.displayOrderPaths[glv.selectedFile]
+
+	// ディレクトリの場合はパスを表示
+	if glv.isDirectoryPath(filePath) {
+		glv.currentFilePath = ""
+		glv.currentDiffText = ""
+		glv.diffCursorY = 0
+		glv.commitDiffView.SetText("dir: " + filePath + "/")
+		return
+	}
+
 	cmd := exec.Command("git", "show", "--format=", commitHash, "--", filePath)
 	cmd.Dir = glv.repoRoot
 
@@ -558,7 +585,52 @@ func (glv *GitLogView) setupKeyBindings() {
 		case tcell.KeyEsc:
 			glv.backToLog()
 			return nil
+		case tcell.KeyLeft:
+			// ディレクトリ上: 展開中なら折りたたむ
+			if glv.selectedFile < len(glv.displayOrderPaths) {
+				filePath := glv.displayOrderPaths[glv.selectedFile]
+				if glv.isDirectoryPath(filePath) && !glv.dirCollapseState.IsCollapsed("commit", filePath) {
+					glv.dirCollapseState.SetCollapsed("commit", filePath, true)
+					glv.updateCommitFileList()
+					if glv.selectedFile >= len(glv.displayOrderPaths) {
+						glv.selectedFile = len(glv.displayOrderPaths) - 1
+						glv.updateCommitFileList()
+					}
+				}
+			}
+			return nil
+		case tcell.KeyRight:
+			// ディレクトリ上: 折りたたまれていたら展開、展開済みなら次のエントリに移動
+			if glv.selectedFile < len(glv.displayOrderPaths) {
+				filePath := glv.displayOrderPaths[glv.selectedFile]
+				if glv.isDirectoryPath(filePath) {
+					if glv.dirCollapseState.IsCollapsed("commit", filePath) {
+						glv.dirCollapseState.SetCollapsed("commit", filePath, false)
+						glv.updateCommitFileList()
+					} else if glv.selectedFile < len(glv.displayOrderPaths)-1 {
+						glv.selectedFile++
+						glv.updateCommitFileList()
+						if currentCommitHash != "" {
+							glv.showFileDiff(currentCommitHash)
+						}
+					}
+				}
+			}
+			return nil
 		case tcell.KeyEnter:
+			// ディレクトリの場合は折りたたみトグル
+			if glv.selectedFile < len(glv.displayOrderPaths) {
+				filePath := glv.displayOrderPaths[glv.selectedFile]
+				if glv.isDirectoryPath(filePath) {
+					glv.dirCollapseState.ToggleCollapsed("commit", filePath)
+					glv.updateCommitFileList()
+					if glv.selectedFile >= len(glv.displayOrderPaths) {
+						glv.selectedFile = len(glv.displayOrderPaths) - 1
+						glv.updateCommitFileList()
+					}
+					return nil
+				}
+			}
 			glv.leftPaneFocused = false
 			glv.updateCommitFileList()
 			glv.updateCommitDiff()
@@ -569,6 +641,43 @@ func (glv *GitLogView) setupKeyBindings() {
 		switch event.Rune() {
 		case 'q':
 			glv.quitApplication()
+			return nil
+		case 'h':
+			// ディレクトリ上: 展開中なら折りたたむ
+			if glv.selectedFile < len(glv.displayOrderPaths) {
+				filePath := glv.displayOrderPaths[glv.selectedFile]
+				if glv.isDirectoryPath(filePath) && !glv.dirCollapseState.IsCollapsed("commit", filePath) {
+					glv.dirCollapseState.SetCollapsed("commit", filePath, true)
+					glv.updateCommitFileList()
+					if glv.selectedFile >= len(glv.displayOrderPaths) {
+						glv.selectedFile = len(glv.displayOrderPaths) - 1
+						glv.updateCommitFileList()
+					}
+					return nil
+				}
+			}
+			return nil
+		case 'l':
+			// ディレクトリ上: 折りたたまれていたら展開、展開済みなら次のエントリに移動
+			if glv.selectedFile < len(glv.displayOrderPaths) {
+				filePath := glv.displayOrderPaths[glv.selectedFile]
+				if glv.isDirectoryPath(filePath) {
+					if glv.dirCollapseState.IsCollapsed("commit", filePath) {
+						glv.dirCollapseState.SetCollapsed("commit", filePath, false)
+						glv.updateCommitFileList()
+						return nil
+					}
+					// 展開済みなら次のエントリに移動
+					if glv.selectedFile < len(glv.displayOrderPaths)-1 {
+						glv.selectedFile++
+						glv.updateCommitFileList()
+						if currentCommitHash != "" {
+							glv.showFileDiff(currentCommitHash)
+						}
+					}
+					return nil
+				}
+			}
 			return nil
 		case 'j':
 			if glv.selectedFile < len(glv.displayOrderPaths)-1 {

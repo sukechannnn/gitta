@@ -30,6 +30,7 @@ func renderFileTree(
 	lineNumberMap map[int]int,
 	currentLine *int,
 	fileInfos []git.FileInfo,
+	collapseState *DirCollapseState,
 ) {
 	renderFileTreeForGitFiles(
 		node,
@@ -44,6 +45,7 @@ func renderFileTree(
 		lineNumberMap,
 		currentLine,
 		fileInfos,
+		collapseState,
 	)
 }
 
@@ -54,6 +56,7 @@ func BuildFileListContent(
 	focusedPane bool,
 	fileList *[]FileEntry,
 	lineNumberMap map[int]int,
+	collapseState *DirCollapseState,
 ) string {
 	// fileList を再構築
 	// スライスの中身をクリア（参照は保持）
@@ -72,7 +75,7 @@ func BuildFileListContent(
 		currentLine++
 		tree := buildFileTree(stagedFiles)
 		renderFileTree(tree, 1, &coloredContent, fileList,
-			"staged", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, stagedFiles)
+			"staged", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, stagedFiles, collapseState)
 		coloredContent.WriteString("\n")
 		currentLine++
 	}
@@ -83,7 +86,7 @@ func BuildFileListContent(
 		currentLine++
 		tree := buildFileTree(modifiedFiles)
 		renderFileTree(tree, 1, &coloredContent, fileList,
-			"unstaged", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, modifiedFiles)
+			"unstaged", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, modifiedFiles, collapseState)
 		coloredContent.WriteString("\n")
 		currentLine++
 	}
@@ -94,7 +97,7 @@ func BuildFileListContent(
 		currentLine++
 		tree := buildFileTree(untrackedFiles)
 		renderFileTree(tree, 1, &coloredContent, fileList,
-			"untracked", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, untrackedFiles)
+			"untracked", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, untrackedFiles, collapseState)
 	}
 
 	return coloredContent.String()
@@ -130,6 +133,9 @@ type FileListKeyContext struct {
 	// Collections
 	fileList *[]FileEntry
 
+	// Directory collapse state
+	dirCollapseState *DirCollapseState
+
 	// Paths
 	repoRoot string
 
@@ -162,9 +168,56 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				ctx.updateSelectedFileDiff()
 			}
 			return nil
+		case tcell.KeyLeft:
+			// ディレクトリ上: 展開中なら折りたたむ
+			if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
+				fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+				if fileEntry.IsDirectory && ctx.dirCollapseState != nil {
+					if !ctx.dirCollapseState.IsCollapsed(fileEntry.StageStatus, fileEntry.Path) {
+						ctx.dirCollapseState.SetCollapsed(fileEntry.StageStatus, fileEntry.Path, true)
+						ctx.updateFileListView()
+						if *ctx.currentSelection >= len(*ctx.fileList) {
+							*ctx.currentSelection = len(*ctx.fileList) - 1
+							ctx.updateFileListView()
+						}
+					}
+				}
+			}
+			return nil
+		case tcell.KeyRight:
+			// ディレクトリ上: 折りたたまれていたら展開、展開済みなら次のエントリに移動
+			if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
+				fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+				if fileEntry.IsDirectory && ctx.dirCollapseState != nil {
+					if ctx.dirCollapseState.IsCollapsed(fileEntry.StageStatus, fileEntry.Path) {
+						ctx.dirCollapseState.SetCollapsed(fileEntry.StageStatus, fileEntry.Path, false)
+						ctx.updateFileListView()
+					} else if *ctx.currentSelection < len(*ctx.fileList)-1 {
+						(*ctx.currentSelection)++
+						ctx.updateFileListView()
+						ctx.updateSelectedFileDiff()
+					}
+				}
+			}
+			return nil
 		case tcell.KeyEnter:
 			if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 				fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+
+				// ディレクトリの場合は折りたたみトグル
+				if fileEntry.IsDirectory {
+					if ctx.dirCollapseState != nil {
+						ctx.dirCollapseState.ToggleCollapsed(fileEntry.StageStatus, fileEntry.Path)
+						ctx.updateFileListView()
+						// currentSelection が範囲外になった場合の調整
+						if *ctx.currentSelection >= len(*ctx.fileList) {
+							*ctx.currentSelection = len(*ctx.fileList) - 1
+							ctx.updateFileListView()
+						}
+					}
+					return nil
+				}
+
 				file := fileEntry.Path
 				status := fileEntry.StageStatus
 
@@ -262,16 +315,49 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				}
 				return nil
 			case 'h':
-				// 左にスクロール
+				// ディレクトリ上: 展開中なら折りたたむ
+				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
+					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+					if fileEntry.IsDirectory && ctx.dirCollapseState != nil {
+						if !ctx.dirCollapseState.IsCollapsed(fileEntry.StageStatus, fileEntry.Path) {
+							ctx.dirCollapseState.SetCollapsed(fileEntry.StageStatus, fileEntry.Path, true)
+							ctx.updateFileListView()
+							if *ctx.currentSelection >= len(*ctx.fileList) {
+								*ctx.currentSelection = len(*ctx.fileList) - 1
+								ctx.updateFileListView()
+							}
+							return nil
+						}
+					}
+				}
+				// ファイル上またはディレクトリが既に折りたたまれている場合: 左にスクロール
 				currentRow, currentCol := ctx.fileListView.GetScrollOffset()
 				if currentCol > 0 {
 					ctx.fileListView.ScrollTo(currentRow, currentCol-1)
 				}
 				return nil
 			case 'l':
-				// 右にスクロール
-				currentRow, currentCol := ctx.fileListView.GetScrollOffset()
-				ctx.fileListView.ScrollTo(currentRow, currentCol+1)
+				// ディレクトリ上: 折りたたまれていたら展開、展開済みなら次のエントリに移動
+				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
+					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+					if fileEntry.IsDirectory && ctx.dirCollapseState != nil {
+						if ctx.dirCollapseState.IsCollapsed(fileEntry.StageStatus, fileEntry.Path) {
+							ctx.dirCollapseState.SetCollapsed(fileEntry.StageStatus, fileEntry.Path, false)
+							ctx.updateFileListView()
+							return nil
+						}
+						// 展開済みなら次のエントリ（最初の子）に移動
+						if *ctx.currentSelection < len(*ctx.fileList)-1 {
+							(*ctx.currentSelection)++
+							ctx.updateFileListView()
+							ctx.updateSelectedFileDiff()
+						}
+						return nil
+					}
+				}
+				// ファイル上: 右にスクロール
+				currentRow2, currentCol2 := ctx.fileListView.GetScrollOffset()
+				ctx.fileListView.ScrollTo(currentRow2, currentCol2+1)
 				return nil
 			case 's':
 				// Split Viewのトグル
@@ -311,16 +397,21 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					}
 				}
 				return nil
-			case 'a': // 'a' で現在のファイルを git add/reset
+			case 'a': // 'a' で現在のファイル/ディレクトリを git add/reset
 				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 					file := fileEntry.Path
 					status := fileEntry.StageStatus
 
+					// ディレクトリの場合はディレクトリごと stage/unstage
+					if fileEntry.IsDirectory {
+						file = fileEntry.Path + "/"
+					}
+
 					var cmd *exec.Cmd
 					if status == "staged" {
 						// stagedファイルをunstageする
-						cmd = exec.Command("git", "-c", "core.quotepath=false", "reset", "HEAD", file)
+						cmd = exec.Command("git", "-c", "core.quotepath=false", "reset", "HEAD", "--", file)
 						cmd.Dir = ctx.repoRoot
 					} else {
 						// unstaged/untrackedファイルをstageする
@@ -339,7 +430,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 						time.Sleep(50 * time.Millisecond)
 						// コマンドを再作成（Cmdは一度実行すると再利用できない）
 						if status == "staged" {
-							cmd = exec.Command("git", "-c", "core.quotepath=false", "reset", "HEAD", file)
+							cmd = exec.Command("git", "-c", "core.quotepath=false", "reset", "HEAD", "--", file)
 						} else {
 							cmd = exec.Command("git", "-c", "core.quotepath=false", "add", file)
 						}
@@ -404,6 +495,14 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 			case 'd': // 'd' で選択したファイルの差分を破棄（untracked fileの場合は削除）
 				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+
+					// ディレクトリの場合はスキップ
+					if fileEntry.IsDirectory {
+						if ctx.updateGlobalStatus != nil {
+							ctx.updateGlobalStatus("Cannot discard directory. Select individual files.", "tomato")
+						}
+						return nil
+					}
 
 					// stagedファイルの場合はエラーメッセージを表示
 					if fileEntry.StageStatus == "staged" {
@@ -470,6 +569,15 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 			case 'v': // 'v' でvimでファイルを開く
 				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+
+					// ディレクトリの場合はスキップ
+					if fileEntry.IsDirectory {
+						if ctx.updateGlobalStatus != nil {
+							ctx.updateGlobalStatus("Cannot open directory in vim. Select a file.", "tomato")
+						}
+						return nil
+					}
+
 					filePath := fileEntry.Path
 
 					// アプリケーションを一時停止してvimを起動
