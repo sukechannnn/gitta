@@ -157,8 +157,13 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			*ctx.isSelecting = false
 			*ctx.selectStart = -1
 			*ctx.selectEnd = -1
-			// 左ペインにフォーカスを戻す（viewerの表示は更新しない - スクロール位置を保持）
 			*ctx.leftPaneFocused = true
+			// diff view をカーソルなしで再描画
+			if *ctx.isSplitView {
+				updateSplitViewWithoutCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, *ctx.currentFile)
+			} else {
+				updateDiffViewWithoutCursor(ctx.diffView, *ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
+			}
 			ctx.updateFileListView()
 			ctx.app.SetFocus(ctx.fileListView)
 			return nil
