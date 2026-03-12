@@ -99,6 +99,14 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	var isSplitView bool = false      // Split Viewモードのフラグ
 	var ignoreWhitespace bool = false // Whitespace無視モードのフラグ
 
+	// Search state
+	var searchQuery string
+	var searchMatches []int
+	var searchMatchIndex int = -1
+	var isSearchMode bool = false
+	var searchInput string
+	var searchCursorYBeforeSearch int
+
 	// Fold state for managing expandable ranges
 	foldState := NewFoldState()
 
@@ -371,6 +379,17 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		updateFileListView()
 	}
 
+	// 初期選択がディレクトリの場合は最初のファイルを選択
+	if currentSelection < len(fileList) && fileList[currentSelection].IsDirectory {
+		for i, entry := range fileList {
+			if !entry.IsDirectory {
+				currentSelection = i
+				updateFileListView()
+				break
+			}
+		}
+	}
+
 	// 初期表示時に最初のファイルの差分を表示
 	updateSelectedFileDiff()
 
@@ -417,14 +436,33 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		lastGTime: &lastGTime,
 
 		// View updater
-		viewUpdater: NewUnifiedViewUpdater(diffView, foldState, &currentFile, repoRoot),
+		viewUpdater: &UnifiedViewUpdater{
+			diffView:    diffView,
+			foldState:   foldState,
+			filePath:    &currentFile,
+			repoRoot:    repoRoot,
+			searchQuery: &searchQuery,
+		},
 
 		// Fold state
 		foldState: foldState,
 
+		// Search state
+		searchQuery:               &searchQuery,
+		searchMatches:             &searchMatches,
+		searchMatchIndex:          &searchMatchIndex,
+		isSearchMode:              &isSearchMode,
+		searchInput:               &searchInput,
+		searchCursorYBeforeSearch: &searchCursorYBeforeSearch,
+
 		// Callbacks
-		updateFileListView:    updateFileListView,
-		updateGlobalStatus:    updateGlobalStatus,
+		updateFileListView: updateFileListView,
+		updateGlobalStatus: updateGlobalStatus,
+		setGlobalStatusText: func(text string) {
+			if globalStatusView != nil {
+				globalStatusView.SetText(text)
+			}
+		},
 		refreshFileList:       refreshFileList,
 		onUpdate:              onUpdate,
 		updateCurrentDiffText: updateCurrentDiffText,
