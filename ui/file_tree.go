@@ -12,6 +12,86 @@ import (
 	"github.com/sukechannnn/gitta/ui/commands"
 )
 
+// moveFileListSelection moves the file list selection.
+// If currently on a directory, moves between directories. If on a file, moves between files.
+func moveFileListSelection(ctx *FileListKeyContext, direction int) {
+	if *ctx.currentSelection < 0 || *ctx.currentSelection >= len(*ctx.fileList) {
+		return
+	}
+	onDirectory := (*ctx.fileList)[*ctx.currentSelection].IsDirectory
+
+	next := *ctx.currentSelection + direction
+	for next >= 0 && next < len(*ctx.fileList) {
+		if (*ctx.fileList)[next].IsDirectory == onDirectory {
+			*ctx.currentSelection = next
+			ctx.updateFileListView()
+			if !onDirectory {
+				ctx.updateSelectedFileDiff()
+			}
+			return
+		}
+		next += direction
+	}
+}
+
+// handleFileListLeft handles left/h key: on a file, select its parent directory; on a directory, collapse it
+func handleFileListLeft(ctx *FileListKeyContext) {
+	if *ctx.currentSelection < 0 || *ctx.currentSelection >= len(*ctx.fileList) {
+		return
+	}
+	fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+
+	if fileEntry.IsDirectory && ctx.dirCollapseState != nil {
+		// ディレクトリ上: 展開中なら折りたたむ
+		if !ctx.dirCollapseState.IsCollapsed(fileEntry.StageStatus, fileEntry.Path) {
+			ctx.dirCollapseState.SetCollapsed(fileEntry.StageStatus, fileEntry.Path, true)
+			ctx.updateFileListView()
+			if *ctx.currentSelection >= len(*ctx.fileList) {
+				*ctx.currentSelection = len(*ctx.fileList) - 1
+				ctx.updateFileListView()
+			}
+			return
+		}
+		return
+	}
+
+	// ファイル上: 親ディレクトリを探して選択
+	for i := *ctx.currentSelection - 1; i >= 0; i-- {
+		entry := (*ctx.fileList)[i]
+		if entry.IsDirectory && entry.StageStatus == fileEntry.StageStatus &&
+			strings.HasPrefix(fileEntry.Path, entry.Path+"/") {
+			*ctx.currentSelection = i
+			ctx.updateFileListView()
+			return
+		}
+	}
+}
+
+// handleFileListRight handles right/l key: on a directory, expand or move into; on a file, no-op
+func handleFileListRight(ctx *FileListKeyContext) {
+	if *ctx.currentSelection < 0 || *ctx.currentSelection >= len(*ctx.fileList) {
+		return
+	}
+	fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+
+	if fileEntry.IsDirectory && ctx.dirCollapseState != nil {
+		if ctx.dirCollapseState.IsCollapsed(fileEntry.StageStatus, fileEntry.Path) {
+			// 折りたたまれていたら展開
+			ctx.dirCollapseState.SetCollapsed(fileEntry.StageStatus, fileEntry.Path, false)
+			ctx.updateFileListView()
+		}
+		// 展開済み or 展開直後: 次のファイルに移動
+		for i := *ctx.currentSelection + 1; i < len(*ctx.fileList); i++ {
+			if !(*ctx.fileList)[i].IsDirectory {
+				*ctx.currentSelection = i
+				ctx.updateFileListView()
+				ctx.updateSelectedFileDiff()
+				return
+			}
+		}
+	}
+}
+
 // buildFileTree converts a list of file paths into a tree structure
 func buildFileTree(files []git.FileInfo) *TreeNode {
 	return buildFileTreeFromGitFiles(files)
@@ -155,50 +235,16 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 	ctx.fileListView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyUp:
-			if *ctx.currentSelection > 0 {
-				(*ctx.currentSelection)--
-				ctx.updateFileListView()
-				ctx.updateSelectedFileDiff()
-			}
+			moveFileListSelection(ctx, -1)
 			return nil
 		case tcell.KeyDown:
-			if *ctx.currentSelection < len(*ctx.fileList)-1 {
-				(*ctx.currentSelection)++
-				ctx.updateFileListView()
-				ctx.updateSelectedFileDiff()
-			}
+			moveFileListSelection(ctx, 1)
 			return nil
 		case tcell.KeyLeft:
-			// ディレクトリ上: 展開中なら折りたたむ
-			if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
-				fileEntry := (*ctx.fileList)[*ctx.currentSelection]
-				if fileEntry.IsDirectory && ctx.dirCollapseState != nil {
-					if !ctx.dirCollapseState.IsCollapsed(fileEntry.StageStatus, fileEntry.Path) {
-						ctx.dirCollapseState.SetCollapsed(fileEntry.StageStatus, fileEntry.Path, true)
-						ctx.updateFileListView()
-						if *ctx.currentSelection >= len(*ctx.fileList) {
-							*ctx.currentSelection = len(*ctx.fileList) - 1
-							ctx.updateFileListView()
-						}
-					}
-				}
-			}
+			handleFileListLeft(ctx)
 			return nil
 		case tcell.KeyRight:
-			// ディレクトリ上: 折りたたまれていたら展開、展開済みなら次のエントリに移動
-			if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
-				fileEntry := (*ctx.fileList)[*ctx.currentSelection]
-				if fileEntry.IsDirectory && ctx.dirCollapseState != nil {
-					if ctx.dirCollapseState.IsCollapsed(fileEntry.StageStatus, fileEntry.Path) {
-						ctx.dirCollapseState.SetCollapsed(fileEntry.StageStatus, fileEntry.Path, false)
-						ctx.updateFileListView()
-					} else if *ctx.currentSelection < len(*ctx.fileList)-1 {
-						(*ctx.currentSelection)++
-						ctx.updateFileListView()
-						ctx.updateSelectedFileDiff()
-					}
-				}
-			}
+			handleFileListRight(ctx)
 			return nil
 		case tcell.KeyEnter:
 			if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
@@ -301,63 +347,16 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 		case tcell.KeyRune:
 			switch event.Rune() {
 			case 'k':
-				if *ctx.currentSelection > 0 {
-					(*ctx.currentSelection)--
-					ctx.updateFileListView()
-					ctx.updateSelectedFileDiff()
-				}
+				moveFileListSelection(ctx, -1)
 				return nil
 			case 'j':
-				if *ctx.currentSelection < len(*ctx.fileList)-1 {
-					(*ctx.currentSelection)++
-					ctx.updateFileListView()
-					ctx.updateSelectedFileDiff()
-				}
+				moveFileListSelection(ctx, 1)
 				return nil
 			case 'h':
-				// ディレクトリ上: 展開中なら折りたたむ
-				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
-					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
-					if fileEntry.IsDirectory && ctx.dirCollapseState != nil {
-						if !ctx.dirCollapseState.IsCollapsed(fileEntry.StageStatus, fileEntry.Path) {
-							ctx.dirCollapseState.SetCollapsed(fileEntry.StageStatus, fileEntry.Path, true)
-							ctx.updateFileListView()
-							if *ctx.currentSelection >= len(*ctx.fileList) {
-								*ctx.currentSelection = len(*ctx.fileList) - 1
-								ctx.updateFileListView()
-							}
-							return nil
-						}
-					}
-				}
-				// ファイル上またはディレクトリが既に折りたたまれている場合: 左にスクロール
-				currentRow, currentCol := ctx.fileListView.GetScrollOffset()
-				if currentCol > 0 {
-					ctx.fileListView.ScrollTo(currentRow, currentCol-1)
-				}
+				handleFileListLeft(ctx)
 				return nil
 			case 'l':
-				// ディレクトリ上: 折りたたまれていたら展開、展開済みなら次のエントリに移動
-				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
-					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
-					if fileEntry.IsDirectory && ctx.dirCollapseState != nil {
-						if ctx.dirCollapseState.IsCollapsed(fileEntry.StageStatus, fileEntry.Path) {
-							ctx.dirCollapseState.SetCollapsed(fileEntry.StageStatus, fileEntry.Path, false)
-							ctx.updateFileListView()
-							return nil
-						}
-						// 展開済みなら次のエントリ（最初の子）に移動
-						if *ctx.currentSelection < len(*ctx.fileList)-1 {
-							(*ctx.currentSelection)++
-							ctx.updateFileListView()
-							ctx.updateSelectedFileDiff()
-						}
-						return nil
-					}
-				}
-				// ファイル上: 右にスクロール
-				currentRow2, currentCol2 := ctx.fileListView.GetScrollOffset()
-				ctx.fileListView.ScrollTo(currentRow2, currentCol2+1)
+				handleFileListRight(ctx)
 				return nil
 			case 's':
 				// Split Viewのトグル
