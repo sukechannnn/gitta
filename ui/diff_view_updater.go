@@ -17,10 +17,11 @@ type DiffViewUpdater interface {
 
 // UnifiedViewUpdater implements DiffViewUpdater for unified diff view
 type UnifiedViewUpdater struct {
-	diffView  *tview.TextView
-	foldState *FoldState
-	filePath  *string
-	repoRoot  string
+	diffView    *tview.TextView
+	foldState   *FoldState
+	filePath    *string
+	repoRoot    string
+	searchQuery *string // 検索クエリ（文字レベルハイライト用）
 }
 
 // NewUnifiedViewUpdater creates a new UnifiedViewUpdater
@@ -48,7 +49,11 @@ func (u *UnifiedViewUpdater) UpdateWithCursor(diffText string, cursorY int) {
 	if u.filePath != nil {
 		filePath = *u.filePath
 	}
-	updateDiffViewWithCursor(u.diffView, diffText, cursorY, u.foldState, filePath, u.repoRoot)
+	var query string
+	if u.searchQuery != nil {
+		query = *u.searchQuery
+	}
+	renderUnifiedView(u.diffView, diffText, cursorY, -1, -1, false, u.foldState, filePath, u.repoRoot, query)
 }
 
 // UpdateWithSelection updates unified view with selection
@@ -57,7 +62,11 @@ func (u *UnifiedViewUpdater) UpdateWithSelection(diffText string, cursorY int, s
 	if u.filePath != nil {
 		filePath = *u.filePath
 	}
-	updateDiffViewWithSelection(u.diffView, diffText, cursorY, selectStart, selectEnd, isSelecting, u.foldState, filePath, u.repoRoot)
+	var query string
+	if u.searchQuery != nil {
+		query = *u.searchQuery
+	}
+	renderUnifiedView(u.diffView, diffText, cursorY, selectStart, selectEnd, isSelecting, u.foldState, filePath, u.repoRoot, query)
 }
 
 // SplitViewUpdater implements DiffViewUpdater for split diff view
@@ -130,18 +139,18 @@ func InvalidateUnifiedContentCache() {
 }
 
 func updateDiffViewWithoutCursor(diffView *tview.TextView, diffText string, foldState *FoldState, filePath, repoRoot string) {
-	renderUnifiedView(diffView, diffText, -1, -1, -1, false, foldState, filePath, repoRoot)
+	renderUnifiedView(diffView, diffText, -1, -1, -1, false, foldState, filePath, repoRoot, "")
 }
 
 func updateDiffViewWithCursor(diffView *tview.TextView, diffText string, cursorY int, foldState *FoldState, filePath, repoRoot string) {
-	renderUnifiedView(diffView, diffText, cursorY, -1, -1, false, foldState, filePath, repoRoot)
+	renderUnifiedView(diffView, diffText, cursorY, -1, -1, false, foldState, filePath, repoRoot, "")
 }
 
 func updateDiffViewWithSelection(diffView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool, foldState *FoldState, filePath, repoRoot string) {
-	renderUnifiedView(diffView, diffText, cursorY, selectStart, selectEnd, isSelecting, foldState, filePath, repoRoot)
+	renderUnifiedView(diffView, diffText, cursorY, selectStart, selectEnd, isSelecting, foldState, filePath, repoRoot, "")
 }
 
-func renderUnifiedView(diffView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool, foldState *FoldState, filePath, repoRoot string) {
+func renderUnifiedView(diffView *tview.TextView, diffText string, cursorY int, selectStart int, selectEnd int, isSelecting bool, foldState *FoldState, filePath, repoRoot string, searchQuery string) {
 	diffView.Clear()
 
 	content := getCachedUnifiedContent(diffText, foldState, filePath, repoRoot)
@@ -160,12 +169,18 @@ func renderUnifiedView(diffView *tview.TextView, diffText string, cursorY int, s
 			lineNumFg = "dimgray"
 		}
 
+		// 検索クエリがある場合、文字レベルのハイライトを適用
+		lineContent := line.Content
+		if searchQuery != "" {
+			lineContent = highlightSearchInTaggedText(lineContent, searchQuery)
+		}
+
 		if bg != "" {
 			lineNum := util.ReplaceBackground(line.LineNumber, bg)
-			highlighted := util.ReplaceBackground(line.Content, bg)
+			highlighted := util.ReplaceBackground(lineContent, bg)
 			diffView.Write([]byte("[" + lineNumFg + ":" + bg + "]" + lineNum + highlighted + strings.Repeat(" ", 500) + "[-:-]\n"))
 		} else {
-			diffView.Write([]byte("[dimgray]" + line.LineNumber + "[-]" + line.Content + "\n"))
+			diffView.Write([]byte("[dimgray]" + line.LineNumber + "[-]" + lineContent + "\n"))
 		}
 	}
 

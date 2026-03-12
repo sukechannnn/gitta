@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -57,9 +58,18 @@ type DiffViewContext struct {
 	// Fold state
 	foldState *FoldState
 
+	// Search state
+	searchQuery             *string // 現在の検索クエリ（空 = 検索なし）
+	searchMatches           *[]int  // マッチした行インデックスのリスト
+	searchMatchIndex        *int    // 現在のマッチインデックス（searchMatches 内の位置）
+	isSearchMode            *bool   // 検索入力モード中か
+	searchInput             *string // 検索入力中の文字列（未確定）
+	searchCursorYBeforeSearch *int  // 検索開始前のカーソル位置
+
 	// Callbacks
 	updateFileListView    func()
 	updateGlobalStatus    func(string, string)
+	setGlobalStatusText   func(string) // 直接ステータステキストを設定（タイマーなし）
 	refreshFileList       func()
 	onUpdate              func()
 	updateCurrentDiffText func(string, string, string, *string, bool)
@@ -99,8 +109,7 @@ func scrollDiffView(ctx *DiffViewContext, direction int) {
 	} else {
 		// Unified Viewの場合
 		currentRow, _ := ctx.diffView.GetScrollOffset()
-		coloredDiff := ColorizeDiff(*ctx.currentDiffText)
-		maxLines := len(util.SplitLines(coloredDiff))
+		maxLines := GetUnifiedViewLineCount(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
 
 		nextRow := currentRow + direction
 		// スクロール位置を更新（範囲内に収める）
@@ -135,22 +144,90 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 		if *ctx.isSplitView {
 			ctx.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView, ctx.currentFile)
 		} else {
-			ctx.viewUpdater = NewUnifiedViewUpdater(ctx.diffView, ctx.foldState, ctx.currentFile, ctx.repoRoot)
+			ctx.viewUpdater = &UnifiedViewUpdater{
+				diffView:    ctx.diffView,
+				foldState:   ctx.foldState,
+				filePath:    ctx.currentFile,
+				repoRoot:    ctx.repoRoot,
+				searchQuery: ctx.searchQuery,
+			}
 		}
 	}
 
 	// 共通のキーハンドラー関数
 	keyHandler := func(event *tcell.EventKey) *tcell.EventKey {
+		// 検索モード中のキーハンドリング
+		if *ctx.isSearchMode {
+			switch event.Key() {
+			case tcell.KeyEnter:
+				// 検索確定
+				*ctx.searchQuery = *ctx.searchInput
+				*ctx.isSearchMode = false
+				if ctx.viewUpdater != nil {
+					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+				}
+				if len(*ctx.searchMatches) > 0 {
+					ctx.setGlobalStatusText(fmt.Sprintf("[white]/%s [%d/%d][-]", tview.Escape(*ctx.searchQuery), *ctx.searchMatchIndex+1, len(*ctx.searchMatches)))
+				} else {
+					ctx.setGlobalStatusText(fmt.Sprintf("[tomato]/%s [no match][-]", tview.Escape(*ctx.searchQuery)))
+				}
+			case tcell.KeyEsc:
+				// 検索キャンセル: カーソルを元の位置に戻す
+				*ctx.isSearchMode = false
+				*ctx.searchInput = ""
+				*ctx.searchQuery = ""
+				*ctx.searchMatches = nil
+				*ctx.searchMatchIndex = -1
+				*ctx.cursorY = *ctx.searchCursorYBeforeSearch
+				if ctx.viewUpdater != nil {
+					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+				}
+				ctx.setGlobalStatusText(listKeyBindingMessage)
+			case tcell.KeyBackspace, tcell.KeyBackspace2:
+				if len(*ctx.searchInput) > 0 {
+					// 1文字削除
+					runes := []rune(*ctx.searchInput)
+					*ctx.searchInput = string(runes[:len(runes)-1])
+				}
+				performSearch(ctx)
+			case tcell.KeyRune:
+				*ctx.searchInput += string(event.Rune())
+				performSearch(ctx)
+			}
+			return nil
+		}
+
 		switch event.Key() {
 		case tcell.KeyEsc:
-			// 選択モードをリセット（カーソル位置は保持）
-			*ctx.isSelecting = false
-			*ctx.selectEnd = -1
-			*ctx.selectStart = -1
-			// 表示を更新
-			if ctx.viewUpdater != nil {
-				ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+			// 検索結果がある場合、最初の Esc でクリア
+			if *ctx.searchQuery != "" {
+				*ctx.searchQuery = ""
+				*ctx.searchMatches = nil
+				*ctx.searchMatchIndex = -1
+				if ctx.viewUpdater != nil {
+					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+				}
+				return nil
 			}
+			// 選択モード中なら解除
+			if *ctx.isSelecting {
+				*ctx.isSelecting = false
+				*ctx.selectEnd = -1
+				*ctx.selectStart = -1
+				if ctx.viewUpdater != nil {
+					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+				}
+				return nil
+			}
+			// 左ペインに戻る
+			*ctx.leftPaneFocused = true
+			if *ctx.isSplitView {
+				updateSplitViewWithoutCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, *ctx.currentFile)
+			} else {
+				updateDiffViewWithoutCursor(ctx.diffView, *ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
+			}
+			ctx.updateFileListView()
+			ctx.app.SetFocus(ctx.fileListView)
 			return nil
 		case tcell.KeyEnter:
 			// 左ペインに戻る
@@ -263,7 +340,13 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					}
 				} else {
 					// 通常の差分表示に戻す
-					ctx.viewUpdater = NewUnifiedViewUpdater(ctx.diffView, ctx.foldState, ctx.currentFile, ctx.repoRoot)
+					ctx.viewUpdater = &UnifiedViewUpdater{
+						diffView:    ctx.diffView,
+						foldState:   ctx.foldState,
+						filePath:    ctx.currentFile,
+						repoRoot:    ctx.repoRoot,
+						searchQuery: ctx.searchQuery,
+					}
 					ctx.contentFlex.RemoveItem(ctx.splitViewFlex)
 					ctx.contentFlex.AddItem(ctx.unifiedViewFlex, 0, DiffViewFlexRatio, false)
 					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
@@ -463,8 +546,46 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 
 				return nil
+			case '/':
+				// 検索モード開始
+				*ctx.isSearchMode = true
+				*ctx.searchInput = ""
+				*ctx.searchCursorYBeforeSearch = *ctx.cursorY
+				ctx.setGlobalStatusText("[white]/[-]")
+				return nil
+			case 'n':
+				// 次のマッチに移動
+				if *ctx.searchQuery != "" && len(*ctx.searchMatches) > 0 {
+					moveToNextMatch(ctx)
+				}
+				return nil
+			case 'N':
+				// 前のマッチに移動
+				if *ctx.searchQuery != "" && len(*ctx.searchMatches) > 0 {
+					moveToPrevMatch(ctx)
+				}
+				return nil
 			case 'u':
 				ctx.updateGlobalStatus("undo is not implemented!", "tomato")
+			case 'v':
+				// vim でファイルを開く
+				if *ctx.currentFile != "" {
+					ctx.app.Suspend(func() {
+						cmd := exec.Command("vim", "-c", "set title titlestring=[gitta]\\ %f", *ctx.currentFile)
+						cmd.Dir = ctx.repoRoot
+						cmd.Stdin = os.Stdin
+						cmd.Stdout = os.Stdout
+						cmd.Stderr = os.Stderr
+						cmd.Run()
+					})
+					ctx.refreshFileList()
+					ctx.updateFileListView()
+					ctx.updateCurrentDiffText(*ctx.currentFile, *ctx.currentStatus, ctx.repoRoot, ctx.currentDiffText, *ctx.ignoreWhitespace)
+					if ctx.viewUpdater != nil {
+						ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+					}
+				}
+				return nil
 			case 'e':
 				// Expand/collapse fold at cursor
 				if !*ctx.isSplitView && ctx.foldState != nil {
@@ -702,4 +823,200 @@ func stripDiffPrefix(line string) string {
 	default:
 		return line
 	}
+}
+
+// tview のカラータグを除去する正規表現
+var tviewTagRegex = regexp.MustCompile(`\[("[^"]*"|[^\[\]]*)\]`)
+
+// stripTviewTags removes tview color/region tags from text
+func stripTviewTags(text string) string {
+	return tviewTagRegex.ReplaceAllString(text, "")
+}
+
+// highlightSearchInTaggedText highlights occurrences of query in a tview-tagged string
+func highlightSearchInTaggedText(tagged string, query string) string {
+	if query == "" {
+		return tagged
+	}
+
+	plain := stripTviewTags(tagged)
+	plainRunes := []rune(plain)
+	queryRunes := []rune(query)
+	queryLen := len(queryRunes)
+
+	if len(plainRunes) < queryLen {
+		return tagged
+	}
+
+	// マッチする可視文字位置をマーク
+	highlight := make([]bool, len(plainRunes))
+	for i := 0; i <= len(plainRunes)-queryLen; i++ {
+		match := true
+		for j := 0; j < queryLen; j++ {
+			if plainRunes[i+j] != queryRunes[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			for j := 0; j < queryLen; j++ {
+				highlight[i+j] = true
+			}
+		}
+	}
+
+	// マッチがなければそのまま返す
+	anyMatch := false
+	for _, h := range highlight {
+		if h {
+			anyMatch = true
+			break
+		}
+	}
+	if !anyMatch {
+		return tagged
+	}
+
+	const hlStart = "[:#665500]"
+	const hlEnd = "[:-]"
+
+	var result strings.Builder
+	runes := []rune(tagged)
+	visibleIdx := 0
+	inHL := false
+
+	for i := 0; i < len(runes); {
+		// tview タグの検出
+		if runes[i] == '[' {
+			j := i + 1
+			inQuote := false
+			for j < len(runes) {
+				if runes[j] == '"' {
+					inQuote = !inQuote
+				} else if !inQuote && runes[j] == ']' {
+					break
+				} else if !inQuote && runes[j] == '[' {
+					break
+				}
+				j++
+			}
+			if j < len(runes) && runes[j] == ']' {
+				// 有効なタグ: ハイライト中ならタグの前後で再適用
+				tagStr := string(runes[i : j+1])
+				if inHL {
+					result.WriteString(hlEnd)
+					result.WriteString(tagStr)
+					result.WriteString(hlStart)
+				} else {
+					result.WriteString(tagStr)
+				}
+				i = j + 1
+				continue
+			}
+		}
+
+		// 可視文字
+		shouldHL := visibleIdx < len(highlight) && highlight[visibleIdx]
+
+		if shouldHL && !inHL {
+			result.WriteString(hlStart)
+			inHL = true
+		} else if !shouldHL && inHL {
+			result.WriteString(hlEnd)
+			inHL = false
+		}
+
+		result.WriteRune(runes[i])
+		visibleIdx++
+		i++
+	}
+
+	if inHL {
+		result.WriteString(hlEnd)
+	}
+
+	return result.String()
+}
+
+// searchInUnifiedContent searches for query in unified view content and returns matching line indices
+func searchInUnifiedContent(content *UnifiedViewContent, query string) []int {
+	var matches []int
+	for i, line := range content.Lines {
+		plain := stripTviewTags(line.LineNumber + line.Content)
+		if strings.Contains(plain, query) {
+			matches = append(matches, i)
+		}
+	}
+	return matches
+}
+
+// performSearch executes search with current searchInput and updates matches/cursor
+func performSearch(ctx *DiffViewContext) {
+	query := *ctx.searchInput
+	if query == "" {
+		*ctx.searchMatches = nil
+		*ctx.searchMatchIndex = -1
+		*ctx.cursorY = *ctx.searchCursorYBeforeSearch
+		if ctx.viewUpdater != nil {
+			ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+		}
+		ctx.setGlobalStatusText("[white]/[-]")
+		return
+	}
+
+	content := getCachedUnifiedContent(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
+	matches := searchInUnifiedContent(content, query)
+	*ctx.searchMatches = matches
+
+	if len(matches) > 0 {
+		// 現在のカーソル位置から最も近い前方のマッチを探す
+		matchIdx := 0
+		for i, m := range matches {
+			if m >= *ctx.searchCursorYBeforeSearch {
+				matchIdx = i
+				break
+			}
+		}
+		*ctx.searchMatchIndex = matchIdx
+		*ctx.cursorY = matches[matchIdx]
+		if ctx.viewUpdater != nil {
+			ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+		}
+		ctx.setGlobalStatusText(fmt.Sprintf("[white]/%s [%d/%d][-]", tview.Escape(query), matchIdx+1, len(matches)))
+	} else {
+		*ctx.searchMatchIndex = -1
+		*ctx.cursorY = *ctx.searchCursorYBeforeSearch
+		if ctx.viewUpdater != nil {
+			ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+		}
+		ctx.setGlobalStatusText(fmt.Sprintf("[tomato]/%s [no match][-]", tview.Escape(query)))
+	}
+}
+
+// moveToNextMatch moves cursor to the next search match
+func moveToNextMatch(ctx *DiffViewContext) {
+	matches := *ctx.searchMatches
+	if len(matches) == 0 {
+		return
+	}
+	*ctx.searchMatchIndex = (*ctx.searchMatchIndex + 1) % len(matches)
+	*ctx.cursorY = matches[*ctx.searchMatchIndex]
+	if ctx.viewUpdater != nil {
+		ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+	}
+	ctx.setGlobalStatusText(fmt.Sprintf("[white]/%s [%d/%d][-]", tview.Escape(*ctx.searchQuery), *ctx.searchMatchIndex+1, len(matches)))
+}
+
+// moveToPrevMatch moves cursor to the previous search match
+func moveToPrevMatch(ctx *DiffViewContext) {
+	matches := *ctx.searchMatches
+	if len(matches) == 0 {
+		return
+	}
+	*ctx.searchMatchIndex = (*ctx.searchMatchIndex - 1 + len(matches)) % len(matches)
+	*ctx.cursorY = matches[*ctx.searchMatchIndex]
+	if ctx.viewUpdater != nil {
+		ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+	}
+	ctx.setGlobalStatusText(fmt.Sprintf("[white]/%s [%d/%d][-]", tview.Escape(*ctx.searchQuery), *ctx.searchMatchIndex+1, len(matches)))
 }
