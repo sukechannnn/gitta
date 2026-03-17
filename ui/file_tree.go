@@ -34,7 +34,21 @@ func moveFileListSelection(ctx *FileListKeyContext, direction int) {
 	}
 }
 
-// handleFileListLeft handles left/h key: on a file, select its parent directory; on a directory, collapse it
+// findParentDirectory finds the parent directory entry for the given entry
+func findParentDirectory(fileList *[]FileEntry, currentIdx int) int {
+	entry := (*fileList)[currentIdx]
+	for i := currentIdx - 1; i >= 0; i-- {
+		candidate := (*fileList)[i]
+		if candidate.IsDirectory && candidate.StageStatus == entry.StageStatus &&
+			strings.HasPrefix(entry.Path, candidate.Path+"/") {
+			return i
+		}
+	}
+	return -1
+}
+
+// handleFileListLeft handles left/h key (VSCode-like):
+// file → parent dir, expanded dir → collapse, collapsed dir → parent dir
 func handleFileListLeft(ctx *FileListKeyContext) {
 	if *ctx.currentSelection < 0 || *ctx.currentSelection >= len(*ctx.fileList) {
 		return
@@ -42,8 +56,8 @@ func handleFileListLeft(ctx *FileListKeyContext) {
 	fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 
 	if fileEntry.IsDirectory && ctx.dirCollapseState != nil {
-		// ディレクトリ上: 展開中なら折りたたむ
 		if !ctx.dirCollapseState.IsCollapsed(fileEntry.StageStatus, fileEntry.Path) {
+			// 展開中のディレクトリ → 折りたたむ
 			ctx.dirCollapseState.SetCollapsed(fileEntry.StageStatus, fileEntry.Path, true)
 			ctx.updateFileListView()
 			if *ctx.currentSelection >= len(*ctx.fileList) {
@@ -52,42 +66,46 @@ func handleFileListLeft(ctx *FileListKeyContext) {
 			}
 			return
 		}
+		// 折りたたみ済みのディレクトリ → 親ディレクトリに移動
+		if parent := findParentDirectory(ctx.fileList, *ctx.currentSelection); parent >= 0 {
+			*ctx.currentSelection = parent
+			ctx.updateFileListView()
+		}
 		return
 	}
 
-	// ファイル上: 親ディレクトリを探して選択
-	for i := *ctx.currentSelection - 1; i >= 0; i-- {
-		entry := (*ctx.fileList)[i]
-		if entry.IsDirectory && entry.StageStatus == fileEntry.StageStatus &&
-			strings.HasPrefix(fileEntry.Path, entry.Path+"/") {
-			*ctx.currentSelection = i
-			ctx.updateFileListView()
-			return
-		}
+	// ファイル上 → 親ディレクトリに移動
+	if parent := findParentDirectory(ctx.fileList, *ctx.currentSelection); parent >= 0 {
+		*ctx.currentSelection = parent
+		ctx.updateFileListView()
 	}
 }
 
-// handleFileListRight handles right/l key: on a directory, expand or move into; on a file, no-op
+// handleFileListRight handles right/l key (VSCode-like):
+// collapsed dir → expand, expanded dir → first child, file → no-op
 func handleFileListRight(ctx *FileListKeyContext) {
 	if *ctx.currentSelection < 0 || *ctx.currentSelection >= len(*ctx.fileList) {
 		return
 	}
 	fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 
-	if fileEntry.IsDirectory && ctx.dirCollapseState != nil {
-		if ctx.dirCollapseState.IsCollapsed(fileEntry.StageStatus, fileEntry.Path) {
-			// 折りたたまれていたら展開
-			ctx.dirCollapseState.SetCollapsed(fileEntry.StageStatus, fileEntry.Path, false)
-			ctx.updateFileListView()
-		}
-		// 展開済み or 展開直後: 次のファイルに移動
-		for i := *ctx.currentSelection + 1; i < len(*ctx.fileList); i++ {
-			if !(*ctx.fileList)[i].IsDirectory {
-				*ctx.currentSelection = i
-				ctx.updateFileListView()
-				ctx.updateSelectedFileDiff()
-				return
-			}
+	if !fileEntry.IsDirectory || ctx.dirCollapseState == nil {
+		return
+	}
+
+	if ctx.dirCollapseState.IsCollapsed(fileEntry.StageStatus, fileEntry.Path) {
+		// 折りたたまれていたら展開
+		ctx.dirCollapseState.SetCollapsed(fileEntry.StageStatus, fileEntry.Path, false)
+		ctx.updateFileListView()
+		return
+	}
+
+	// 展開済み → 次のエントリ（最初の子）に移動
+	if *ctx.currentSelection+1 < len(*ctx.fileList) {
+		*ctx.currentSelection = *ctx.currentSelection + 1
+		ctx.updateFileListView()
+		if !(*ctx.fileList)[*ctx.currentSelection].IsDirectory {
+			ctx.updateSelectedFileDiff()
 		}
 	}
 }

@@ -230,31 +230,23 @@ func renderFileTreeForGitFiles(
 			escapedDirName := escapeTviewTags(child.Name)
 			dirDisplay := escapedDirName + "/"
 
-			selectable := hasDirectFileChildren(child)
+			regionID := fmt.Sprintf("file-%d", *regionIndex)
+			*fileList = append(*fileList, FileEntry{
+				ID:          regionID,
+				Path:        child.FullPath,
+				StageStatus: stageStatus,
+				IsDirectory: true,
+			})
 
-			if selectable {
-				// 直下にファイルがあるディレクトリ: 選択可能
-				regionID := fmt.Sprintf("file-%d", *regionIndex)
-				*fileList = append(*fileList, FileEntry{
-					ID:          regionID,
-					Path:        child.FullPath,
-					StageStatus: stageStatus,
-					IsDirectory: true,
-				})
-
-				if focusedPane && *regionIndex == currentSelection {
-					sb.WriteString(fmt.Sprintf(`%s[white:blue]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, dirDisplay))
-				} else if !focusedPane && *regionIndex == currentSelection {
-					sb.WriteString(fmt.Sprintf(`%s[black:white]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, dirDisplay))
-				} else {
-					sb.WriteString(fmt.Sprintf(`%s[white:%s]["file-%d"]%s%s[""][-:-]`+"\n", prefix, util.NotSelectedFileLineColor, *regionIndex, connector, dirDisplay))
-				}
-				lineNumberMap[*regionIndex] = *currentLine
-				(*regionIndex)++
+			if focusedPane && *regionIndex == currentSelection {
+				sb.WriteString(fmt.Sprintf(`%s[white:blue]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, dirDisplay))
+			} else if !focusedPane && *regionIndex == currentSelection {
+				sb.WriteString(fmt.Sprintf(`%s[black:white]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, dirDisplay))
 			} else {
-				// 直下にファイルがないディレクトリ: ラベルのみ（選択不可）
-				sb.WriteString(fmt.Sprintf("%s%s%s\n", prefix, connector, dirDisplay))
+				sb.WriteString(fmt.Sprintf(`%s[white:%s]["file-%d"]%s%s[""][-:-]`+"\n", prefix, util.NotSelectedFileLineColor, *regionIndex, connector, dirDisplay))
 			}
+			lineNumberMap[*regionIndex] = *currentLine
+			(*regionIndex)++
 			(*currentLine)++
 
 			// 折りたたまれていない場合のみ子要素を描画
@@ -352,33 +344,25 @@ func renderFileTreeForFileEntries(
 			escapedDirName := escapeTviewTags(child.Name)
 			dirDisplay := escapedDirName + "/"
 
-			selectable := hasDirectFileChildren(child)
-
-			if selectable {
-				// 直下にファイルがあるディレクトリ: 選択可能
-				regionID := fmt.Sprintf("file-%d", *regionIndex)
-				if fileList != nil {
-					*fileList = append(*fileList, FileEntry{
-						ID:          regionID,
-						Path:        child.FullPath,
-						StageStatus: stageStatus,
-						IsDirectory: true,
-					})
-				}
-
-				if focusedPane && *regionIndex == currentSelection {
-					sb.WriteString(fmt.Sprintf(`%s[white:blue]%s%s[""][-:-]`+"\n", prefix, connector, dirDisplay))
-				} else if !focusedPane && *regionIndex == currentSelection {
-					sb.WriteString(fmt.Sprintf(`%s[black:white]%s%s[""][-:-]`+"\n", prefix, connector, dirDisplay))
-				} else {
-					sb.WriteString(fmt.Sprintf(`%s[white:%s]%s%s[""][-:-]`+"\n", prefix, util.NotSelectedFileLineColor, connector, dirDisplay))
-				}
-				lineNumberMap[*regionIndex] = *currentLine
-				(*regionIndex)++
-			} else {
-				// 直下にファイルがないディレクトリ: ラベルのみ（選択不可）
-				sb.WriteString(fmt.Sprintf("%s%s%s\n", prefix, connector, dirDisplay))
+			regionID := fmt.Sprintf("file-%d", *regionIndex)
+			if fileList != nil {
+				*fileList = append(*fileList, FileEntry{
+					ID:          regionID,
+					Path:        child.FullPath,
+					StageStatus: stageStatus,
+					IsDirectory: true,
+				})
 			}
+
+			if focusedPane && *regionIndex == currentSelection {
+				sb.WriteString(fmt.Sprintf(`%s[white:blue]%s%s[""][-:-]`+"\n", prefix, connector, dirDisplay))
+			} else if !focusedPane && *regionIndex == currentSelection {
+				sb.WriteString(fmt.Sprintf(`%s[black:white]%s%s[""][-:-]`+"\n", prefix, connector, dirDisplay))
+			} else {
+				sb.WriteString(fmt.Sprintf(`%s[white:%s]%s%s[""][-:-]`+"\n", prefix, util.NotSelectedFileLineColor, connector, dirDisplay))
+			}
+			lineNumberMap[*regionIndex] = *currentLine
+			(*regionIndex)++
 			(*currentLine)++
 
 			// 折りたたまれていない場合のみ子要素を描画
@@ -418,10 +402,7 @@ func collectPathsInTreeOrder(node *TreeNode, collapseState *DirCollapseState, st
 		if child.IsFile {
 			result = append(result, child.FullPath)
 		} else {
-			// 直下にファイルがあるディレクトリのみリストに追加
-			if hasDirectFileChildren(child) {
-				result = append(result, child.FullPath)
-			}
+			result = append(result, child.FullPath)
 			// 折りたたまれていない場合のみ子要素を追加
 			collapsed := collapseState != nil && collapseState.IsCollapsed(stageStatus, child.FullPath)
 			if !collapsed {
@@ -430,16 +411,6 @@ func collectPathsInTreeOrder(node *TreeNode, collapseState *DirCollapseState, st
 		}
 	}
 	return result
-}
-
-// hasDirectFileChildren returns true if the node has at least one direct file child
-func hasDirectFileChildren(node *TreeNode) bool {
-	for _, child := range node.Children {
-		if child.IsFile {
-			return true
-		}
-	}
-	return false
 }
 
 // formatFileWithStatus adds status decoration to filename
