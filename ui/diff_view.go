@@ -59,12 +59,12 @@ type DiffViewContext struct {
 	foldState *FoldState
 
 	// Search state
-	searchQuery             *string // 現在の検索クエリ（空 = 検索なし）
-	searchMatches           *[]int  // マッチした行インデックスのリスト
-	searchMatchIndex        *int    // 現在のマッチインデックス（searchMatches 内の位置）
-	isSearchMode            *bool   // 検索入力モード中か
-	searchInput             *string // 検索入力中の文字列（未確定）
-	searchCursorYBeforeSearch *int  // 検索開始前のカーソル位置
+	searchQuery               *string // 現在の検索クエリ（空 = 検索なし）
+	searchMatches             *[]int  // マッチした行インデックスのリスト
+	searchMatchIndex          *int    // 現在のマッチインデックス（searchMatches 内の位置）
+	isSearchMode              *bool   // 検索入力モード中か
+	searchInput               *string // 検索入力中の文字列（未確定）
+	searchCursorYBeforeSearch *int    // 検索開始前のカーソル位置
 
 	// Callbacks
 	updateFileListView    func()

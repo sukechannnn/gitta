@@ -24,19 +24,19 @@ type GitLogEntry struct {
 
 // GitLogView manages the git log display and navigation
 type GitLogView struct {
-	app             *tview.Application
-	logView         *tview.TextView
-	commitView      *tview.TextView
-	commitFileList  *tview.TextView
-	commitDiffView  *tview.TextView
-	commitSplitFlex *tview.Flex
-	flex            *tview.Flex
-	repoRoot        string
-	logEntries      []GitLogEntry
-	currentLine     int
-	showingCommit   bool
-	onExit          func()
-	scrollOffset    int // スクロールオフセット
+	app               *tview.Application
+	logView           *tview.TextView
+	commitView        *tview.TextView
+	commitFileList    *tview.TextView
+	commitDiffView    *tview.TextView
+	commitSplitFlex   *tview.Flex
+	flex              *tview.Flex
+	repoRoot          string
+	logEntries        []GitLogEntry
+	currentLine       int
+	showingCommit     bool
+	onExit            func()
+	scrollOffset      int // スクロールオフセット
 	commitFiles       []FileEntry
 	displayOrderPaths []string // ツリー表示順序でのファイルパス一覧
 	selectedFile      int
@@ -115,22 +115,22 @@ func NewGitLogView(app *tview.Application, repoRoot string, onExit func()) *GitL
 		AddItem(logView, 0, 1, true)
 
 	glv := &GitLogView{
-		app:             app,
-		logView:         logView,
-		commitView:      commitView,
-		commitFileList:  commitFileList,
-		commitDiffView:  commitDiffView,
-		commitSplitFlex: commitSplitFlex,
-		flex:            flex,
-		repoRoot:        repoRoot,
-		logEntries:      []GitLogEntry{},
-		currentLine:     0,
-		showingCommit:   false,
-		onExit:          onExit,
-		scrollOffset:    0,
-		commitFiles:     []FileEntry{},
-		selectedFile:    0,
-		leftPaneFocused: true,
+		app:              app,
+		logView:          logView,
+		commitView:       commitView,
+		commitFileList:   commitFileList,
+		commitDiffView:   commitDiffView,
+		commitSplitFlex:  commitSplitFlex,
+		flex:             flex,
+		repoRoot:         repoRoot,
+		logEntries:       []GitLogEntry{},
+		currentLine:      0,
+		showingCommit:    false,
+		onExit:           onExit,
+		scrollOffset:     0,
+		commitFiles:      []FileEntry{},
+		selectedFile:     0,
+		leftPaneFocused:  true,
 		gPressed:         new(bool),
 		lastGTime:        new(time.Time),
 		dirCollapseState: NewDirCollapseState(),

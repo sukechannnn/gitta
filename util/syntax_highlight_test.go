@@ -177,4 +177,3 @@ func TestReplaceBackground(t *testing.T) {
 		})
 	}
 }
-

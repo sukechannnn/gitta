@@ -24,12 +24,12 @@ type CommandAParams struct {
 
 // CommandAResult contains the results from commandA execution
 type CommandAResult struct {
-	Success       bool
-	NewDiffText   string
-	ColoredDiff   string
-	DiffLines     []string
-	ShouldUpdate  bool
-	NewCursorPos  int  // ステージング後の推奨カーソル位置
+	Success      bool
+	NewDiffText  string
+	ColoredDiff  string
+	DiffLines    []string
+	ShouldUpdate bool
+	NewCursorPos int // ステージング後の推奨カーソル位置
 }
 
 // CommandA handles the 'a' command for staging/unstaging selected lines
@@ -89,12 +89,12 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 		}
 		// 成功として扱うが、変更はなし
 		result := &CommandAResult{
-			Success:       true,
-			NewDiffText:   params.CurrentDiffText,
-			ColoredDiff:   coloredDiff,
-			DiffLines:     displayLines,
-			ShouldUpdate:  false,
-			NewCursorPos:  params.SelectStart, // 変更がない場合は元の位置を保持
+			Success:      true,
+			NewDiffText:  params.CurrentDiffText,
+			ColoredDiff:  coloredDiff,
+			DiffLines:    displayLines,
+			ShouldUpdate: false,
+			NewCursorPos: params.SelectStart, // 変更がない場合は元の位置を保持
 		}
 		return result, nil
 	}
@@ -159,12 +159,12 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 
 	// 結果を返す
 	result := &CommandAResult{
-		Success:       true,
-		NewDiffText:   newDiffText,
-		ColoredDiff:   newColoredDiff,
-		DiffLines:     newDiffLines,
-		ShouldUpdate:  len(strings.TrimSpace(newDiffText)) == 0,
-		NewCursorPos:  newCursorPos,
+		Success:      true,
+		NewDiffText:  newDiffText,
+		ColoredDiff:  newColoredDiff,
+		DiffLines:    newDiffLines,
+		ShouldUpdate: len(strings.TrimSpace(newDiffText)) == 0,
+		NewCursorPos: newCursorPos,
 	}
 
 	return result, nil
