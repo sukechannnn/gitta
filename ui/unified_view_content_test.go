@@ -34,7 +34,7 @@ index 123..456 789
 			},
 			wantContent: []string{
 				" line1",
-				"[red]-line2[-]",
+				"[#E7454E]-line2[-]",
 				" line3",
 			},
 			wantLineNums: []string{
@@ -64,7 +64,7 @@ index 123..456 789
 			},
 			wantContent: []string{
 				" line1",
-				"[green]+line2[-]",
+				"[#00AC37]+line2[-]",
 				" line3",
 			},
 			wantLineNums: []string{
@@ -96,8 +96,8 @@ index 123..456 789
 			},
 			wantContent: []string{
 				" line1",
-				"[red]-line2[-]",
-				"[green]+line2_modified[-]",
+				"[#E7454E:#3A0000]-[-:-][#E7454E:#3A0000]line2[-:-]",
+				"[#00AC37:#002500]+[-:-][#00AC37:#002500]line2[-:-][#00AC37:#1A4D1A]_modified[-:-]",
 				" line3",
 			},
 			wantLineNums: []string{
@@ -132,8 +132,8 @@ index 123..456 789
 			wantContent: []string{
 				"[dimgray]... 97 lines hidden (press 'e' to expand) ...[-]",
 				" line98",
-				"[red]-line99[-]",
-				"[green]+line99_modified[-]",
+				"[#E7454E:#3A0000]-[-:-][#E7454E:#3A0000]line99[-:-]",
+				"[#00AC37:#002500]+[-:-][#00AC37:#002500]line99[-:-][#00AC37:#1A4D1A]_modified[-:-]",
 				" line100",
 			},
 			wantLineNums: []string{
@@ -160,8 +160,8 @@ index 123..456 789
 				1: 1,
 			},
 			wantContent: []string{
-				"[red]-old[-]",
-				"[green]+new[-]",
+				"[#E7454E:#3A0000]-[-:-][#E7454E:#5C1A1A]old[-:-]",
+				"[#00AC37:#002500]+[-:-][#00AC37:#1A4D1A]new[-:-]",
 			},
 			wantLineNums: []string{
 				"1 │ ",
@@ -184,8 +184,8 @@ index 123..456 789
 				1: 1,
 			},
 			wantContent: []string{
-				"[red]-var foo [int[]string[-]",
-				"[green]+var foo [white[]string[-]",
+				"[#E7454E:#3A0000]-[-:-][#E7454E:#3A0000]var foo [i[-:-][#E7454E:#5C1A1A]n[-:-][#E7454E:#3A0000]t]string[-:-]",
+				"[#00AC37:#002500]+[-:-][#00AC37:#002500]var foo [[-:-][#00AC37:#1A4D1A]wh[-:-][#00AC37:#002500]it[-:-][#00AC37:#1A4D1A]e[-:-][#00AC37:#002500]]string[-:-]",
 			},
 			wantLineNums: []string{
 				"1 │ ",
@@ -229,7 +229,7 @@ func TestColorizeDiff(t *testing.T) {
 			diffText: ` line1
 -deleted
 +added`,
-			want: " line1\n[red]-deleted[-]\n[green]+added[-]\n",
+			want: " line1\n[#E7454E:#3A0000]-[-:-][#E7454E:#3A0000]d[-:-][#E7454E:#5C1A1A]elet[-:-][#E7454E:#3A0000]ed[-:-]\n[#00AC37:#002500]+[-:-][#00AC37:#1A4D1A]a[-:-][#00AC37:#002500]d[-:-][#00AC37:#1A4D1A]d[-:-][#00AC37:#002500]ed[-:-]\n",
 		},
 		{
 			name: "ヘッダー行の除外",
@@ -240,7 +240,7 @@ index 123..456 789
 @@ -1,1 +1,1 @@
 -old
 +new`,
-			want: "[red]-old[-]\n[green]+new[-]\n",
+			want: "[#E7454E:#3A0000]-[-:-][#E7454E:#5C1A1A]old[-:-]\n[#00AC37:#002500]+[-:-][#00AC37:#1A4D1A]new[-:-]\n",
 		},
 		{
 			name:     "空のdiff",
@@ -290,8 +290,8 @@ func TestColorizeLine(t *testing.T) {
 		line string
 		want string
 	}{
-		{"削除行", "-deleted", "[red]-deleted[-]"},
-		{"追加行", "+added", "[green]+added[-]"},
+		{"削除行", "-deleted", "[#E7454E]-deleted[-]"},
+		{"追加行", "+added", "[#00AC37]+added[-]"},
 		{"通常の行", " normal", " normal"},
 		{"空行", "", ""},
 		{"その他の行", "other", "other"},

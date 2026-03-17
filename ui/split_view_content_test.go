@@ -36,7 +36,7 @@ index 123..456 789
 			},
 			wantBefore: []string{
 				" line1",
-				"[red]-line2[-]",
+				"[#E7454E]-line2[-]",
 				" line3",
 			},
 			wantAfter: []string{
@@ -81,7 +81,7 @@ index 123..456 789
 			},
 			wantAfter: []string{
 				" line1",
-				"[green]+line2[-]",
+				"[#00AC37]+line2[-]",
 				" line3",
 			},
 			wantBeforeNums: []string{
@@ -160,12 +160,12 @@ index 123..456 789
 			// ペアリングロジック: 削除行と追加行が同じ行に表示される
 			wantBefore: []string{
 				" line1",
-				"[red]-line2[-]",
+				"[#E7454E:#3A0000]-[-:-][#E7454E:#3A0000]line2[-:-]",
 				" line3",
 			},
 			wantAfter: []string{
 				" line1",
-				"[green]+line2_modified[-]",
+				"[#00AC37:#002500]+[-:-][#00AC37:#002500]line2[-:-][#00AC37:#1A4D1A]_modified[-:-]",
 				" line3",
 			},
 			wantBeforeNums: []string{
@@ -203,12 +203,12 @@ index 123..456 789
 			// ペアリングロジック: 削除行と追加行が同じ行に表示される
 			wantBefore: []string{
 				" line98",
-				"[red]-line99[-]",
+				"[#E7454E:#3A0000]-[-:-][#E7454E:#3A0000]line99[-:-]",
 				" line100",
 			},
 			wantAfter: []string{
 				" line98",
-				"[green]+line99_modified[-]",
+				"[#00AC37:#002500]+[-:-][#00AC37:#002500]line99[-:-][#00AC37:#1A4D1A]_modified[-:-]",
 				" line100",
 			},
 			wantBeforeNums: []string{
@@ -239,10 +239,10 @@ index 123..456 789
 			},
 			// ペアリングロジック: 削除行と追加行が同じ行に表示される
 			wantBefore: []string{
-				"[red]-old[-]",
+				"[#E7454E:#3A0000]-[-:-][#E7454E:#5C1A1A]old[-:-]",
 			},
 			wantAfter: []string{
-				"[green]+new[-]",
+				"[#00AC37:#002500]+[-:-][#00AC37:#1A4D1A]new[-:-]",
 			},
 			wantBeforeNums: []string{
 				"1",
@@ -268,10 +268,10 @@ index 123..456 789
 			},
 			// ペアリングロジック: 削除行と追加行が同じ行に表示される
 			wantBefore: []string{
-				"[red]-var foo [int[]string[-]",
+				"[#E7454E:#3A0000]-[-:-][#E7454E:#3A0000]var foo [i[-:-][#E7454E:#5C1A1A]n[-:-][#E7454E:#3A0000]t]string[-:-]",
 			},
 			wantAfter: []string{
-				"[green]+var foo [white[]string[-]",
+				"[#00AC37:#002500]+[-:-][#00AC37:#002500]var foo [[-:-][#00AC37:#1A4D1A]wh[-:-][#00AC37:#002500]it[-:-][#00AC37:#1A4D1A]e[-:-][#00AC37:#002500]]string[-:-]",
 			},
 			wantBeforeNums: []string{
 				"1",
@@ -353,4 +353,3 @@ func TestIsHeaderLine(t *testing.T) {
 		})
 	}
 }
-

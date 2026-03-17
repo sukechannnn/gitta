@@ -101,18 +101,33 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 	}
 
 	// Helper: render a code line with syntax highlighting or fallback
-	renderLine := func(idx int, prefix byte, bgColor string, fallbackColor string) string {
+	// mask is optional; when non-nil, inline diff highlighting is applied
+	renderLine := func(idx int, prefix byte, bgColor string, fgColor string, mask []bool, maskBg string) string {
 		if allTokens != nil && len(allTokens[idx]) > 0 {
-			highlighted := util.RenderHighlightedLine(allTokens[idx], bgColor)
+			var highlighted string
+			if mask != nil {
+				highlighted = util.RenderHighlightedLineWithMask(allTokens[idx], bgColor, mask, maskBg)
+			} else {
+				highlighted = util.RenderHighlightedLine(allTokens[idx], bgColor)
+			}
 			if bgColor != "" {
-				return "[:" + bgColor + "]" + tview.Escape(string(prefix)) + "[-:-]" + highlighted
+				return "[" + fgColor + ":" + bgColor + "]" + tview.Escape(string(prefix)) + "[-:-]" + highlighted
 			}
 			return tview.Escape(string(prefix)) + highlighted
 		}
 		// Fallback
+		if mask != nil {
+			prefixTag := ""
+			if fgColor != "" {
+				prefixTag = "[" + fgColor + ":" + bgColor + "]" + tview.Escape(string(prefix)) + "[-:-]"
+			} else {
+				prefixTag = tview.Escape(string(prefix))
+			}
+			return prefixTag + renderLineFallbackWithMask(codeLines[idx], mask, fgColor, bgColor, maskBg)
+		}
 		escaped := tview.Escape(diffLines[idx].content)
-		if fallbackColor != "" {
-			return "[" + fallbackColor + "]" + escaped + "[-]"
+		if fgColor != "" {
+			return "[" + fgColor + "]" + escaped + "[-]"
 		}
 		return escaped
 	}
@@ -157,8 +172,14 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 				afterLine := ""
 				afterLineNum := ""
 
+				// Compute inline diff masks for paired lines
+				var delMask, addMask []bool
+				if k < len(deletions) && k < len(additions) {
+					delMask, addMask = computeInlineDiffMasks(codeLines[startIdx+k], codeLines[addStartIdx+k])
+				}
+
 				if k < len(deletions) {
-					beforeLine = renderLine(startIdx+k, '-', util.DeletedLineBg, "red")
+					beforeLine = renderLine(startIdx+k, '-', util.DeletedLineBg, util.DeletedLineFg, delMask, util.InlineDeletedBg)
 					if deletions[k].oldLineNum >= 0 {
 						beforeLineNum = fmt.Sprintf("%*d", maxDigits, deletions[k].oldLineNum)
 					} else {
@@ -170,7 +191,7 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 				}
 
 				if k < len(additions) {
-					afterLine = renderLine(addStartIdx+k, '+', util.AddedLineBg, "green")
+					afterLine = renderLine(addStartIdx+k, '+', util.AddedLineBg, util.AddedLineFg, addMask, util.InlineAddedBg)
 					if additions[k].newLineNum >= 0 {
 						afterLineNum = fmt.Sprintf("%*d", maxDigits, additions[k].newLineNum)
 					} else {
@@ -191,7 +212,7 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 		case "+":
 			// ペアになっていない+行（-なしで+のみ）
 			content.BeforeLines = append(content.BeforeLines, "[dimgray] [-]")
-			content.AfterLines = append(content.AfterLines, renderLine(codeIdx, '+', util.AddedLineBg, "green"))
+			content.AfterLines = append(content.AfterLines, renderLine(codeIdx, '+', util.AddedLineBg, util.AddedLineFg, nil, ""))
 
 			content.BeforeLineNums = append(content.BeforeLineNums, strings.Repeat(" ", maxDigits))
 			if line.newLineNum >= 0 {
@@ -203,7 +224,7 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 			codeIdx++
 		case " ":
 			// 変更なし行
-			contextLine := renderLine(codeIdx, ' ', "", "")
+			contextLine := renderLine(codeIdx, ' ', "", "", nil, "")
 			content.BeforeLines = append(content.BeforeLines, contextLine)
 			content.AfterLines = append(content.AfterLines, contextLine)
 

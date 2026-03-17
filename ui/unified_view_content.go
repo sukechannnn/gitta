@@ -34,11 +34,11 @@ type UnifiedViewContent struct {
 
 // FoldableRange represents a range of lines that can be folded
 type FoldableRange struct {
-	StartLine  int    // File line number where fold starts
-	EndLine    int    // File line number where fold ends
-	InsertAt   int    // Display index where fold indicator should be inserted
-	LineCount  int    // Number of lines in the fold
-	ID         string // Unique identifier for this fold
+	StartLine int    // File line number where fold starts
+	EndLine   int    // File line number where fold ends
+	InsertAt  int    // Display index where fold indicator should be inserted
+	LineCount int    // Number of lines in the fold
+	ID        string // Unique identifier for this fold
 }
 
 // GetUnifiedViewLineCount returns the actual line count including fold indicators
@@ -369,40 +369,67 @@ func colorizeDiff(diff string, filePath string) []ColorizedLine {
 		allTokens = util.TokenizeCode(filePath, codeLines)
 	}
 
+	// Compute inline diff masks for adjacent -/+ pairs
+	inlineMasks := computeAllInlineMasks(codeLines, lineTypes)
+
 	result := make([]ColorizedLine, len(codeLines))
 	for i, codeLine := range codeLines {
 		lt := lineTypes[i]
 		var content string
 
+		var bgColor, fgColor, inlineBg string
+		switch lt {
+		case '-':
+			bgColor = util.DeletedLineBg
+			fgColor = util.DeletedLineFg
+			inlineBg = util.InlineDeletedBg
+		case '+':
+			bgColor = util.AddedLineBg
+			fgColor = util.AddedLineFg
+			inlineBg = util.InlineAddedBg
+		}
+		mask := inlineMasks[i]
+
 		if allTokens != nil && len(allTokens[i]) > 0 {
 			// Syntax highlighted rendering
-			var bgColor string
-			switch lt {
-			case '-':
-				bgColor = util.DeletedLineBg
-			case '+':
-				bgColor = util.AddedLineBg
-			}
 			prefix := ""
 			if lt == '-' || lt == '+' || lt == ' ' {
 				prefix = string(lt)
 			}
-			highlighted := util.RenderHighlightedLine(allTokens[i], bgColor)
+			var highlighted string
+			if mask != nil {
+				highlighted = util.RenderHighlightedLineWithMask(allTokens[i], bgColor, mask, inlineBg)
+			} else {
+				highlighted = util.RenderHighlightedLine(allTokens[i], bgColor)
+			}
 			if bgColor != "" {
-				// Prefix with same background
-				content = "[:" + bgColor + "]" + tview.Escape(prefix) + "[-:-]" + highlighted
+				content = "[" + fgColor + ":" + bgColor + "]" + tview.Escape(prefix) + "[-:-]" + highlighted
 			} else {
 				content = tview.Escape(prefix) + highlighted
 			}
 		} else {
 			// Fallback: use simple coloring
-			fullLine := ""
-			if lt == '-' || lt == '+' || lt == ' ' {
-				fullLine = string(lt) + codeLine
+			if mask != nil {
+				prefix := ""
+				if lt == '-' || lt == '+' || lt == ' ' {
+					prefix = string(lt)
+				}
+				prefixTag := ""
+				if fgColor != "" {
+					prefixTag = "[" + fgColor + ":" + bgColor + "]" + tview.Escape(prefix) + "[-:-]"
+				} else {
+					prefixTag = tview.Escape(prefix)
+				}
+				content = prefixTag + renderLineFallbackWithMask(codeLine, mask, fgColor, bgColor, inlineBg)
 			} else {
-				fullLine = codeLine
+				fullLine := ""
+				if lt == '-' || lt == '+' || lt == ' ' {
+					fullLine = string(lt) + codeLine
+				} else {
+					fullLine = codeLine
+				}
+				content = colorizeLineFallback(fullLine)
 			}
-			content = colorizeLineFallback(fullLine)
 		}
 
 		result[i] = ColorizedLine{
@@ -438,11 +465,9 @@ func colorizeLineFallback(line string) string {
 	if len(line) > 0 {
 		switch line[0] {
 		case '-':
-			// Escape the line content to prevent tview from interpreting brackets as color tags
-			return "[red]" + tview.Escape(line) + "[-]"
+			return "[" + util.DeletedLineFg + "]" + tview.Escape(line) + "[-]"
 		case '+':
-			// Escape the line content to prevent tview from interpreting brackets as color tags
-			return "[green]" + tview.Escape(line) + "[-]"
+			return "[" + util.AddedLineFg + "]" + tview.Escape(line) + "[-]"
 		case ' ':
 			return tview.Escape(line)
 		default:

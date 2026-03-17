@@ -9,7 +9,7 @@ import (
 type ColorColde string
 
 const (
-	BackgroundColor          = ColorColde("#272A32")
+	BackgroundColor          = ColorColde("#34373E") // ("#272A32")
 	NotSelectedFileLineColor = ColorColde("#383E50")
 	MainTextColor            = ColorColde("#FFFFFF")
 	CommitAreaBorderColor    = ColorColde("#4A5568")

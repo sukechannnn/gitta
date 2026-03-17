@@ -12,15 +12,19 @@ import (
 	"github.com/rivo/tview"
 )
 
-// Diff background colors
+// Diff colors
 const (
-	AddedLineBg      = "#133813"
-	DeletedLineBg    = "#381313"
-	ExpandedFoldBg   = "#3a3a3a"
+	AddedLineBg     = "#002500"
+	AddedLineFg     = "#00AC37"
+	DeletedLineBg   = "#3A0000"
+	DeletedLineFg   = "#E7454E"
+	InlineAddedBg   = "#1A4D1A"
+	InlineDeletedBg = "#5C1A1A"
+	ExpandedFoldBg  = "#3a3a3a"
 )
 
 // syntaxStyle is the chroma style used for syntax highlighting
-var syntaxStyle = styles.Get("catppuccin-frappe")
+var syntaxStyle = styles.Get("dracula")
 
 // defaultTextColor is the fallback text color
 const defaultTextColor = "#f8f8f2"
@@ -136,6 +140,51 @@ func RenderHighlightedLine(tokens []chroma.Token, bgColor string) string {
 		} else {
 			sb.WriteString("[" + fg + "]" + escaped + "[-]")
 		}
+	}
+	return sb.String()
+}
+
+// RenderHighlightedLineWithMask renders tokens with an inline diff mask.
+// Characters where mask[charIdx] is true use maskBg instead of baseBg.
+func RenderHighlightedLineWithMask(tokens []chroma.Token, baseBg string, mask []bool, maskBg string) string {
+	if len(tokens) == 0 {
+		if baseBg != "" {
+			return "[:#" + baseBg[1:] + "] [-:-]"
+		}
+		return ""
+	}
+
+	var sb strings.Builder
+	charIdx := 0
+	for _, tok := range tokens {
+		fg := resolveTokenColor(tok.Type)
+		runes := []rune(tok.Value)
+
+		segStart := 0
+		for segStart < len(runes) {
+			masked := charIdx+segStart < len(mask) && mask[charIdx+segStart]
+			segEnd := segStart + 1
+			for segEnd < len(runes) {
+				nextMasked := charIdx+segEnd < len(mask) && mask[charIdx+segEnd]
+				if nextMasked != masked {
+					break
+				}
+				segEnd++
+			}
+
+			segText := tview.Escape(string(runes[segStart:segEnd]))
+			bg := baseBg
+			if masked && maskBg != "" {
+				bg = maskBg
+			}
+			if bg != "" {
+				sb.WriteString("[" + fg + ":" + bg + "]" + segText + "[-:-]")
+			} else {
+				sb.WriteString("[" + fg + "]" + segText + "[-]")
+			}
+			segStart = segEnd
+		}
+		charIdx += len(runes)
 	}
 	return sb.String()
 }
