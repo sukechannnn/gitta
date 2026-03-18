@@ -182,7 +182,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				if ctx.viewUpdater != nil {
 					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 				}
-				ctx.setGlobalStatusText(listKeyBindingMessage)
+				ctx.setGlobalStatusText(diffViewKeyMessage)
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
 				if len(*ctx.searchInput) > 0 {
 					// 1文字削除
@@ -221,6 +221,9 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			}
 			// 左ペインに戻る
 			*ctx.leftPaneFocused = true
+			if restoreStatusFunc != nil {
+				restoreStatusFunc()
+			}
 			if *ctx.isSplitView {
 				updateSplitViewWithoutCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, *ctx.currentFile)
 			} else {
@@ -235,6 +238,9 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			*ctx.selectStart = -1
 			*ctx.selectEnd = -1
 			*ctx.leftPaneFocused = true
+			if restoreStatusFunc != nil {
+				restoreStatusFunc()
+			}
 			// diff view をカーソルなしで再描画
 			if *ctx.isSplitView {
 				updateSplitViewWithoutCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, *ctx.currentFile)
@@ -249,8 +255,19 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			scrollDiffView(ctx, 1)
 			return nil
 		case tcell.KeyCtrlY:
+			// Ctrl+Y: ファイルパスをコピー
+			if *ctx.currentFile != "" {
+				err := commands.CopyFilePath(*ctx.currentFile)
+				if err == nil {
+					ctx.updateGlobalStatus("Copied path to clipboard", "forestgreen")
+				} else {
+					ctx.updateGlobalStatus("Failed to copy path to clipboard", "tomato")
+				}
+			}
+			return nil
+		case tcell.KeyCtrlL:
+			// Ctrl+L: 選択中は file/path:XX-YY をコピー、非選択中はファイルパスをコピー
 			if *ctx.isSelecting && *ctx.currentFile != "" {
-				// 選択中: file/path:XX-YY をコピー
 				start := *ctx.selectStart
 				end := *ctx.selectEnd
 
@@ -313,7 +330,6 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 				}
 			} else if *ctx.currentFile != "" {
-				// 非選択中: ファイルパスをコピー（既存動作）
 				err := commands.CopyFilePath(*ctx.currentFile)
 				if err == nil {
 					ctx.updateGlobalStatus("Copied path to clipboard", "forestgreen")
@@ -366,8 +382,15 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				// カーソル位置をリセット
 				*ctx.cursorY = 0
 
-				// 表示を更新
-				if ctx.viewUpdater != nil {
+				// 差分が空の場合のメッセージ表示
+				if len(strings.TrimSpace(*ctx.currentDiffText)) == 0 {
+					if *ctx.isSplitView {
+						ctx.beforeView.SetText("")
+						ctx.afterView.SetText("No differences")
+					} else {
+						ctx.diffView.SetText("No differences")
+					}
+				} else if ctx.viewUpdater != nil {
 					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 				}
 

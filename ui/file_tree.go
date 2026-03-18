@@ -246,6 +246,7 @@ type FileListKeyContext struct {
 	refreshFileList        func()
 	updateCurrentDiffText  func(string, string, string, *string, bool)
 	updateGlobalStatus     func(string, string)
+	updateStatusTitle      func()
 }
 
 // SetupFileListKeyBindings sets up key bindings for file list view
@@ -318,6 +319,9 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 
 				// フォーカスを右ペインに移動
 				*ctx.leftPaneFocused = false
+				if restoreStatusFunc != nil {
+					restoreStatusFunc()
+				}
 				ctx.updateFileListView()
 				if *ctx.isSplitView {
 					ctx.app.SetFocus(ctx.splitViewFlex)
@@ -370,10 +374,10 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 			case 'j':
 				moveFileListSelection(ctx, 1)
 				return nil
-			case 'h':
+			case 'H':
 				handleFileListLeft(ctx)
 				return nil
-			case 'l':
+			case 'L':
 				handleFileListRight(ctx)
 				return nil
 			case 's':
@@ -412,6 +416,41 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 							ctx.updateGlobalStatus("Failed to copy filename to clipboard", "tomato")
 						}
 					}
+				}
+				return nil
+			case 'w':
+				// Whitespace無視モードのトグル
+				*ctx.ignoreWhitespace = !*ctx.ignoreWhitespace
+
+				// 差分を再取得
+				if *ctx.currentFile != "" {
+					ctx.updateCurrentDiffText(*ctx.currentFile, *ctx.currentStatus, ctx.repoRoot, ctx.currentDiffText, *ctx.ignoreWhitespace)
+				}
+
+				// 表示を更新
+				if len(strings.TrimSpace(*ctx.currentDiffText)) == 0 {
+					if *ctx.isSplitView {
+						ctx.beforeView.SetText("")
+						ctx.afterView.SetText("No differences")
+					} else {
+						ctx.diffView.SetText("No differences")
+					}
+				} else if *ctx.isSplitView {
+					updateSplitViewWithoutCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, *ctx.currentFile)
+				} else {
+					foldState := ctx.diffViewContext.foldState
+					updateDiffViewWithoutCursor(ctx.diffView, *ctx.currentDiffText, foldState, *ctx.currentFile, ctx.repoRoot)
+				}
+
+				// ステータスタイトルを更新
+				if ctx.updateStatusTitle != nil {
+					ctx.updateStatusTitle()
+				}
+
+				if *ctx.ignoreWhitespace {
+					ctx.updateGlobalStatus("Whitespace changes hidden", "forestgreen")
+				} else {
+					ctx.updateGlobalStatus("Whitespace changes shown", "forestgreen")
 				}
 				return nil
 			case 'a': // 'a' で現在のファイル/ディレクトリを git add/reset
@@ -470,22 +509,32 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 						*ctx.preserveScrollRow = currentRow
 					}
 
-					// 現在のカーソル位置の次のファイルを探す
-					var nextFile string
-					if *ctx.currentSelection < len(*ctx.fileList)-1 {
-						nextFileEntry := (*ctx.fileList)[*ctx.currentSelection+1]
-						nextFile = nextFileEntry.Path
+					// 現在のカーソル位置の次の移動先を決定
+					// ファイル → 次のファイル、ディレクトリ → 同じディレクトリ
+					var nextTarget string
+					nextIsDir := fileEntry.IsDirectory
+					if fileEntry.IsDirectory {
+						// ディレクトリの場合は同じディレクトリを探す
+						nextTarget = fileEntry.Path
+					} else {
+						// ファイルの場合は次のファイルを探す
+						for ni := *ctx.currentSelection + 1; ni < len(*ctx.fileList); ni++ {
+							if !(*ctx.fileList)[ni].IsDirectory {
+								nextTarget = (*ctx.fileList)[ni].Path
+								break
+							}
+						}
 					}
 
 					// ファイルリストを更新
 					ctx.refreshFileList()
 					ctx.updateFileListView()
 
-					// 次のファイルをパスのみで探す（ステータスは変わる可能性があるため無視）
+					// 移動先をパスで探す（ステータスは変わる可能性があるため無視）
 					foundNext := false
-					if nextFile != "" {
-						for i, fileEntry := range *ctx.fileList {
-							if fileEntry.Path == nextFile {
+					if nextTarget != "" {
+						for i, fe := range *ctx.fileList {
+							if fe.Path == nextTarget && fe.IsDirectory == nextIsDir {
 								*ctx.currentSelection = i
 								foundNext = true
 								break
@@ -494,9 +543,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					}
 
 					if !foundNext {
-						// 次のファイルが見つからない場合
 						if *ctx.currentSelection >= len(*ctx.fileList) {
-							// 最後のファイルだった場合
 							*ctx.currentSelection = len(*ctx.fileList) - 1
 						}
 					}

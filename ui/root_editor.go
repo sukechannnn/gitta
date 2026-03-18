@@ -20,14 +20,20 @@ var preferUnstagedSection bool = false
 
 // globalStatusView をグローバルに定義
 var globalStatusView *tview.TextView
-var listKeyBindingMessage = "Press 'Enter' to switch panes, 'q' to quit, 'a' to stage selected lines, 'A' to stage/unstage file, 'V' to select lines, 'Ctrl+A' to stage all files, 'Ctrl+K' to commit, 'Ctrl+J' to amend, and 'j/k' to navigate."
+var fileListKeyMessage = "a:stage  A:stage file  d:discard  C-a:stage all  C-k:commit  C-j:amend  H/L:dir  s:split  w:ws  v:vim  t:log  y:copy  Enter:switch  q:quit"
+var diffViewKeyMessage = "a:stage lines  A:stage file  V:select  j/k:move  g/G:top/end  /:search  e:fold  s:split  w:ws  u:unstage  C-y:copy  Esc:back  q:quit"
+
+// restoreStatusFunc is called to restore the default status message (set by SetupRootEditor)
+var restoreStatusFunc func()
 
 func updateGlobalStatus(message string, color string) {
 	if globalStatusView != nil {
 		globalStatusView.SetText(fmt.Sprintf("[%s]%s[-]", color, message))
 		go func() {
 			time.Sleep(5 * time.Second)
-			globalStatusView.SetText(listKeyBindingMessage)
+			if restoreStatusFunc != nil {
+				restoreStatusFunc()
+			}
 		}()
 	}
 }
@@ -126,12 +132,19 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			globalStatusView.SetTitle("")
 		}
 	}
+	restoreStatusFunc = func() {
+		if leftPaneFocused {
+			globalStatusView.SetText(fileListKeyMessage)
+		} else {
+			globalStatusView.SetText(diffViewKeyMessage)
+		}
+	}
 
 	// listStatusView を作成
 	globalStatusView = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft).
-		SetWrap(true)
+		SetWrap(false)
 	globalStatusView.SetBorder(true)
 	globalStatusView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
@@ -394,7 +407,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	updateSelectedFileDiff()
 
 	// 初期メッセージを設定
-	globalStatusView.SetText(listKeyBindingMessage)
+	globalStatusView.SetText(fileListKeyMessage)
 	updateStatusTitle()
 
 	// 右ペインのキー入力処理を設定（file_view.goと同じ動作）
@@ -515,6 +528,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		refreshFileList:        refreshFileList,
 		updateCurrentDiffText:  updateCurrentDiffText,
 		updateGlobalStatus:     updateGlobalStatus,
+		updateStatusTitle:      updateStatusTitle,
 	}
 	SetupFileListKeyBindings(fileListKeyContext)
 
@@ -629,8 +643,15 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 							}
 							if newSelection >= 0 {
 								currentSelection = newSelection
-							} else if currentSelection >= len(fileList) {
-								currentSelection = len(fileList) - 1
+							} else {
+								// 選択していたファイルが消えた場合は先頭に戻す
+								currentSelection = 0
+								// diff view にフォーカスがある場合はファイルリストに戻す
+								if !leftPaneFocused {
+									leftPaneFocused = true
+									restoreStatusFunc()
+									app.SetFocus(fileListView)
+								}
 							}
 
 							// 表示を更新
@@ -709,6 +730,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		isCommitMode = false
 		isAmendMode = false
 		leftPaneFocused = true
+		restoreStatusFunc()
 		commitTextArea.SetText("", false)
 		commitTextArea.SetTitle("Commit Message")
 		mainFlex.RemoveItem(commitTextArea)
@@ -754,19 +776,8 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 				// fileListの再構築のためにupdateFileListViewを呼ぶ
 				updateFileListView()
 
-				// 選択位置が範囲外の場合は調整
-				if len(fileList) > 0 {
-					// ファイルがまだ残っている場合
-					if currentSelection >= len(fileList) {
-						currentSelection = len(fileList) - 1
-					}
-					if currentSelection < 0 {
-						currentSelection = 0
-					}
-				} else {
-					// ファイルリストが空になった場合
-					currentSelection = 0
-				}
+				// コミット後はカーソルを先頭に戻す
+				currentSelection = 0
 
 				// 再度ビューを更新して正しい選択位置を反映
 				updateFileListView()
@@ -794,7 +805,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	})
 
 	// mainFlex にステータスビューとコンテンツを追加
-	mainFlex.AddItem(globalStatusView, 5, 0, false).
+	mainFlex.AddItem(globalStatusView, 3, 0, false).
 		AddItem(contentFlex, 0, 1, true)
 
 	mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
