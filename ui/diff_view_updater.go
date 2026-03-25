@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/rivo/tview"
-	"github.com/sukechannnn/gitta/util"
+	"github.com/sukechannnn/giff/util"
 )
 
 // DiffViewUpdater interface for updating diff views
@@ -177,7 +177,12 @@ func renderUnifiedView(diffView *tview.TextView, diffText string, cursorY int, s
 
 		if bg != "" {
 			lineNum := util.ReplaceBackground(line.LineNumber, bg)
-			highlighted := util.ReplaceBackground(lineContent, bg)
+			var highlighted string
+			if searchQuery != "" {
+				highlighted = util.ReplaceBackgroundPreserving(lineContent, bg, []string{util.SearchHighlightBg})
+			} else {
+				highlighted = util.ReplaceBackground(lineContent, bg)
+			}
 			diffView.Write([]byte("[" + lineNumFg + ":" + bg + "]" + lineNum + highlighted + strings.Repeat(" ", 500) + "[-:-]\n"))
 		} else {
 			diffView.Write([]byte("[dimgray]" + line.LineNumber + "[-]" + lineContent + "\n"))

@@ -20,6 +20,7 @@ const (
 	DeletedLineFg   = "#E7454E"
 	InlineAddedBg   = "#1A4D1A"
 	InlineDeletedBg = "#5C1A1A"
+	SearchHighlightBg = "#665500"
 	ExpandedFoldBg  = "#3a3a3a"
 )
 
@@ -185,6 +186,56 @@ func RenderHighlightedLineWithMask(tokens []chroma.Token, baseBg string, mask []
 			segStart = segEnd
 		}
 		charIdx += len(runes)
+	}
+	return sb.String()
+}
+
+// ReplaceBackgroundPreserving replaces background colors but preserves specified background colors.
+func ReplaceBackgroundPreserving(line string, newBg string, preserve []string) string {
+	preserveSet := make(map[string]bool, len(preserve))
+	for _, p := range preserve {
+		preserveSet[p] = true
+	}
+
+	var sb strings.Builder
+	i := 0
+	for i < len(line) {
+		if line[i] == '[' {
+			end := strings.IndexByte(line[i:], ']')
+			if end == -1 {
+				sb.WriteByte(line[i])
+				i++
+				continue
+			}
+			tag := line[i+1 : i+end]
+			if strings.Contains(tag, "[]") || len(tag) == 0 {
+				sb.WriteString(line[i : i+end+1])
+				i += end + 1
+				continue
+			}
+			if len(tag) > 0 && tag[0] == '"' {
+				sb.WriteString(line[i : i+end+1])
+				i += end + 1
+				continue
+			}
+
+			parts := strings.SplitN(tag, ":", 2)
+			if len(parts) == 2 {
+				currentBg := parts[1]
+				if preserveSet[currentBg] {
+					// 保護対象の背景色はそのまま
+					sb.WriteString(line[i : i+end+1])
+				} else {
+					sb.WriteString("[" + parts[0] + ":" + newBg + "]")
+				}
+			} else {
+				sb.WriteString("[" + tag + ":" + newBg + "]")
+			}
+			i += end + 1
+		} else {
+			sb.WriteByte(line[i])
+			i++
+		}
 	}
 	return sb.String()
 }
