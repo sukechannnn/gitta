@@ -4,12 +4,12 @@
 - `main.go` bootstraps CLI, wires config/git/ui packages, handles signals.
 - `git/` holds git interactions (staged states, diffs). Keep Go packages focused on repository IO.
 - `ui/` contains tview-based widgets, diff views, tests like `split_view_content_test.go`. Use this folder for UI logic only.
-- `config/` resolves runtime paths (e.g., `gitta_selected.patch`) and should stay side-effect free.
+- `config/` resolves runtime paths (e.g., `giff_selected.patch`) and should stay side-effect free.
 - `util/` groups terminal helpers (`color.go`, `file_reader.go`); favor small, stateless helpers.
-- `docs/images/` stores assets such as `gitta_demo.gif`; generated binaries go to repo root (`gitta`).
+- `docs/images/` stores assets such as `giff_demo.gif`; generated binaries go to repo root (`giff`).
 
 ## Build, Test, and Development Commands
-- `go build -o gitta ./...` compiles the TUI binary; run from repo root to mirror release builds.
+- `go build -o giff ./...` compiles the TUI binary; run from repo root to mirror release builds.
 - `go run . --watch` runs the app with auto-refresh to test staging workflows end-to-end.
 - `go test ./...` runs all package tests, including UI rendering helpers.
 - `go test ./ui -run DiffView` focuses on UI-specific test suites when iterating.
@@ -33,5 +33,5 @@
 - Link tracking issues and mention follow-up tasks explicitly; note any manual QA steps performed.
 
 ## Configuration & Debugging Notes
-- Respect `config.AppConfig` and the `gitta_selected.patch` temp file; clean up temp artifacts in teardown logic.
+- Respect `config.AppConfig` and the `giff_selected.patch` temp file; clean up temp artifacts in teardown logic.
 - Use the `--debug` flag to emit logs into `tmp/` when diagnosing selection errors; avoid committing debug output.

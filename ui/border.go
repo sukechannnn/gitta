@@ -3,7 +3,7 @@ package ui
 import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"github.com/sukechannnn/gitta/util"
+	"github.com/sukechannnn/giff/util"
 )
 
 // CreateVerticalBorder creates a vertical border box

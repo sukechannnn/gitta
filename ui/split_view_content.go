@@ -6,7 +6,7 @@ import (
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/rivo/tview"
-	"github.com/sukechannnn/gitta/util"
+	"github.com/sukechannnn/giff/util"
 )
 
 // SplitViewContent represents the content for split view

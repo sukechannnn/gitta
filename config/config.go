@@ -14,7 +14,7 @@ type AppConfig struct {
 func LoadConfig() (*AppConfig, error) {
 	tempDir := os.TempDir()
 	// アプリケーション固有のファイル名を生成して衝突を避ける
-	patchFileName := "gitta_selected.patch"
+	patchFileName := "giff_selected.patch"
 	patchFilePath := filepath.Join(tempDir, patchFileName)
 
 	cfg := &AppConfig{

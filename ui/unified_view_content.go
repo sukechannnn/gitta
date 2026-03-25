@@ -8,7 +8,7 @@ import (
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/rivo/tview"
-	"github.com/sukechannnn/gitta/util"
+	"github.com/sukechannnn/giff/util"
 )
 
 // ColorizedLine represents a colorized diff line with its type

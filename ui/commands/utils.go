@@ -3,7 +3,7 @@ package commands
 import (
 	"strings"
 
-	"github.com/sukechannnn/gitta/util"
+	"github.com/sukechannnn/giff/util"
 )
 
 // ColorizeDiff は Diff を色付けします

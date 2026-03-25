@@ -86,7 +86,7 @@ func TestCommandA(t *testing.T) {
 
 func TestCommandA_Integration(t *testing.T) {
 	// Create a temporary test directory
-	tmpDir, err := os.MkdirTemp("", "gitta-test")
+	tmpDir, err := os.MkdirTemp("", "giff-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestCommandA_Integration(t *testing.T) {
 
 	t.Run("stages only selected lines correctly", func(t *testing.T) {
 		// Create another temporary directory for this specific test
-		tmpDir2, err := os.MkdirTemp("", "gitta-test2")
+		tmpDir2, err := os.MkdirTemp("", "giff-test2")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -336,7 +336,7 @@ func TestCommandA_Integration(t *testing.T) {
 func TestCommandA_UnstageIntegration(t *testing.T) {
 	t.Run("unstages selected lines from staged diff", func(t *testing.T) {
 		// Create a temporary test directory
-		tmpDir, err := os.MkdirTemp("", "gitta-unstage-test")
+		tmpDir, err := os.MkdirTemp("", "giff-unstage-test")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -452,7 +452,7 @@ func TestCommandA_UnstageIntegration(t *testing.T) {
 
 	t.Run("reports no changes when only context lines are selected for unstage", func(t *testing.T) {
 		// Create a temporary test directory
-		tmpDir, err := os.MkdirTemp("", "gitta-unstage-nochange-test")
+		tmpDir, err := os.MkdirTemp("", "giff-unstage-nochange-test")
 		if err != nil {
 			t.Fatal(err)
 		}

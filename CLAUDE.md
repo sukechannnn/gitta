@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Build
 ```bash
-go build -o gitta
+go build -o giff
 ```
 
 ### Run Tests
@@ -33,18 +33,18 @@ go vet ./...
 ### Running the Application
 ```bash
 # Build and run
-go build -o gitta && ./gitta
+go build -o giff && ./giff
 
 # Run with file watching (auto-refresh)
-./gitta --watch
+./giff --watch
 
 # Run with debug mode (output logs to `tmp/`)
-./gitta --debug
+./giff --debug
 ```
 
 ## Architecture Overview
 
-`gitta` is a terminal UI tool for interactively staging Git hunks and lines, and committing changes, built with Go and the tview library. The architecture follows a clear separation of concerns:
+`giff` is a terminal UI tool for interactively staging Git hunks and lines, and committing changes, built with Go and the tview library. The architecture follows a clear separation of concerns:
 
 ### Core Components
 

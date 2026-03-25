@@ -11,9 +11,9 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"github.com/sukechannnn/gitta/config"
-	"github.com/sukechannnn/gitta/git"
-	"github.com/sukechannnn/gitta/ui"
+	"github.com/sukechannnn/giff/config"
+	"github.com/sukechannnn/giff/git"
+	"github.com/sukechannnn/giff/ui"
 )
 
 var version = "dev"
@@ -58,7 +58,7 @@ func main() {
 	app := tview.NewApplication()
 
 	// アプリケーション構造体の作成
-	gittaApp := &Application{
+	giffApp := &Application{
 		App:    app,
 		Config: cfg,
 	}
@@ -70,19 +70,19 @@ func main() {
 		<-sigChan
 		log.Println("SIGINT received, cleaning up and exiting...")
 		// 設定から PatchFilePath を取得して削除
-		if _, err := os.Stat(gittaApp.Config.PatchFilePath); err == nil {
-			if err := os.Remove(gittaApp.Config.PatchFilePath); err != nil {
-				log.Printf("Failed to remove %s: %v", gittaApp.Config.PatchFilePath, err)
+		if _, err := os.Stat(giffApp.Config.PatchFilePath); err == nil {
+			if err := os.Remove(giffApp.Config.PatchFilePath); err != nil {
+				log.Printf("Failed to remove %s: %v", giffApp.Config.PatchFilePath, err)
 			} else {
-				log.Printf("Removed %s", gittaApp.Config.PatchFilePath)
+				log.Printf("Removed %s", giffApp.Config.PatchFilePath)
 			}
 		}
-		gittaApp.App.Stop()
+		giffApp.App.Stop()
 		os.Exit(0)
 	}()
 
 	// アプリケーションレベルでのキー入力捕捉 (Ctrl+c ワークアラウンド)
-	gittaApp.App.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	giffApp.App.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlC {
 			log.Println("Ctrl+c captured at application level, sending SIGINT...")
 			gid, err := syscall.Getpgid(os.Getpid())
@@ -109,25 +109,25 @@ func main() {
 			log.Fatalf("Failed to get updated files: %v", err)
 		}
 		rootEditor := ui.RootEditor(
-			gittaApp.App,
+			giffApp.App,
 			updatedStagedFiles,
 			updatedModifiedFiles,
 			updatedUntrackedFiles,
 			repoPath,
-			gittaApp.Config.PatchFilePath,
+			giffApp.Config.PatchFilePath,
 			updateFileList,
 			autoRefresh,
 		)
-		gittaApp.App.SetRoot(rootEditor, true)
+		giffApp.App.SetRoot(rootEditor, true)
 	}
 
 	// 初期ビュー（ファイル一覧）を作成し、ルートに設定
 	// onSelect パラメータは現在使用されていないため nil を渡す
-	initialView := ui.RootEditor(gittaApp.App, stagedFiles, modifiedFiles, untrackedFiles, repoPath, gittaApp.Config.PatchFilePath, updateFileList, autoRefresh)
-	gittaApp.App.SetRoot(initialView, true)
+	initialView := ui.RootEditor(giffApp.App, stagedFiles, modifiedFiles, untrackedFiles, repoPath, giffApp.Config.PatchFilePath, updateFileList, autoRefresh)
+	giffApp.App.SetRoot(initialView, true)
 
 	// アプリケーションの実行は main で一度だけ
-	if err := gittaApp.App.Run(); err != nil {
+	if err := giffApp.App.Run(); err != nil {
 		log.Fatalf("Error running application: %v", err)
 	}
 }

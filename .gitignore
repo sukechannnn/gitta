@@ -19,8 +19,8 @@ go.work
 go.work.sum
 
 # Build output
-gitta
-/gitta
+giff
+/giff
 
 # IDE specific files
 .idea/
@@ -35,7 +35,7 @@ gitta
 *.pprof
 *.prof
 *.mem
-gitta_debug.txt
+giff_debug.txt
 
 # Temporary files
 *.tmp
@@ -52,13 +52,13 @@ coverage.html
 .env
 .env.local
 
-# Patch files (gitta specific)
-/tmp/gitta_selected.patch
+# Patch files (giff specific)
+/tmp/giff_selected.patch
 *.patch
 
 # Configuration overrides (local user settings)
 config.local.json
-.gitta.local
+.giff.local
 
 # OS generated files
 Thumbs.db

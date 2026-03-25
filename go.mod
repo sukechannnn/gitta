@@ -1,4 +1,4 @@
-module github.com/sukechannnn/gitta
+module github.com/sukechannnn/giff
 
 go 1.23.5
 

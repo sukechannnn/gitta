@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sukechannnn/gitta/git"
-	"github.com/sukechannnn/gitta/util"
+	"github.com/sukechannnn/giff/git"
+	"github.com/sukechannnn/giff/util"
 )
 
 // CommandAParams contains parameters for commandA function

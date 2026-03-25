@@ -4,6 +4,6 @@ import (
 	"log"
 
 	"github.com/rivo/tview"
-	"github.com/sukechannnn/gitta/git"
-	"github.com/sukechannnn/gitta/ui"
+	"github.com/sukechannnn/giff/git"
+	"github.com/sukechannnn/giff/ui"
 )
