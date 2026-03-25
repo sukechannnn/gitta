@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
@@ -9,8 +10,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"github.com/sukechannnn/gitta/ui/commands"
-	"github.com/sukechannnn/gitta/util"
+	"github.com/sukechannnn/giff/util"
 )
 
 // GitLogEntry represents a single git log entry
@@ -24,39 +24,22 @@ type GitLogEntry struct {
 
 // GitLogView manages the git log display and navigation
 type GitLogView struct {
-	app               *tview.Application
-	logView           *tview.TextView
-	commitView        *tview.TextView
-	commitFileList    *tview.TextView
-	commitDiffView    *tview.TextView
-	commitSplitFlex   *tview.Flex
-	flex              *tview.Flex
-	repoRoot          string
-	logEntries        []GitLogEntry
-	currentLine       int
-	showingCommit     bool
-	onExit            func()
-	scrollOffset      int // スクロールオフセット
-	commitFiles       []FileEntry
-	displayOrderPaths []string // ツリー表示順序でのファイルパス一覧
-	selectedFile      int
-	leftPaneFocused   bool
+	app          *tview.Application
+	logView      *tview.TextView
+	flex         *tview.Flex
+	repoRoot     string
+	logEntries   []GitLogEntry
+	currentLine  int
+	showingCommit bool
+	onExit       func()
+	scrollOffset int
+	commitFiles  []FileEntry
 	// ggコマンド用の状態
 	gPressed  *bool
 	lastGTime *time.Time
-	// Diffビューのカーソル位置
-	diffCursorY     int
-	currentDiffText string
-	currentFilePath string
-	// 共通の diff updater
-	diffUpdater *UnifiedViewUpdater
-	// ディレクトリ折りたたみ状態
-	dirCollapseState *DirCollapseState
 }
 
 // NewGitLogView creates a new git log viewer
-// 既存のfileListViewとdiffViewを再利用するバージョンも考えられるが、
-// git log専用のロジックが多いため、独立したコンポーネントとして実装
 func NewGitLogView(app *tview.Application, repoRoot string, onExit func()) *GitLogView {
 	logView := tview.NewTextView().
 		SetDynamicColors(true).
@@ -65,85 +48,28 @@ func NewGitLogView(app *tview.Application, repoRoot string, onExit func()) *GitL
 	logView.SetBorder(true).SetTitle("Git Log (j/k: navigate, Enter: show commit, Esc: exit)")
 	logView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
-	commitView := tview.NewTextView().
-		SetDynamicColors(true).
-		SetWrap(false).
-		SetScrollable(true)
-	commitView.SetBorder(true).SetTitle("Commit Details (Esc: back to log)")
-	commitView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
-
-	// コミット詳細用のファイルリストと差分ビュー
-	commitFileList := tview.NewTextView().
-		SetDynamicColors(true).
-		SetWrap(false).
-		SetScrollable(true)
-	commitFileList.SetBorder(true).SetTitle("Changed Files (j/k: navigate, Enter: switch to diff)")
-	commitFileList.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
-
-	commitDiffView := tview.NewTextView().
-		SetDynamicColors(true).
-		SetWrap(false).
-		SetScrollable(true)
-	commitDiffView.SetBorder(true).SetTitle("File Diff (Enter: back to file list)")
-	commitDiffView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
-
-	// 既存のレイアウト構造を再利用
-	// 縦線ボーダー
-	verticalBorderLeft := tview.NewTextView()
-	verticalBorderLeft.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
-	verticalBorderLeft.SetBorderPadding(0, 0, 0, 0)
-
-	verticalBorder := tview.NewTextView()
-	verticalBorder.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
-	verticalBorder.SetBorderPadding(0, 0, 0, 0)
-
-	// コミット詳細用のunifiedViewFlexと同じ構造
-	commitDiffViewFlex := tview.NewFlex().SetDirection(tview.FlexRow)
-	commitDiffViewFlex.AddItem(commitDiffView, 0, 1, false)
-	commitDiffViewFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
-
-	// root_editor.goと同じレイアウト構造
-	commitSplitFlex := tview.NewFlex()
-	commitSplitFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
-	commitSplitFlex.
-		AddItem(verticalBorderLeft, 1, 0, false).
-		AddItem(commitFileList, 0, FileListFlexRatio, true).
-		AddItem(verticalBorder, 1, 0, false).
-		AddItem(commitDiffViewFlex, 0, DiffViewFlexRatio, false)
-
 	flex := tview.NewFlex().
 		AddItem(logView, 0, 1, true)
 
 	glv := &GitLogView{
-		app:              app,
-		logView:          logView,
-		commitView:       commitView,
-		commitFileList:   commitFileList,
-		commitDiffView:   commitDiffView,
-		commitSplitFlex:  commitSplitFlex,
-		flex:             flex,
-		repoRoot:         repoRoot,
-		logEntries:       []GitLogEntry{},
-		currentLine:      0,
-		showingCommit:    false,
-		onExit:           onExit,
-		scrollOffset:     0,
-		commitFiles:      []FileEntry{},
-		selectedFile:     0,
-		leftPaneFocused:  true,
-		gPressed:         new(bool),
-		lastGTime:        new(time.Time),
-		dirCollapseState: NewDirCollapseState(),
+		app:          app,
+		logView:      logView,
+		flex:         flex,
+		repoRoot:     repoRoot,
+		logEntries:   []GitLogEntry{},
+		currentLine:  0,
+		showingCommit: false,
+		onExit:       onExit,
+		scrollOffset: 0,
+		commitFiles:  []FileEntry{},
+		gPressed:     new(bool),
+		lastGTime:    new(time.Time),
 	}
 
-	glv.diffUpdater = NewUnifiedViewUpdater(commitDiffView, nil, &glv.currentFilePath, repoRoot)
-
-	glv.setupKeyBindings()
+	glv.setupLogKeyBindings()
 	glv.loadGitLog()
 
-	// 初期レンダリング後に再描画を予約（レイアウトが確定してから）
 	go func() {
-		// 少し待ってから再描画
 		glv.app.QueueUpdateDraw(func() {
 			glv.updateSelection()
 		})
@@ -159,29 +85,28 @@ func (glv *GitLogView) GetView() tview.Primitive {
 
 // convertANSIToTviewColors converts ANSI escape codes to tview color tags
 func convertANSIToTviewColors(text string) string {
-	// ANSI escape code patterns
 	patterns := []struct {
 		pattern     string
 		replacement string
 	}{
-		{`\x1b\[1;31m`, "[red]"},    // Bold Red
-		{`\x1b\[31m`, "[red]"},      // Red
-		{`\x1b\[1;32m`, "[green]"},  // Bold Green
-		{`\x1b\[32m`, "[green]"},    // Green
-		{`\x1b\[1;33m`, "[yellow]"}, // Bold Yellow
-		{`\x1b\[33m`, "[yellow]"},   // Yellow
-		{`\x1b\[1;34m`, "[blue]"},   // Bold Blue
-		{`\x1b\[34m`, "[blue]"},     // Blue
-		{`\x1b\[1;35m`, "[purple]"}, // Bold Magenta
-		{`\x1b\[35m`, "[purple]"},   // Magenta
-		{`\x1b\[1;36m`, "[cyan]"},   // Bold Cyan
-		{`\x1b\[36m`, "[cyan]"},     // Cyan
-		{`\x1b\[1;37m`, "[white]"},  // Bold White
-		{`\x1b\[37m`, "[white]"},    // White
-		{`\x1b\[1m`, ""},            // Bold (ignore for now)
-		{`\x1b\[m`, "[-]"},          // Reset
-		{`\x1b\[0m`, "[-]"},         // Reset
-		{`\x1b\[(0;)?39m`, "[-]"},   // Default color
+		{`\x1b\[1;31m`, "[red]"},
+		{`\x1b\[31m`, "[red]"},
+		{`\x1b\[1;32m`, "[green]"},
+		{`\x1b\[32m`, "[green]"},
+		{`\x1b\[1;33m`, "[yellow]"},
+		{`\x1b\[33m`, "[yellow]"},
+		{`\x1b\[1;34m`, "[blue]"},
+		{`\x1b\[34m`, "[blue]"},
+		{`\x1b\[1;35m`, "[purple]"},
+		{`\x1b\[35m`, "[purple]"},
+		{`\x1b\[1;36m`, "[cyan]"},
+		{`\x1b\[36m`, "[cyan]"},
+		{`\x1b\[1;37m`, "[white]"},
+		{`\x1b\[37m`, "[white]"},
+		{`\x1b\[1m`, ""},
+		{`\x1b\[m`, "[-]"},
+		{`\x1b\[0m`, "[-]"},
+		{`\x1b\[(0;)?39m`, "[-]"},
 	}
 
 	result := text
@@ -190,7 +115,6 @@ func convertANSIToTviewColors(text string) string {
 		result = re.ReplaceAllString(result, p.replacement)
 	}
 
-	// Clean up any remaining escape codes
 	re := regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	result = re.ReplaceAllString(result, "")
 
@@ -211,7 +135,6 @@ func (glv *GitLogView) loadGitLog() {
 	lines := strings.Split(string(output), "\n")
 	glv.logEntries = []GitLogEntry{}
 
-	// Parse git log output
 	hashRegex := regexp.MustCompile(`([a-f0-9]{7,})`)
 
 	for _, line := range lines {
@@ -219,16 +142,13 @@ func (glv *GitLogView) loadGitLog() {
 			continue
 		}
 
-		// Convert ANSI codes to tview colors
 		cleanLine := convertANSIToTviewColors(line)
 
-		// Extract commit hash if this line contains one
 		var hash string
 		if matches := hashRegex.FindStringSubmatch(line); len(matches) > 0 {
 			hash = matches[0]
 		}
 
-		// Create log entry
 		entry := GitLogEntry{
 			Hash:     hash,
 			FullLine: cleanLine,
@@ -245,25 +165,20 @@ func (glv *GitLogView) updateSelection() {
 		return
 	}
 
-	// 表示可能な行数を取得（概算）
 	_, _, _, height := glv.logView.GetInnerRect()
 	visibleLines := height
 	if visibleLines <= 0 {
-		// 初期表示やレイアウト前の場合は推定値を使用
-		visibleLines = 25 // より大きなデフォルト値
+		visibleLines = 25
 	}
 
-	// カーソルが画面の境界に近づいたらスクロール
 	relativePos := glv.currentLine - glv.scrollOffset
 
 	if relativePos < 3 && glv.scrollOffset > 0 {
-		// 上端に近い場合は上にスクロール
 		glv.scrollOffset = glv.currentLine - 3
 		if glv.scrollOffset < 0 {
 			glv.scrollOffset = 0
 		}
 	} else if relativePos >= visibleLines-3 {
-		// 下端に近い場合は下にスクロール
 		glv.scrollOffset = glv.currentLine - visibleLines + 4
 		if glv.scrollOffset < 0 {
 			glv.scrollOffset = 0
@@ -273,23 +188,15 @@ func (glv *GitLogView) updateSelection() {
 		}
 	}
 
-	// 初期表示時は常に最初から表示する
-	if glv.currentLine == 0 && glv.scrollOffset == 0 {
-		// 何もしない（先頭から表示）
-	}
-
-	// 表示範囲の計算
 	endLine := glv.scrollOffset + visibleLines
 	if endLine > len(glv.logEntries) {
 		endLine = len(glv.logEntries)
 	}
 
-	// より多くの行を表示するため、最大値も設定
 	if endLine-glv.scrollOffset < 10 && len(glv.logEntries) > 10 {
 		endLine = glv.scrollOffset + min(len(glv.logEntries)-glv.scrollOffset, 30)
 	}
 
-	// 表示範囲内のエントリーでコンテンツを構築
 	var content strings.Builder
 	for i := glv.scrollOffset; i < endLine; i++ {
 		if i >= len(glv.logEntries) {
@@ -306,7 +213,6 @@ func (glv *GitLogView) updateSelection() {
 	glv.logView.SetText(content.String())
 }
 
-// min returns the smaller of two integers
 func min(a, b int) int {
 	if a < b {
 		return a
@@ -358,9 +264,6 @@ func (glv *GitLogView) loadCommitFiles(commitHash string) {
 		}
 		glv.commitFiles = append(glv.commitFiles, fileInfo)
 	}
-
-	glv.selectedFile = 0
-	glv.updateCommitFileList()
 }
 
 // normalizeCommitStatus converts git show status codes to descriptive labels
@@ -387,103 +290,7 @@ func normalizeCommitStatus(rawStatus string) string {
 	}
 }
 
-// updateCommitFileList updates the file list display using tree structure
-func (glv *GitLogView) updateCommitFileList() {
-	if len(glv.commitFiles) == 0 {
-		glv.commitFileList.SetText("No files changed")
-		return
-	}
-
-	// Build tree from commit files
-	tree := buildFileTreeFromFileEntries(glv.commitFiles)
-
-	// ツリー表示順にパスを収集（ディレクトリ含む）
-	glv.displayOrderPaths = collectPathsInTreeOrder(tree, glv.dirCollapseState, "commit")
-
-	var content strings.Builder
-	var displayFileList []FileEntry
-	regionIndex := 0
-	currentLine := 0
-	lineNumberMap := make(map[int]int)
-
-	renderFileTreeForFileEntries(
-		tree,
-		0,
-		"",
-		&content,
-		&displayFileList,
-		"commit",
-		&regionIndex,
-		glv.selectedFile,
-		glv.leftPaneFocused,
-		lineNumberMap,
-		&currentLine,
-		glv.commitFiles,
-		glv.dirCollapseState,
-	)
-
-	glv.commitFileList.SetText(content.String())
-}
-
-// isDirectoryPath checks if the given path is a directory (not a file) in commitFiles
-func (glv *GitLogView) isDirectoryPath(path string) bool {
-	for _, f := range glv.commitFiles {
-		if f.Path == path {
-			return false // commitFiles にはファイルのみ入っている
-		}
-	}
-	return true // commitFiles に見つからない = ディレクトリ
-}
-
-// showFileDiff shows the diff for the selected file
-func (glv *GitLogView) showFileDiff(commitHash string) {
-	if glv.selectedFile >= len(glv.displayOrderPaths) {
-		glv.commitDiffView.SetText("No file selected")
-		return
-	}
-
-	filePath := glv.displayOrderPaths[glv.selectedFile]
-
-	// ディレクトリの場合はパスを表示
-	if glv.isDirectoryPath(filePath) {
-		glv.currentFilePath = ""
-		glv.currentDiffText = ""
-		glv.diffCursorY = 0
-		glv.commitDiffView.SetText("dir: " + filePath + "/")
-		return
-	}
-
-	cmd := exec.Command("git", "show", "--format=", commitHash, "--", filePath)
-	cmd.Dir = glv.repoRoot
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		glv.commitDiffView.SetText("[red]Failed to show diff: " + err.Error() + "\n\nOutput:\n" + string(output))
-		return
-	}
-
-	glv.currentFilePath = filePath
-	glv.currentDiffText = strings.TrimLeft(string(output), "\n")
-	glv.diffCursorY = 0
-	glv.updateCommitDiff()
-}
-
-// updateCommitDiff updates the commit diff view (with or without cursor based on focus)
-func (glv *GitLogView) updateCommitDiff() {
-	// 左ペーンにフォーカスがある場合はカーソルを表示しない
-	if glv.leftPaneFocused {
-		glv.diffUpdater.UpdateWithoutCursor(glv.currentDiffText)
-	} else {
-		glv.diffUpdater.UpdateWithCursor(glv.currentDiffText, glv.diffCursorY)
-	}
-}
-
-// getDiffLineCount returns the number of lines in the diff
-func (glv *GitLogView) getDiffLineCount() int {
-	return getUnifiedViewLineCount(glv.currentDiffText)
-}
-
-// showCommitDetails shows the details of the selected commit
+// showCommitDetails shows the details of the selected commit using shared components
 func (glv *GitLogView) showCommitDetails() {
 	if glv.currentLine >= len(glv.logEntries) {
 		return
@@ -494,21 +301,344 @@ func (glv *GitLogView) showCommitDetails() {
 		return
 	}
 
-	// Load commit files
-	glv.loadCommitFiles(entry.Hash)
+	commitHash := entry.Hash
+	glv.loadCommitFiles(commitHash)
 
-	// Switch to split view
-	glv.flex.Clear()
-	glv.flex.AddItem(glv.commitSplitFlex, 0, 1, true)
-	glv.showingCommit = true
-	glv.leftPaneFocused = true
+	// UI コンポーネント作成（root_editor.go と同じパターン）
+	fileListView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetRegions(true).
+		SetWrap(false)
+	fileListView.SetBorder(true).SetTitle("Changed Files")
+	fileListView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
-	// Show first file's diff
-	if len(glv.commitFiles) > 0 {
-		glv.showFileDiff(entry.Hash)
+	diffView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetRegions(true).
+		SetWrap(false)
+	diffView.SetBorder(true).SetTitle("File Diff")
+	diffView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+	diffView.SetBorderStyle(tcell.StyleDefault)
+
+	unifiedViewFlex := tview.NewFlex().
+		AddItem(diffView, 0, 1, false)
+	unifiedViewFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+
+	beforeView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetRegions(true).
+		SetWrap(false)
+	beforeView.SetBorder(true).SetTitle("Before")
+	beforeView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+
+	afterView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetRegions(true).
+		SetWrap(false)
+	afterView.SetBorder(true).SetTitle("After")
+	afterView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+
+	splitViewFlex := tview.NewFlex().
+		AddItem(beforeView, 0, 1, false).
+		AddItem(afterView, 0, 1, false)
+	splitViewFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+
+	// ステータスバー
+	statusView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignLeft).
+		SetWrap(false)
+	statusView.SetBorder(true)
+	statusView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+
+	commitStatusMessage := "j/k:move  /:search  e:fold  s:split  V:select  C-y:copy  Esc:back  q:quit"
+	statusView.SetText(commitStatusMessage)
+
+	contentFlex := tview.NewFlex()
+	contentFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+	contentFlex.
+		AddItem(fileListView, 0, FileListFlexRatio, true).
+		AddItem(unifiedViewFlex, 0, DiffViewFlexRatio, false)
+
+	// ステータスバー + コンテンツの縦レイアウト
+	commitMainFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(statusView, 3, 0, false).
+		AddItem(contentFlex, 0, 1, true)
+	commitMainFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+
+	// 状態変数
+	var fileList []FileEntry
+	lineNumberMap := make(map[int]int)
+	dirCollapseState := NewDirCollapseState()
+	var currentSelection int
+	var cursorY int
+	var currentFile string
+	var currentStatus string
+	var currentDiffText string
+	var isSplitView bool
+	var leftPaneFocused = true
+	var isSelecting bool
+	var selectStart = -1
+	var selectEnd = -1
+	var preserveScrollRow = -1
+	var ignoreWhitespace bool
+	var gPressed bool
+	var lastGTime time.Time
+	var searchQuery string
+	var searchMatches []int
+	var searchMatchIndex = -1
+	var isSearchMode bool
+	var searchInput string
+	var searchCursorYBeforeSearch int
+	foldState := NewFoldState()
+
+	// diff 取得コールバック (git show)
+	updateDiffText := func(filePath, status, repo string, out *string, _ bool) {
+		cmd := exec.Command("git", "show", "--format=", commitHash, "--", filePath)
+		cmd.Dir = glv.repoRoot
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			*out = ""
+			return
+		}
+		*out = strings.TrimLeft(string(output), "\n")
 	}
 
-	glv.app.SetFocus(glv.commitFileList)
+	// ファイルリスト構築
+	buildFileListContent := func(focusedPane bool) string {
+		return BuildFileListContentForCommit(
+			glv.commitFiles,
+			currentSelection,
+			focusedPane,
+			&fileList,
+			lineNumberMap,
+			dirCollapseState,
+		)
+	}
+
+	updateFileListView := func() {
+		currentRow, currentCol := fileListView.GetScrollOffset()
+		shouldPreserveScroll := preserveScrollRow >= 0
+		if shouldPreserveScroll {
+			currentRow = preserveScrollRow
+			preserveScrollRow = -1
+		}
+
+		fileListView.Clear()
+		fileListView.SetText(buildFileListContent(leftPaneFocused))
+
+		if shouldPreserveScroll {
+			fileListView.ScrollTo(currentRow, currentCol)
+		} else {
+			if actualLine, exists := lineNumberMap[currentSelection]; exists {
+				_, _, _, height := fileListView.GetInnerRect()
+				if actualLine >= currentRow+height-1 {
+					fileListView.ScrollTo(actualLine-height+2, currentCol)
+				} else if actualLine < currentRow {
+					if currentSelection == 0 {
+						fileListView.ScrollTo(0, currentCol)
+					} else {
+						fileListView.ScrollTo(actualLine, currentCol)
+					}
+				} else {
+					fileListView.ScrollTo(currentRow, currentCol)
+				}
+			}
+		}
+	}
+
+	updateSelectedFileDiff := func() {
+		if len(fileList) == 0 {
+			currentDiffText = ""
+			currentFile = ""
+			currentStatus = ""
+			if isSplitView {
+				beforeView.SetText("")
+				afterView.SetText("No files changed")
+			} else {
+				diffView.SetText("No files changed")
+			}
+			return
+		}
+
+		if currentSelection < 0 {
+			currentSelection = 0
+		} else if currentSelection >= len(fileList) {
+			currentSelection = len(fileList) - 1
+		}
+
+		fileEntry := fileList[currentSelection]
+
+		if fileEntry.IsDirectory {
+			currentDiffText = ""
+			currentFile = ""
+			currentStatus = ""
+			dirText := "dir: " + fileEntry.Path + "/"
+			if isSplitView {
+				beforeView.SetText("")
+				afterView.SetText(dirText)
+			} else {
+				diffView.SetText(dirText)
+			}
+			return
+		}
+
+		currentFile = fileEntry.Path
+		currentStatus = fileEntry.StageStatus
+
+		cursorY = 0
+		isSelecting = false
+		selectStart = -1
+		selectEnd = -1
+
+		updateDiffText(currentFile, currentStatus, glv.repoRoot, &currentDiffText, ignoreWhitespace)
+
+		if isSplitView {
+			updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText, currentFile)
+		} else {
+			updateDiffViewWithoutCursor(diffView, currentDiffText, foldState, currentFile, glv.repoRoot)
+		}
+	}
+
+	updateFileListView()
+
+	// 初期選択がディレクトリの場合は最初のファイルを選択
+	if currentSelection < len(fileList) && fileList[currentSelection].IsDirectory {
+		for i, entry := range fileList {
+			if !entry.IsDirectory {
+				currentSelection = i
+				updateFileListView()
+				break
+			}
+		}
+	}
+
+	updateSelectedFileDiff()
+
+	// DiffViewContext 構築
+	diffViewContext := &DiffViewContext{
+		diffView:        diffView,
+		fileListView:    fileListView,
+		beforeView:      beforeView,
+		afterView:       afterView,
+		splitViewFlex:   splitViewFlex,
+		unifiedViewFlex: unifiedViewFlex,
+		contentFlex:     contentFlex,
+		app:             glv.app,
+
+		cursorY:               &cursorY,
+		selectStart:           &selectStart,
+		selectEnd:             &selectEnd,
+		isSelecting:           &isSelecting,
+		isSplitView:           &isSplitView,
+		leftPaneFocused:       &leftPaneFocused,
+		currentDiffText:       &currentDiffText,
+		currentFile:           &currentFile,
+		currentStatus:         &currentStatus,
+		savedTargetFile:       new(string),
+		preferUnstagedSection: new(bool),
+		currentSelection:      &currentSelection,
+		fileList:              &fileList,
+		preserveScrollRow:     &preserveScrollRow,
+		ignoreWhitespace:      &ignoreWhitespace,
+
+		repoRoot:  glv.repoRoot,
+		patchPath: "",
+
+		gPressed:  &gPressed,
+		lastGTime: &lastGTime,
+
+		viewUpdater: &UnifiedViewUpdater{
+			diffView:    diffView,
+			foldState:   foldState,
+			filePath:    &currentFile,
+			repoRoot:    glv.repoRoot,
+			searchQuery: &searchQuery,
+		},
+
+		foldState: foldState,
+
+		searchQuery:               &searchQuery,
+		searchMatches:             &searchMatches,
+		searchMatchIndex:          &searchMatchIndex,
+		isSearchMode:              &isSearchMode,
+		searchInput:               &searchInput,
+		searchCursorYBeforeSearch: &searchCursorYBeforeSearch,
+
+		readOnly: true,
+
+		updateFileListView: updateFileListView,
+		updateGlobalStatus: func(message string, color string) {
+			statusView.SetText(fmt.Sprintf("[%s]%s[-]", color, message))
+			go func() {
+				time.Sleep(5 * time.Second)
+				statusView.SetText(commitStatusMessage)
+			}()
+		},
+		setGlobalStatusText: func(text string) {
+			statusView.SetText(text)
+		},
+		refreshFileList:       func() {},
+		onUpdate:              nil,
+		updateCurrentDiffText: updateDiffText,
+		updateStatusTitle:     func() {},
+		onEsc:                 glv.backToLog,
+	}
+	SetupDiffViewKeyBindings(diffViewContext)
+
+	// FileListKeyContext 構築
+	fileListKeyContext := &FileListKeyContext{
+		fileListView:    fileListView,
+		diffView:        diffView,
+		beforeView:      beforeView,
+		afterView:       afterView,
+		splitViewFlex:   splitViewFlex,
+		unifiedViewFlex: unifiedViewFlex,
+		contentFlex:     contentFlex,
+		app:             glv.app,
+		mainView:        glv.flex,
+
+		currentSelection:  &currentSelection,
+		cursorY:           &cursorY,
+		isSelecting:       &isSelecting,
+		selectStart:       &selectStart,
+		selectEnd:         &selectEnd,
+		isSplitView:       &isSplitView,
+		leftPaneFocused:   &leftPaneFocused,
+		currentFile:       &currentFile,
+		currentStatus:     &currentStatus,
+		currentDiffText:   &currentDiffText,
+		preserveScrollRow: &preserveScrollRow,
+		ignoreWhitespace:  &ignoreWhitespace,
+
+		fileList:         &fileList,
+		dirCollapseState: dirCollapseState,
+		repoRoot:         glv.repoRoot,
+		diffViewContext:  diffViewContext,
+
+		readOnly: true,
+
+		updateFileListView:     updateFileListView,
+		updateSelectedFileDiff: updateSelectedFileDiff,
+		refreshFileList:        func() {},
+		updateCurrentDiffText:  updateDiffText,
+		updateGlobalStatus: func(message string, color string) {
+			statusView.SetText(fmt.Sprintf("[%s]%s[-]", color, message))
+			go func() {
+				time.Sleep(5 * time.Second)
+				statusView.SetText(commitStatusMessage)
+			}()
+		},
+		updateStatusTitle:      func() {},
+		onEsc:                  glv.backToLog,
+	}
+	SetupFileListKeyBindings(fileListKeyContext)
+
+	// 表示切り替え
+	glv.flex.Clear()
+	glv.flex.AddItem(commitMainFlex, 0, 1, true)
+	glv.showingCommit = true
+	glv.app.SetFocus(fileListView)
 }
 
 // backToLog returns to the log view from commit details
@@ -519,9 +649,8 @@ func (glv *GitLogView) backToLog() {
 	glv.app.SetFocus(glv.logView)
 }
 
-// setupKeyBindings configures keyboard navigation
-func (glv *GitLogView) setupKeyBindings() {
-	// Log view key bindings
+// setupLogKeyBindings configures keyboard navigation for the log list
+func (glv *GitLogView) setupLogKeyBindings() {
 	glv.logView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyEsc:
@@ -551,200 +680,11 @@ func (glv *GitLogView) setupKeyBindings() {
 			}
 			return nil
 		case 'g':
-			// ggで最上部に移動（root_editor.goと同じロジック）
 			now := time.Now()
 			if *glv.gPressed && now.Sub(*glv.lastGTime) < 500*time.Millisecond {
-				// 2回目のg - 最上部に移動
 				glv.currentLine = 0
 				glv.scrollOffset = 0
 				glv.updateSelection()
-				*glv.gPressed = false
-			} else {
-				// 1回目のg
-				*glv.gPressed = true
-				*glv.lastGTime = now
-			}
-			return nil
-		}
-
-		return event
-	})
-
-	// Commit file list key bindings
-	glv.commitFileList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if !glv.showingCommit {
-			return event
-		}
-
-		currentCommitHash := ""
-		if glv.currentLine < len(glv.logEntries) {
-			currentCommitHash = glv.logEntries[glv.currentLine].Hash
-		}
-
-		switch event.Key() {
-		case tcell.KeyEsc:
-			glv.backToLog()
-			return nil
-		case tcell.KeyLeft:
-			// ディレクトリ上: 展開中なら折りたたむ
-			if glv.selectedFile < len(glv.displayOrderPaths) {
-				filePath := glv.displayOrderPaths[glv.selectedFile]
-				if glv.isDirectoryPath(filePath) && !glv.dirCollapseState.IsCollapsed("commit", filePath) {
-					glv.dirCollapseState.SetCollapsed("commit", filePath, true)
-					glv.updateCommitFileList()
-					if glv.selectedFile >= len(glv.displayOrderPaths) {
-						glv.selectedFile = len(glv.displayOrderPaths) - 1
-						glv.updateCommitFileList()
-					}
-				}
-			}
-			return nil
-		case tcell.KeyRight:
-			// ディレクトリ上: 折りたたまれていたら展開、展開済みなら次のエントリに移動
-			if glv.selectedFile < len(glv.displayOrderPaths) {
-				filePath := glv.displayOrderPaths[glv.selectedFile]
-				if glv.isDirectoryPath(filePath) {
-					if glv.dirCollapseState.IsCollapsed("commit", filePath) {
-						glv.dirCollapseState.SetCollapsed("commit", filePath, false)
-						glv.updateCommitFileList()
-					} else if glv.selectedFile < len(glv.displayOrderPaths)-1 {
-						glv.selectedFile++
-						glv.updateCommitFileList()
-						if currentCommitHash != "" {
-							glv.showFileDiff(currentCommitHash)
-						}
-					}
-				}
-			}
-			return nil
-		case tcell.KeyEnter:
-			// ディレクトリの場合は折りたたみトグル
-			if glv.selectedFile < len(glv.displayOrderPaths) {
-				filePath := glv.displayOrderPaths[glv.selectedFile]
-				if glv.isDirectoryPath(filePath) {
-					glv.dirCollapseState.ToggleCollapsed("commit", filePath)
-					glv.updateCommitFileList()
-					if glv.selectedFile >= len(glv.displayOrderPaths) {
-						glv.selectedFile = len(glv.displayOrderPaths) - 1
-						glv.updateCommitFileList()
-					}
-					return nil
-				}
-			}
-			glv.leftPaneFocused = false
-			glv.updateCommitFileList()
-			glv.updateCommitDiff()
-			glv.app.SetFocus(glv.commitDiffView)
-			return nil
-		}
-
-		switch event.Rune() {
-		case 'q':
-			glv.quitApplication()
-			return nil
-		case 'h':
-			// ディレクトリ上: 展開中なら折りたたむ
-			if glv.selectedFile < len(glv.displayOrderPaths) {
-				filePath := glv.displayOrderPaths[glv.selectedFile]
-				if glv.isDirectoryPath(filePath) && !glv.dirCollapseState.IsCollapsed("commit", filePath) {
-					glv.dirCollapseState.SetCollapsed("commit", filePath, true)
-					glv.updateCommitFileList()
-					if glv.selectedFile >= len(glv.displayOrderPaths) {
-						glv.selectedFile = len(glv.displayOrderPaths) - 1
-						glv.updateCommitFileList()
-					}
-					return nil
-				}
-			}
-			return nil
-		case 'l':
-			// ディレクトリ上: 折りたたまれていたら展開、展開済みなら次のエントリに移動
-			if glv.selectedFile < len(glv.displayOrderPaths) {
-				filePath := glv.displayOrderPaths[glv.selectedFile]
-				if glv.isDirectoryPath(filePath) {
-					if glv.dirCollapseState.IsCollapsed("commit", filePath) {
-						glv.dirCollapseState.SetCollapsed("commit", filePath, false)
-						glv.updateCommitFileList()
-						return nil
-					}
-					// 展開済みなら次のエントリに移動
-					if glv.selectedFile < len(glv.displayOrderPaths)-1 {
-						glv.selectedFile++
-						glv.updateCommitFileList()
-						if currentCommitHash != "" {
-							glv.showFileDiff(currentCommitHash)
-						}
-					}
-					return nil
-				}
-			}
-			return nil
-		case 'j':
-			if glv.selectedFile < len(glv.displayOrderPaths)-1 {
-				glv.selectedFile++
-				glv.updateCommitFileList()
-				if currentCommitHash != "" {
-					glv.showFileDiff(currentCommitHash)
-				}
-			}
-			return nil
-		case 'k':
-			if glv.selectedFile > 0 {
-				glv.selectedFile--
-				glv.updateCommitFileList()
-				if currentCommitHash != "" {
-					glv.showFileDiff(currentCommitHash)
-				}
-			}
-			return nil
-		}
-
-		return event
-	})
-
-	// Commit diff view key bindings
-	glv.commitDiffView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if !glv.showingCommit {
-			return event
-		}
-
-		switch event.Key() {
-		case tcell.KeyEsc:
-			glv.backToLog()
-			return nil
-		case tcell.KeyEnter:
-			glv.leftPaneFocused = true
-			glv.updateCommitFileList()
-			glv.updateCommitDiff()
-			glv.app.SetFocus(glv.commitFileList)
-			return nil
-		}
-
-		switch event.Rune() {
-		case 'q':
-			glv.quitApplication()
-			return nil
-		case 'j':
-			// 下に移動
-			maxLines := glv.getDiffLineCount()
-			if glv.diffCursorY < maxLines-1 {
-				glv.diffCursorY++
-				glv.updateCommitDiff()
-			}
-			return nil
-		case 'k':
-			// 上に移動
-			if glv.diffCursorY > 0 {
-				glv.diffCursorY--
-				glv.updateCommitDiff()
-			}
-			return nil
-		case 'g':
-			// ggで最上部に移動
-			now := time.Now()
-			if *glv.gPressed && now.Sub(*glv.lastGTime) < 500*time.Millisecond {
-				glv.diffCursorY = 0
-				glv.updateCommitDiff()
 				*glv.gPressed = false
 			} else {
 				*glv.gPressed = true
@@ -752,24 +692,9 @@ func (glv *GitLogView) setupKeyBindings() {
 			}
 			return nil
 		case 'G':
-			// 最下部に移動
-			maxLines := glv.getDiffLineCount()
-			if maxLines > 0 {
-				glv.diffCursorY = maxLines - 1
-				glv.updateCommitDiff()
-			}
-			return nil
-		case 'y':
-			// 現在のカーソル行をコピー
-			lines := getSelectableDiffLines(glv.currentDiffText)
-			if len(lines) == 0 || glv.diffCursorY >= len(lines) {
-				return nil
-			}
-
-			line := lines[glv.diffCursorY]
-			sanitized := stripDiffPrefix(line)
-			if err := commands.CopyToClipboard(sanitized); err == nil {
-				// コピー成功
+			if len(glv.logEntries) > 0 {
+				glv.currentLine = len(glv.logEntries) - 1
+				glv.updateSelection()
 			}
 			return nil
 		}

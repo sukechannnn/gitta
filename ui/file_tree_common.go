@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/rivo/tview"
-	"github.com/sukechannnn/gitta/git"
-	"github.com/sukechannnn/gitta/util"
+	"github.com/sukechannnn/giff/git"
+	"github.com/sukechannnn/giff/util"
 )
 
 // FileEntry represents a file entry in the file list with ID, path and status
@@ -316,17 +316,30 @@ func renderFileTreeForFileEntries(
 		if child.IsFile {
 			// ファイルの場合
 			displayName := child.Name
+			var changeStatus string
 
 			// ファイルのステータスを検索して装飾を追加
 			for _, fileInfo := range fileEntries {
 				if fileInfo.Path == child.FullPath {
 					displayName = formatFileWithStatus(child.Name, fileInfo.ChangeStatus)
+					changeStatus = fileInfo.ChangeStatus
 					break
 				}
 			}
 
 			// tviewの色タグをエスケープ
 			escapedDisplayName := escapeTviewTags(displayName)
+
+			regionID := fmt.Sprintf("file-%d", *regionIndex)
+			if fileList != nil {
+				*fileList = append(*fileList, FileEntry{
+					ID:           regionID,
+					Path:         child.FullPath,
+					StageStatus:  stageStatus,
+					ChangeStatus: changeStatus,
+					IsDirectory:  false,
+				})
+			}
 
 			if *regionIndex == currentSelection && focusedPane {
 				sb.WriteString(fmt.Sprintf(`%s[white:blue]%s%s[""][-:-]`+"\n", prefix, connector, escapedDisplayName))
