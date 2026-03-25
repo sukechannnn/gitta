@@ -8,8 +8,8 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"github.com/sukechannnn/gitta/git"
-	"github.com/sukechannnn/gitta/ui/commands"
+	"github.com/sukechannnn/giff/git"
+	"github.com/sukechannnn/giff/ui/commands"
 )
 
 // moveFileListSelection moves the file list selection.
@@ -201,6 +201,45 @@ func BuildFileListContent(
 	return coloredContent.String()
 }
 
+// BuildFileListContentForCommit builds file list content from commit file entries
+func BuildFileListContentForCommit(
+	commitFiles []FileEntry,
+	currentSelection int,
+	focusedPane bool,
+	fileList *[]FileEntry,
+	lineNumberMap map[int]int,
+	collapseState *DirCollapseState,
+) string {
+	*fileList = (*fileList)[:0]
+	for k := range lineNumberMap {
+		delete(lineNumberMap, k)
+	}
+
+	tree := buildFileTreeFromFileEntries(commitFiles)
+
+	var content strings.Builder
+	regionIndex := 0
+	currentLine := 0
+
+	renderFileTreeForFileEntries(
+		tree,
+		0,
+		"",
+		&content,
+		fileList,
+		"commit",
+		&regionIndex,
+		currentSelection,
+		focusedPane,
+		lineNumberMap,
+		&currentLine,
+		commitFiles,
+		collapseState,
+	)
+
+	return content.String()
+}
+
 // FileListKeyContext contains all the context needed for file list key bindings
 type FileListKeyContext struct {
 	// UI Components
@@ -240,6 +279,9 @@ type FileListKeyContext struct {
 	// Diff view context
 	diffViewContext *DiffViewContext
 
+	// Mode
+	readOnly bool // true の場合、staging/discard 系を無効化
+
 	// Callbacks
 	updateFileListView     func()
 	updateSelectedFileDiff func()
@@ -247,12 +289,19 @@ type FileListKeyContext struct {
 	updateCurrentDiffText  func(string, string, string, *string, bool)
 	updateGlobalStatus     func(string, string)
 	updateStatusTitle      func()
+	onEsc                  func() // nil でない場合、Esc キーで呼び出す
 }
 
 // SetupFileListKeyBindings sets up key bindings for file list view
 func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 	ctx.fileListView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
+		case tcell.KeyEsc:
+			if ctx.onEsc != nil {
+				ctx.onEsc()
+				return nil
+			}
+			return event
 		case tcell.KeyUp:
 			moveFileListSelection(ctx, -1)
 			return nil
@@ -330,20 +379,22 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				}
 			}
 			return nil
-		case tcell.KeyCtrlY: // Ctrl+Y で .git があるリポジトリルートからのパスをコピー
-			if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
-				fileEntry := (*ctx.fileList)[*ctx.currentSelection]
-				err := commands.CopyFilePath(fileEntry.Path)
-				if ctx.updateGlobalStatus != nil {
-					if err == nil {
-						ctx.updateGlobalStatus("Copied path to clipboard", "forestgreen")
-					} else {
-						ctx.updateGlobalStatus("Failed to copy path to clipboard", "tomato")
-					}
-				}
+		case tcell.KeyCtrlE:
+			// Ctrl+E: diff view を1行下にスクロール
+			if ctx.diffViewContext != nil {
+				scrollDiffView(ctx.diffViewContext, 1)
+			}
+			return nil
+		case tcell.KeyCtrlY:
+			// Ctrl+Y: diff view を1行上にスクロール
+			if ctx.diffViewContext != nil {
+				scrollDiffView(ctx.diffViewContext, -1)
 			}
 			return nil
 		case tcell.KeyCtrlA:
+			if ctx.readOnly {
+				return nil
+			}
 			cmd := exec.Command("git", "-c", "core.quotepath=false", "add", "--all")
 			cmd.Dir = ctx.repoRoot
 			if err := cmd.Run(); err != nil {
@@ -405,15 +456,15 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					}
 				}
 				return nil
-			case 'y': // 'y' でファイル名のみをコピー
+			case 'Y': // Shift+Y でファイルパスをコピー
 				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
-					err := commands.CopyFileName(fileEntry.Path)
+					err := commands.CopyFilePath(fileEntry.Path)
 					if ctx.updateGlobalStatus != nil {
 						if err == nil {
-							ctx.updateGlobalStatus("Copied filename to clipboard", "forestgreen")
+							ctx.updateGlobalStatus("Copied path to clipboard", "forestgreen")
 						} else {
-							ctx.updateGlobalStatus("Failed to copy filename to clipboard", "tomato")
+							ctx.updateGlobalStatus("Failed to copy path to clipboard", "tomato")
 						}
 					}
 				}
@@ -454,6 +505,9 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				}
 				return nil
 			case 'a': // 'a' で現在のファイル/ディレクトリを git add/reset
+				if ctx.readOnly {
+					return nil
+				}
 				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 					file := fileEntry.Path
@@ -557,6 +611,9 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				}
 				return nil
 			case 'd': // 'd' で選択したファイルの差分を破棄（untracked fileの場合は削除）
+				if ctx.readOnly {
+					return nil
+				}
 				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 
@@ -631,6 +688,9 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				}
 				return nil
 			case 'v': // 'v' でvimでファイルを開く
+				if ctx.readOnly {
+					return nil
+				}
 				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 
@@ -646,7 +706,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 
 					// アプリケーションを一時停止してvimを起動
 					ctx.app.Suspend(func() {
-						cmd := exec.Command("vim", "-c", "set title titlestring=[gitta]\\ %f", filePath)
+						cmd := exec.Command("vim", "-c", "set title titlestring=[giff]\\ %f", filePath)
 						cmd.Dir = ctx.repoRoot
 						cmd.Stdin = os.Stdin
 						cmd.Stdout = os.Stdout
@@ -660,7 +720,28 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					ctx.updateSelectedFileDiff()
 				}
 				return nil
+			case 'c': // 'c' でVSCodeでファイルを開く
+				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
+					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
+					if fileEntry.IsDirectory {
+						if ctx.updateGlobalStatus != nil {
+							ctx.updateGlobalStatus("Cannot open directory in VSCode. Select a file.", "tomato")
+						}
+						return nil
+					}
+					cmd := exec.Command("code", fileEntry.Path)
+					cmd.Dir = ctx.repoRoot
+					if err := cmd.Start(); err != nil {
+						if ctx.updateGlobalStatus != nil {
+							ctx.updateGlobalStatus("Failed to open VSCode", "tomato")
+						}
+					}
+				}
+				return nil
 			case 't': // 't' でgit logビューを表示
+				if ctx.readOnly {
+					return nil
+				}
 				// Git Log Viewを作成
 				gitLogView := NewGitLogView(ctx.app, ctx.repoRoot, func() {
 					// Git Log Viewを終了して元のビューに戻る

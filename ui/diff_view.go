@@ -10,9 +10,9 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"github.com/sukechannnn/gitta/git"
-	"github.com/sukechannnn/gitta/ui/commands"
-	"github.com/sukechannnn/gitta/util"
+	"github.com/sukechannnn/giff/git"
+	"github.com/sukechannnn/giff/ui/commands"
+	"github.com/sukechannnn/giff/util"
 )
 
 // DiffViewContext contains all the context needed for diff view key bindings
@@ -66,6 +66,9 @@ type DiffViewContext struct {
 	searchInput               *string // 検索入力中の文字列（未確定）
 	searchCursorYBeforeSearch *int    // 検索開始前のカーソル位置
 
+	// Mode
+	readOnly bool // true の場合、staging/discard 系を無効化
+
 	// Callbacks
 	updateFileListView    func()
 	updateGlobalStatus    func(string, string)
@@ -74,6 +77,7 @@ type DiffViewContext struct {
 	onUpdate              func()
 	updateCurrentDiffText func(string, string, string, *string, bool)
 	updateStatusTitle     func()
+	onEsc                 func() // nil でない場合、Esc で左ペインに戻る代わりにこれを呼ぶ
 }
 
 // scrollDiffView scrolls the diff view by the specified direction and handles cursor following
@@ -167,7 +171,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 				}
 				if len(*ctx.searchMatches) > 0 {
-					ctx.setGlobalStatusText(fmt.Sprintf("[white]/%s [%d/%d][-]", tview.Escape(*ctx.searchQuery), *ctx.searchMatchIndex+1, len(*ctx.searchMatches)))
+					ctx.setGlobalStatusText(fmt.Sprintf("[white]/%s [%d/%d] matched[-]", tview.Escape(*ctx.searchQuery), *ctx.searchMatchIndex+1, len(*ctx.searchMatches)))
 				} else {
 					ctx.setGlobalStatusText(fmt.Sprintf("[tomato]/%s [no match][-]", tview.Escape(*ctx.searchQuery)))
 				}
@@ -255,15 +259,8 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			scrollDiffView(ctx, 1)
 			return nil
 		case tcell.KeyCtrlY:
-			// Ctrl+Y: ファイルパスをコピー
-			if *ctx.currentFile != "" {
-				err := commands.CopyFilePath(*ctx.currentFile)
-				if err == nil {
-					ctx.updateGlobalStatus("Copied path to clipboard", "forestgreen")
-				} else {
-					ctx.updateGlobalStatus("Failed to copy path to clipboard", "tomato")
-				}
-			}
+			// Ctrl+Y: 1行上にスクロール
+			scrollDiffView(ctx, -1)
 			return nil
 		case tcell.KeyCtrlL:
 			// Ctrl+L: 選択中は file/path:XX-YY をコピー、非選択中はファイルパスをコピー
@@ -569,6 +566,17 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 
 				return nil
+			case 'Y':
+				// Shift+Y: ファイルパスをコピー
+				if *ctx.currentFile != "" {
+					err := commands.CopyFilePath(*ctx.currentFile)
+					if err == nil {
+						ctx.updateGlobalStatus("Copied path to clipboard", "forestgreen")
+					} else {
+						ctx.updateGlobalStatus("Failed to copy path to clipboard", "tomato")
+					}
+				}
+				return nil
 			case '/':
 				// 検索モード開始
 				*ctx.isSearchMode = true
@@ -589,12 +597,18 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			case 'u':
+				if ctx.readOnly {
+					return nil
+				}
 				ctx.updateGlobalStatus("undo is not implemented!", "tomato")
 			case 'v':
+				if ctx.readOnly {
+					return nil
+				}
 				// vim でファイルを開く
 				if *ctx.currentFile != "" {
 					ctx.app.Suspend(func() {
-						cmd := exec.Command("vim", "-c", "set title titlestring=[gitta]\\ %f", *ctx.currentFile)
+						cmd := exec.Command("vim", "-c", "set title titlestring=[giff]\\ %f", *ctx.currentFile)
 						cmd.Dir = ctx.repoRoot
 						cmd.Stdin = os.Stdin
 						cmd.Stdout = os.Stdout
@@ -606,6 +620,16 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					ctx.updateCurrentDiffText(*ctx.currentFile, *ctx.currentStatus, ctx.repoRoot, ctx.currentDiffText, *ctx.ignoreWhitespace)
 					if ctx.viewUpdater != nil {
 						ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+					}
+				}
+				return nil
+			case 'c':
+				// VSCode でファイルを開く
+				if *ctx.currentFile != "" {
+					cmd := exec.Command("code", *ctx.currentFile)
+					cmd.Dir = ctx.repoRoot
+					if err := cmd.Start(); err != nil {
+						ctx.updateGlobalStatus("Failed to open VSCode", "tomato")
 					}
 				}
 				return nil
@@ -631,6 +655,9 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			case 'a':
+				if ctx.readOnly {
+					return nil
+				}
 				// commandA関数を呼び出す
 				// Unified viewの場合、fold indicatorを除外した実際の差分行インデックスに変換
 				selectStart := *ctx.selectStart
@@ -740,6 +767,9 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			case 'A':
+				if ctx.readOnly {
+					return nil
+				}
 				// 現在のファイルをステージ/アンステージ
 				if *ctx.currentFile != "" {
 					var cmd *exec.Cmd
@@ -900,7 +930,7 @@ func highlightSearchInTaggedText(tagged string, query string) string {
 		return tagged
 	}
 
-	const hlStart = "[:#665500]"
+	hlStart := "[:" + util.SearchHighlightBg + "]"
 	const hlEnd = "[:-]"
 
 	var result strings.Builder
@@ -977,6 +1007,7 @@ func searchInUnifiedContent(content *UnifiedViewContent, query string) []int {
 func performSearch(ctx *DiffViewContext) {
 	query := *ctx.searchInput
 	if query == "" {
+		*ctx.searchQuery = ""
 		*ctx.searchMatches = nil
 		*ctx.searchMatchIndex = -1
 		*ctx.cursorY = *ctx.searchCursorYBeforeSearch
@@ -986,6 +1017,9 @@ func performSearch(ctx *DiffViewContext) {
 		ctx.setGlobalStatusText("[white]/[-]")
 		return
 	}
+
+	// リアルタイムで検索ハイライトを適用するため searchQuery も更新
+	*ctx.searchQuery = query
 
 	content := getCachedUnifiedContent(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
 	matches := searchInUnifiedContent(content, query)
