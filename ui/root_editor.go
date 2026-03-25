@@ -10,8 +10,8 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"github.com/sukechannnn/gitta/git"
-	"github.com/sukechannnn/gitta/util"
+	"github.com/sukechannnn/giff/git"
+	"github.com/sukechannnn/giff/util"
 )
 
 // 保持するカーソル情報
@@ -20,8 +20,8 @@ var preferUnstagedSection bool = false
 
 // globalStatusView をグローバルに定義
 var globalStatusView *tview.TextView
-var fileListKeyMessage = "a:stage  A:stage file  d:discard  C-a:stage all  C-k:commit  C-j:amend  H/L:dir  s:split  w:ws  v:vim  t:log  y:copy  Enter:switch  q:quit"
-var diffViewKeyMessage = "a:stage lines  A:stage file  V:select  j/k:move  g/G:top/end  /:search  e:fold  s:split  w:ws  u:unstage  C-y:copy  Esc:back  q:quit"
+var fileListKeyMessage = "a:stage  A:stage file  d:discard  C-a:stage all  C-k:commit  C-j:amend  H/L:dir  s:split  w:ws  v:vim  t:log  Y:copy  C-e/C-y:scroll  Enter:switch  q:quit"
+var diffViewKeyMessage = "a:stage lines  A:stage file  V:select  g/G:top/end  /:search  e:fold  s:split  w:ws  y:yank  Y:copy path  C-e/C-y:scroll  Esc:back  q:quit"
 
 // restoreStatusFunc is called to restore the default status message (set by SetupRootEditor)
 var restoreStatusFunc func()
