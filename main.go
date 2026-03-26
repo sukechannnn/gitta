@@ -14,6 +14,7 @@ import (
 	"github.com/sukechannnn/giff/config"
 	"github.com/sukechannnn/giff/git"
 	"github.com/sukechannnn/giff/ui"
+	"github.com/sukechannnn/giff/util"
 )
 
 var version = "dev"
@@ -42,6 +43,10 @@ func main() {
 		fmt.Printf("%s\n", version)
 		return
 	}
+
+	// Create shell snapshot for terminal command aliases
+	util.CreateShellSnapshot()
+	defer util.CleanupShellSnapshot()
 
 	// Detect the Git repository root
 	repoPath, err := git.FindGitRoot(".")
@@ -77,6 +82,7 @@ func main() {
 				log.Printf("Removed %s", giffApp.Config.PatchFilePath)
 			}
 		}
+		util.CleanupShellSnapshot()
 		giffApp.App.Stop()
 		os.Exit(0)
 	}()
