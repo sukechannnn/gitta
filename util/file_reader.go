@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// ReadFileContent ファイルの内容を読み取る
+// ReadFileContent reads the contents of a file
 func ReadFileContent(filePath string, repoRoot string) (string, error) {
 	fullPath := filepath.Join(repoRoot, filePath)
 	content, err := os.ReadFile(fullPath)
@@ -17,12 +17,12 @@ func ReadFileContent(filePath string, repoRoot string) (string, error) {
 	return string(content), nil
 }
 
-// FormatAsAddedLines ファイル内容を全て追加行として差分形式にフォーマット
+// FormatAsAddedLines formats file content as all-added lines in diff format
 func FormatAsAddedLines(content string, filePath string) string {
 	lines := strings.Split(content, "\n")
 	var result strings.Builder
 
-	// Git差分のヘッダー
+	// Git diff header
 	result.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", filePath, filePath))
 	result.WriteString("new file mode 100644\n")
 	result.WriteString("index 0000000..0000000\n")
@@ -30,7 +30,7 @@ func FormatAsAddedLines(content string, filePath string) string {
 	result.WriteString(fmt.Sprintf("+++ b/%s\n", filePath))
 	result.WriteString(fmt.Sprintf("@@ -0,0 +1,%d @@\n", len(lines)))
 
-	// 各行を追加行として表示
+	// Display each line as an added line
 	for _, line := range lines {
 		result.WriteString(fmt.Sprintf("+%s\n", line))
 	}

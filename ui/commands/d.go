@@ -16,17 +16,17 @@ type CommandDParams struct {
 
 // CommandD handles the 'd' command for discarding changes
 func CommandD(params CommandDParams) error {
-	// stagedファイルの場合はサポートされていないことを通知
+	// Notify that discarding staged changes is not supported
 	if params.CurrentStatus == "staged" {
 		return fmt.Errorf("Cannot discard staged changes. Use 'a' to unstage first.")
 	}
 
-	// ファイルが選択されていない場合
+	// No file selected
 	if params.CurrentFile == "" {
 		return fmt.Errorf("No file selected")
 	}
 
-	// untracked fileの場合はファイルを削除
+	// Delete the file if it is untracked
 	if params.CurrentStatus == "untracked" {
 		fullPath := filepath.Join(params.RepoRoot, params.CurrentFile)
 		if err := os.RemoveAll(fullPath); err != nil {
@@ -35,7 +35,7 @@ func CommandD(params CommandDParams) error {
 		return nil
 	}
 
-	// unstaged fileの場合はgit checkoutで変更を破棄
+	// Discard changes via git checkout for unstaged files
 	cmd := exec.Command("git", "checkout", "--", params.CurrentFile)
 	cmd.Dir = params.RepoRoot
 	if output, err := cmd.CombinedOutput(); err != nil {

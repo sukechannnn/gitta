@@ -6,7 +6,7 @@ import (
 )
 
 func Commit(message string, repoRoot string) error {
-	// git commit コマンドを実行
+	// Execute git commit command
 	cmd := exec.Command("git", "commit", "-m", message)
 	cmd.Dir = repoRoot
 	output, err := cmd.CombinedOutput()
@@ -17,7 +17,7 @@ func Commit(message string, repoRoot string) error {
 }
 
 func CommitAmend(message string, repoRoot string) error {
-	// git commit --amend コマンドを実行
+	// Execute git commit --amend command
 	cmd := exec.Command("git", "commit", "--amend", "-m", message)
 	cmd.Dir = repoRoot
 	output, err := cmd.CombinedOutput()

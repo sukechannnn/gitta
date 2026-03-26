@@ -10,7 +10,7 @@ import (
 func CreateVerticalBorder() *tview.Box {
 	verticalBorder := tview.NewBox().
 		SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-			// 縦線を描画
+			// Draw vertical line
 			style := tcell.StyleDefault.
 				Foreground(tcell.ColorWhite).
 				Background(util.BackgroundColor.ToTcellColor())
@@ -28,19 +28,19 @@ func CreateVerticalBorder() *tview.Box {
 func CreateHorizontalTopBorder() *tview.Box {
 	horizontalBorder := tview.NewBox().
 		SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-			// 横線を描画
+			// Draw horizontal line
 			style := tcell.StyleDefault.
 				Foreground(tcell.ColorWhite).
 				Background(util.BackgroundColor.ToTcellColor())
 
-			// まず横線を全体に描画
+			// First draw the horizontal line across the full width
 			for i := x; i < x+width; i++ {
 				screen.SetContent(i, y, '─', nil, style)
 			}
 
 			leftBorderPos, middleBorderPos, rightBorderPos := calcBorderPos(width)
 
-			// 交差部分を描画
+			// Draw intersection characters
 			screen.SetContent(x+leftBorderPos, y, '┌', nil, style)
 			screen.SetContent(x+middleBorderPos, y, '┬', nil, style)
 			screen.SetContent(x+rightBorderPos, y, '┐', nil, style)
@@ -55,19 +55,19 @@ func CreateHorizontalTopBorder() *tview.Box {
 func CreateHorizontalBottomBorder() *tview.Box {
 	horizontalBorder := tview.NewBox().
 		SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-			// 横線を描画
+			// Draw horizontal line
 			style := tcell.StyleDefault.
 				Foreground(tcell.ColorWhite).
 				Background(util.BackgroundColor.ToTcellColor())
 
-			// まず横線を全体に描画
+			// First draw the horizontal line across the full width
 			for i := x; i < x+width; i++ {
 				screen.SetContent(i, y, '─', nil, style)
 			}
 
 			leftBorderPos, middleBorderPos, rightBorderPos := calcBorderPos(width)
 
-			// 交差部分を描画（下線用）
+			// Draw intersection characters (for bottom border)
 			screen.SetContent(x+leftBorderPos, y, '└', nil, style)
 			screen.SetContent(x+middleBorderPos, y, '┴', nil, style)
 			screen.SetContent(x+rightBorderPos, y, '┘', nil, style)
@@ -79,15 +79,15 @@ func CreateHorizontalBottomBorder() *tview.Box {
 }
 
 func calcBorderPos(width int) (int, int, int) {
-	// 縦線の位置を計算
-	// レイアウト: 縦線(1) + textView(比率FileListFlexRatio) + 縦線(1) + diffView(比率DiffViewFlexRatio) + 縦線(1)
-	totalFlexWidth := width - 3                  // 3つの縦線の幅を除く
-	unitWidth := totalFlexWidth / TotalFlexRatio // 比率の合計
+	// Calculate vertical line positions
+	// Layout: verticalLine(1) + textView(ratio FileListFlexRatio) + verticalLine(1) + diffView(ratio DiffViewFlexRatio) + verticalLine(1)
+	totalFlexWidth := width - 3                  // Exclude the width of 3 vertical lines
+	unitWidth := totalFlexWidth / TotalFlexRatio // Total ratio
 
-	// 各縦線の位置
-	leftBorderPos := 0                                 // 左端の縦線
-	middleBorderPos := 1 + unitWidth*FileListFlexRatio // 左縦線(1) + textView(unitWidth*FileListFlexRatio)
-	rightBorderPos := width - 1                        // 右端の縦線
+	// Position of each vertical line
+	leftBorderPos := 0                                 // Left edge vertical line
+	middleBorderPos := 1 + unitWidth*FileListFlexRatio // Left line(1) + textView(unitWidth*FileListFlexRatio)
+	rightBorderPos := width - 1                        // Right edge vertical line
 
 	return leftBorderPos, middleBorderPos, rightBorderPos
 }

@@ -14,11 +14,11 @@ import (
 	"github.com/sukechannnn/giff/util"
 )
 
-// 保持するカーソル情報
+// Saved cursor information
 var savedTargetFile string = ""
 var preferUnstagedSection bool = false
 
-// globalStatusView をグローバルに定義
+// globalStatusView defined globally
 var globalStatusView *tview.TextView
 var fileListKeyMessage = "a:stage  A:stage file  d:discard  C-a:stage all  C-k:commit  C-j:amend  H/L:dir  s:split  w:ws  v:vim  t:log  Y:copy  C-e/C-y:scroll  Enter:switch  q:quit"
 var diffViewKeyMessage = "a:stage lines  A:stage file  V:select  g/G:top/end  /:search  e:fold  s:split  w:ws  y:yank  Y:copy path  C-e/C-y:scroll  Esc:back  q:quit"
@@ -38,25 +38,22 @@ func updateGlobalStatus(message string, color string) {
 	}
 }
 
-// ファイルの差分を取得
+// Get diff for a file
 func updateCurrentDiffText(filePath string, status string, repoRoot string, currentDiffText *string, ignoreWhitespace bool) {
 	var diffText string
 	var err error
 
-	// ディレクトリかどうかをチェック
+	// Check if it's a directory
 	fullPath := filepath.Join(repoRoot, filePath)
 	fileInfo, statErr := os.Stat(fullPath)
 	if statErr == nil && fileInfo.IsDir() {
-		// ディレクトリの場合は何もしない
 		return
 	}
 
 	switch status {
 	case "staged":
-		// stagedファイルの場合はstaged差分を取得
 		diffText, err = git.GetStagedDiffWithOptions(filePath, repoRoot, ignoreWhitespace)
 	case "untracked":
-		// untrackedファイルの場合はファイル内容を読み取って全て追加として表示
 		content, readErr := util.ReadFileContent(filePath, repoRoot)
 		if readErr != nil {
 			err = readErr
@@ -64,33 +61,30 @@ func updateCurrentDiffText(filePath string, status string, repoRoot string, curr
 			diffText = util.FormatAsAddedLines(content, filePath)
 		}
 	default:
-		// unstagedファイルの場合は通常の差分を取得
 		diffText, err = git.GetFileDiffWithOptions(filePath, repoRoot, ignoreWhitespace)
 	}
 
 	if err != nil {
-		// エラーが発生した場合でも適切なメッセージを表示
 		diffText = fmt.Sprintf("Error getting diff for %s: %v\n\nThis might be a deleted file or there might be an issue with git.", filePath, err)
 	}
 
-	// 生の差分テキストを保存
 	if currentDiffText != nil {
 		*currentDiffText = diffText
 	}
 }
 
 func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFiles []git.FileInfo, repoRoot string, patchFilePath string, onUpdate func(), enableAutoRefresh bool) tview.Primitive {
-	// ファイルリストを更新するための参照を保持
+	// Keep references for updating file lists
 	stagedFilesPtr := &stagedFiles
 	modifiedFilesPtr := &modifiedFiles
 	untrackedFilesPtr := &untrackedFiles
 
-	// コミット関連の状態
+	// Commit-related state
 	var isCommitMode bool = false
 	var isAmendMode bool = false
 	var commitMessage string = ""
-	var focusBeforeCommit tview.Primitive = nil // コミットモード前のフォーカス位置
-	// 現在のファイル情報を保持
+	var focusBeforeCommit tview.Primitive = nil // focus position before commit mode
+	// Keep current file info
 	var currentFile string
 	var currentStatus string
 	var currentDiffText string
@@ -102,8 +96,8 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	var leftPaneFocused bool = true
 	var gPressed bool = false
 	var lastGTime time.Time
-	var isSplitView bool = false      // Split Viewモードのフラグ
-	var ignoreWhitespace bool = false // Whitespace無視モードのフラグ
+	var isSplitView bool = false      // split view mode flag
+	var ignoreWhitespace bool = false // ignore whitespace mode flag
 
 	// Search state
 	var searchQuery string
@@ -116,7 +110,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	// Fold state for managing expandable ranges
 	foldState := NewFoldState()
 
-	// ステータスバーのタイトルを更新する関数
+	// Function to update the status bar title
 	updateStatusTitle := func() {
 		var titleParts []string
 		if enableAutoRefresh {
@@ -140,7 +134,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		}
 	}
 
-	// listStatusView を作成
+	// Create listStatusView
 	globalStatusView = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft).
@@ -148,10 +142,10 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	globalStatusView.SetBorder(true)
 	globalStatusView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
-	// フレックスレイアウトを作成（上下分割、その下に左右分割）
+	// Create flex layout (vertical split, then horizontal split below)
 	mainFlex := tview.NewFlex().SetDirection(tview.FlexRow)
 
-	// 左ペイン（ファイルリスト）のテキストビューを作成
+	// Create text view for left pane (file list)
 	fileListView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetRegions(true).
@@ -159,7 +153,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	fileListView.SetBorder(true).SetTitle("j/k: navigate, Enter: switch to diff")
 	fileListView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
-	// 右ペイン（差分表示）のテキストビューを作成
+	// Create text view for right pane (diff display)
 	diffView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetRegions(true).
@@ -168,12 +162,12 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	diffView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 	diffView.SetBorderStyle(tcell.StyleDefault)
 
-	// Unified View用のフレックスコンテナ
+	// Flex container for unified view
 	unifiedViewFlex := tview.NewFlex().
 		AddItem(diffView, 0, 1, false)
 	unifiedViewFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
-	// Split View用のテキストビューを作成
+	// Create text views for split view
 	beforeView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetRegions(true).
@@ -188,40 +182,40 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	afterView.SetBorder(true).SetTitle("After")
 	afterView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
-	// Split View用のフレックスコンテナ
+	// Flex container for split view
 	splitViewFlex := tview.NewFlex().
 		AddItem(beforeView, 0, 1, false).
 		AddItem(afterView, 0, 1, false)
 	splitViewFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
-	// カーソル復元フラグを保存（fileList構築後に復元する）
+	// Save cursor restore flags (will be restored after fileList is built)
 	needsCursorRestore := preferUnstagedSection || savedTargetFile != ""
 	savedPreferUnstaged := preferUnstagedSection
 	savedTarget := savedTargetFile
 	preferUnstagedSection = false
 	savedTargetFile = ""
 
-	// ファイル一覧を構築するための変数
+	// Variables for building the file list
 	var fileList []FileEntry
 	var lineNumberMap = make(map[int]int)
 	dirCollapseState := NewDirCollapseState()
 
-	// コミットメッセージ入力エリア
+	// Commit message input area
 	commitTextArea := tview.NewTextArea().
 		SetPlaceholder("Enter commit message (Option+Enter to commit, Ctrl+O to return, Ctrl+L to file list, Esc to cancel)")
 
-	// TextAreaのスタイル設定
-	// テキストスタイル（入力される文字）
+	// TextArea style settings
+	// Text style (for input characters)
 	commitTextArea.SetTextStyle(tcell.StyleDefault.
 		Foreground(util.MainTextColor.ToTcellColor()).
 		Background(util.BackgroundColor.ToTcellColor()))
 
-	// プレースホルダーのスタイル
+	// Placeholder style
 	commitTextArea.SetPlaceholderStyle(tcell.StyleDefault.
 		Foreground(util.PlaceholderColor.ToTcellColor()).
 		Background(util.BackgroundColor.ToTcellColor()))
 
-	// 背景色とボーダー設定
+	// Background color and border settings
 	commitTextArea.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 	commitTextArea.SetBorder(true)
 	commitTextArea.SetBorderColor(util.CommitAreaBorderColor.ToTcellColor())
@@ -229,16 +223,16 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	commitTextArea.SetTitleAlign(tview.AlignLeft)
 	commitTextArea.SetTitleColor(tcell.ColorWhite)
 
-	// 左右分割のフレックス
+	// Left-right split flex
 	contentFlex := tview.NewFlex()
 	contentFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
-	// レイアウト設定
+	// Layout settings
 	contentFlex.
 		AddItem(fileListView, 0, FileListFlexRatio, true).
 		AddItem(unifiedViewFlex, 0, DiffViewFlexRatio, false)
 
-	// ファイル一覧の内容を構築（色付き）
+	// Build file list content (colorized)
 	buildFileListContent := func(focusedPane bool) string {
 		return BuildFileListContent(
 			*stagedFilesPtr,
@@ -252,55 +246,55 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		)
 	}
 
-	// スクロール位置を保持するための変数
+	// Variable to preserve scroll position
 	var preserveScrollRow int = -1
 
-	// 初期表示を更新
+	// Update initial display
 	updateFileListView := func() {
-		// 現在のスクロール位置を保存
+		// Save current scroll position
 		currentRow, currentCol := fileListView.GetScrollOffset()
 
-		// preserveScrollRowが設定されている場合はそれを使用（viewerから戻った時）
+		// Use preserveScrollRow if set (when returning from viewer)
 		shouldPreserveScroll := preserveScrollRow >= 0
 		if shouldPreserveScroll {
 			currentRow = preserveScrollRow
-			preserveScrollRow = -1 // リセット
+			preserveScrollRow = -1 // reset
 		}
 
 		fileListView.Clear()
 		fileListView.SetText(buildFileListContent(leftPaneFocused))
 
-		// スクロール位置の処理
+		// Scroll position handling
 		if shouldPreserveScroll {
-			// viewerから戻った時はスクロール位置を復元
+			// Restore scroll position when returning from viewer
 			fileListView.ScrollTo(currentRow, currentCol)
 		} else {
-			// 通常の操作時は選択行が見える範囲にスクロール
+			// During normal operation, scroll to keep selected line visible
 			if actualLine, exists := lineNumberMap[currentSelection]; exists {
 				_, _, _, height := fileListView.GetInnerRect()
 
-				// 選択行が画面より下にある場合
+				// If selected line is below the screen
 				if actualLine >= currentRow+height-1 {
 					fileListView.ScrollTo(actualLine-height+2, currentCol)
 				} else if actualLine < currentRow {
-					// 選択行が画面より上にある場合
-					// 一番上のファイル（currentSelection == 0）の場合は先頭にスクロールしてヘッダーを表示
+					// If selected line is above the screen
+					// For the first file (currentSelection == 0), scroll to top to show header
 					if currentSelection == 0 {
 						fileListView.ScrollTo(0, currentCol)
 					} else {
 						fileListView.ScrollTo(actualLine, currentCol)
 					}
 				} else {
-					// 選択行が見える範囲内にある場合は、現在のスクロール位置を維持
+					// If selected line is within visible range, maintain current scroll position
 					fileListView.ScrollTo(currentRow, currentCol)
 				}
 			}
 		}
 	}
 
-	// ファイルリストを内部的に更新する関数
+	// Function to internally update the file list
 	refreshFileList := func() {
-		// 新しいファイルリストを取得
+		// Get new file list
 		newStaged, newModified, newUntracked, err := git.GetChangedFiles(repoRoot)
 		if err == nil {
 			*stagedFilesPtr = newStaged
@@ -309,11 +303,11 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		}
 	}
 
-	// 選択されているファイルの差分を更新する関数
+	// Function to update the diff of the selected file
 	updateSelectedFileDiff := func() {
-		// 選択範囲を調整
+		// Adjust selection range
 		if len(fileList) == 0 {
-			// ファイルリストが空の場合
+			// If file list is empty
 			currentDiffText = "No file content ✨"
 			currentFile = ""
 			currentStatus = ""
@@ -326,7 +320,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			return
 		}
 
-		// currentSelectionが範囲外の場合は調整
+		// Adjust if currentSelection is out of range
 		if currentSelection < 0 {
 			currentSelection = 0
 		} else if currentSelection >= len(fileList) {
@@ -335,7 +329,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 		fileEntry := fileList[currentSelection]
 
-		// ディレクトリ選択時はパスを表示
+		// Show path when directory is selected
 		if fileEntry.IsDirectory {
 			currentDiffText = ""
 			currentFile = ""
@@ -353,11 +347,11 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		file := fileEntry.Path
 		status := fileEntry.StageStatus
 
-		// 現在のファイル情報を更新
+		// Update current file info
 		currentFile = file
 		currentStatus = status
 
-		// カーソルと選択をリセット
+		// Reset cursor and selection
 		cursorY = 0
 		isSelecting = false
 		selectStart = -1
@@ -370,11 +364,12 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		} else {
 			updateDiffViewWithoutCursor(diffView, currentDiffText, foldState, currentFile, repoRoot)
 		}
+
 	}
 
 	updateFileListView()
 
-	// カーソル位置の復元（fileList構築後に実行）
+	// Restore cursor position (executed after fileList is built)
 	if needsCursorRestore {
 		for i, entry := range fileList {
 			if entry.IsDirectory {
@@ -392,7 +387,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		updateFileListView()
 	}
 
-	// 初期選択がディレクトリの場合は最初のファイルを選択
+	// If initial selection is a directory, select the first file
 	if currentSelection < len(fileList) && fileList[currentSelection].IsDirectory {
 		for i, entry := range fileList {
 			if !entry.IsDirectory {
@@ -403,15 +398,15 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		}
 	}
 
-	// 初期表示時に最初のファイルの差分を表示
+	// Show diff of the first file on initial display
 	updateSelectedFileDiff()
 
-	// 初期メッセージを設定
+	// Set initial message
 	globalStatusView.SetText(fileListKeyMessage)
 	updateStatusTitle()
 
-	// 右ペインのキー入力処理を設定（file_view.goと同じ動作）
-	// diffViewのキーバインディングを設定
+	// Set up key input handling for right pane (same behavior as file_view.go)
+	// Set up diff view key bindings
 	diffViewContext := &DiffViewContext{
 		// UI Components
 		diffView:        diffView,
@@ -483,7 +478,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	}
 	SetupDiffViewKeyBindings(diffViewContext)
 
-	// ファイルリストのキーバインディングを設定（一時的にnilを設定）
+	// Set up file list key bindings
 	fileListKeyContext := &FileListKeyContext{
 		// UI Components
 		fileListView:    fileListView,
@@ -494,7 +489,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		unifiedViewFlex: unifiedViewFlex,
 		contentFlex:     contentFlex,
 		app:             app,
-		mainView:        mainFlex, // メインビューの参照を追加
+		mainView:        mainFlex, // add reference to main view
 
 		// State
 		currentSelection:  &currentSelection,
@@ -520,7 +515,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		repoRoot: repoRoot,
 
 		// Diff view context
-		diffViewContext: diffViewContext, // 後で設定
+		diffViewContext: diffViewContext,
 
 		// Callbacks
 		updateFileListView:     updateFileListView,
@@ -532,14 +527,14 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	}
 	SetupFileListKeyBindings(fileListKeyContext)
 
-	// 自動リフレッシュが有効な場合のみゴルーチンを開始
+	// Start goroutine only when auto-refresh is enabled
 	if enableAutoRefresh {
 		stopRefresh := make(chan bool)
 
-		// 前回のファイルリストをキャッシュするための変数
+		// Variables to cache previous file list
 		var lastStagedFiles, lastModifiedFiles, lastUntrackedFiles []git.FileInfo
 
-		// ファイルリストが変更されたかどうかを判定する関数
+		// Function to determine if file list has changed
 		hasFileListChanged := func(newStaged, newModified, newUntracked []git.FileInfo) bool {
 			if len(lastStagedFiles) != len(newStaged) ||
 				len(lastModifiedFiles) != len(newModified) ||
@@ -547,7 +542,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 				return true
 			}
 
-			// 各ファイルリストの内容を比較
+			// Compare contents of each file list
 			for i := range newStaged {
 				if lastStagedFiles[i].Path != newStaged[i].Path ||
 					lastStagedFiles[i].ChangeStatus != newStaged[i].ChangeStatus {
@@ -573,19 +568,19 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		}
 
 		go func() {
-			ticker := time.NewTicker(1 * time.Second)
+			ticker := time.NewTicker(2 * time.Second)
 			defer ticker.Stop()
 
 			for {
 				select {
 				case <-ticker.C:
-					// 新しいファイルリストを取得
+					// Get new file list
 					newStaged, newModified, newUntracked, err := git.GetChangedFiles(repoRoot)
 					if err != nil {
-						continue // エラーが発生した場合は何もしない
+						continue // do nothing if error occurs
 					}
 
-					// 現在選択中のファイルの差分変更もチェック
+					// Also check for diff changes in the currently selected file
 					var currentFileDiffChanged bool = false
 					var newDiffText string
 					if currentFile != "" {
@@ -602,17 +597,17 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 						currentFileDiffChanged = (newDiffText != currentDiffText)
 					}
 
-					// ファイルリストに変更があるかチェック
+					// Check if file list has changed
 					fileListChanged := hasFileListChanged(newStaged, newModified, newUntracked)
 
-					// ファイルリストの変更も現在のファイルの差分変更もない場合は何もしない
+					// Do nothing if neither file list nor current file diff has changed
 					if !fileListChanged && !currentFileDiffChanged {
 						continue
 					}
 
 					app.QueueUpdateDraw(func() {
 
-						// 現在の選択ファイルとステータスを保存
+						// Save currently selected file and status
 						var currentlySelectedFile string
 						var currentlySelectedStatus string
 						if currentSelection >= 0 && currentSelection < len(fileList) {
@@ -621,19 +616,19 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 							currentlySelectedStatus = fileEntry.StageStatus
 						}
 
-						// ファイルリストが変更された場合のみキャッシュとリストを更新
+						// Update cache and list only when file list has changed
 						if fileListChanged {
-							// キャッシュを更新
+							// Update cache
 							lastStagedFiles = newStaged
 							lastModifiedFiles = newModified
 							lastUntrackedFiles = newUntracked
 
-							// ファイルリストを更新
+							// Update file list
 							*stagedFilesPtr = newStaged
 							*modifiedFilesPtr = newModified
 							*untrackedFilesPtr = newUntracked
 
-							// 選択位置を復元（ファイル名とステータスの両方で検索）
+							// Restore selection position (search by both filename and status)
 							newSelection := -1
 							for i, fileEntry := range fileList {
 								if fileEntry.Path == currentlySelectedFile && fileEntry.StageStatus == currentlySelectedStatus {
@@ -644,9 +639,9 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 							if newSelection >= 0 {
 								currentSelection = newSelection
 							} else {
-								// 選択していたファイルが消えた場合は先頭に戻す
+								// If selected file disappeared, go back to the top
 								currentSelection = 0
-								// diff view にフォーカスがある場合はファイルリストに戻す
+								// If focus is on diff view, return to file list
 								if !leftPaneFocused {
 									leftPaneFocused = true
 									restoreStatusFunc()
@@ -654,17 +649,17 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 								}
 							}
 
-							// 表示を更新
+							// Update display
 							updateFileListView()
 						}
 
-						// 右ペインの差分更新
+						// Update right pane diff
 						if leftPaneFocused {
-							// 左ペインにフォーカスがある場合
+							// If left pane is focused
 							if fileListChanged {
 								updateSelectedFileDiff()
 							} else if currentFileDiffChanged {
-								// ファイルリストは変わっていないが、差分内容が変わった場合
+								// File list hasn't changed but diff content has changed
 								currentDiffText = newDiffText
 								if isSplitView {
 									updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText, currentFile)
@@ -673,12 +668,12 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 								}
 							}
 						} else if currentFile != "" {
-							// 右ペインにフォーカスがある場合は現在のカーソル位置を保持して更新
-							// 差分が変更された場合のみ更新
+							// If right pane is focused, update while preserving cursor position
+							// Only update if diff has changed
 							if newDiffText != currentDiffText {
 								currentDiffText = newDiffText
 
-								// 空の差分の場合の処理
+								// Handle empty diff
 								if len(currentDiffText) == 0 {
 									if isSplitView {
 										beforeView.SetText("")
@@ -692,7 +687,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 								coloredDiff := ColorizeDiff(currentDiffText)
 								diffLines := util.SplitLines(coloredDiff)
 
-								// カーソル位置を調整（差分の行数が減った場合）
+								// Adjust cursor position (if diff line count decreased)
 								if cursorY >= len(diffLines) {
 									cursorY = len(diffLines) - 1
 									if cursorY < 0 {
@@ -700,7 +695,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 									}
 								}
 
-								// 選択範囲も調整
+								// Also adjust selection range
 								if isSelecting {
 									if selectStart >= len(diffLines) {
 										selectStart = len(diffLines) - 1
@@ -710,7 +705,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 									}
 								}
 
-								// Split Viewモードの場合はSplit View更新、そうでなければ通常の更新
+								// Update split view if in split mode, otherwise normal update
 								if isSplitView {
 									updateSplitViewWithCursor(beforeView, afterView, currentDiffText, cursorY, currentFile)
 								} else {
@@ -740,7 +735,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	commitTextArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyEnter:
-			// Option+Enter (Alt+Enter) でコミット実行
+			// Option+Enter (Alt+Enter) to execute commit
 			if event.Modifiers()&tcell.ModAlt != 0 {
 				commitMessage = commitTextArea.GetText()
 				if commitMessage == "" {
@@ -760,7 +755,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 					} else {
 						updateGlobalStatus("Failed to commit: "+err.Error(), "tomato")
 					}
-					// エラー時はコミットモードを終了せず、メッセージを保持したまま再試行できるようにする
+					// On error, don't exit commit mode so user can retry with message preserved
 					return nil
 				}
 
@@ -769,24 +764,24 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 				} else {
 					updateGlobalStatus("Successfully committed", "forestgreen")
 				}
-				// コミット後にファイルリストを更新
+				// Update file list after commit
 				refreshFileList()
 
-				// ファイルリストが更新された後、選択位置を調整
-				// fileListの再構築のためにupdateFileListViewを呼ぶ
+				// Adjust selection position after file list is updated
+				// Call updateFileListView to rebuild fileList
 				updateFileListView()
 
-				// コミット後はカーソルを先頭に戻す
+				// Move cursor to the top after commit
 				currentSelection = 0
 
-				// 再度ビューを更新して正しい選択位置を反映
+				// Update view again to reflect correct selection position
 				updateFileListView()
 				updateSelectedFileDiff()
 
 				exitCommitMode()
 				return nil
 			}
-			// 通常のEnterは改行として処理
+			// Normal Enter is handled as newline
 			return event
 		case tcell.KeyCtrlL:
 			app.SetFocus(fileListView)
@@ -804,13 +799,13 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		return event
 	})
 
-	// mainFlex にステータスビューとコンテンツを追加
+	// Add status view and content to mainFlex
 	mainFlex.AddItem(globalStatusView, 3, 0, false).
 		AddItem(contentFlex, 0, 1, true)
 
 	mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlK {
-			// staged な差分があるかチェック
+			// Check if there are staged changes
 			if len(*stagedFilesPtr) == 0 {
 				updateGlobalStatus("No changes are staged for commit", "tomato")
 				return nil
@@ -827,7 +822,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 				}
 				isCommitMode = true
 				isAmendMode = false
-				mainFlex.AddItem(commitTextArea, 7, 0, true) // TextAreaは高さを7に増やして複数行に対応
+				mainFlex.AddItem(commitTextArea, 7, 0, true) // Height set to 7 to support multi-line input
 				app.SetFocus(commitTextArea)
 			} else {
 				app.SetFocus(commitTextArea)
@@ -835,7 +830,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			return nil
 		}
 		if event.Key() == tcell.KeyCtrlJ {
-			// 最新のコミットメッセージを取得
+			// Get the latest commit message
 			cmd := exec.Command("git", "log", "-1", "--pretty=%B")
 			cmd.Dir = repoRoot
 			output, err := cmd.Output()

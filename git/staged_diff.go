@@ -10,8 +10,8 @@ func GetStagedDiff(filePath string, repoRoot string) (string, error) {
 }
 
 func GetStagedDiffWithOptions(filePath string, repoRoot string, ignoreWhitespace bool) (string, error) {
-	// `git diff` を実行（削除されたファイルでも動作するように -- を追加）
-	// -c core.quotepath=false でマルチバイトファイル名をエスケープしないようにする
+	// Run `git diff --cached` (add -- so it works even for deleted files)
+	// -c core.quotepath=false prevents escaping of multibyte filenames
 	args := []string{"-c", "core.quotepath=false", "diff", "--cached"}
 	if ignoreWhitespace {
 		args = append(args, "-w")
@@ -25,6 +25,6 @@ func GetStagedDiffWithOptions(filePath string, repoRoot string, ignoreWhitespace
 		return "", fmt.Errorf("failed to execute git diff --cached: %w", err)
 	}
 
-	// 差分を表示
+	// Return the diff
 	return string(output), nil
 }

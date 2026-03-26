@@ -18,7 +18,7 @@ import (
 
 var version = "dev"
 
-// Application はアプリケーション全体の状態と設定を保持
+// Application holds the overall application state and configuration
 type Application struct {
 	App    *tview.Application
 	Config *config.AppConfig
@@ -43,13 +43,13 @@ func main() {
 		return
 	}
 
-	// Git リポジトリのルートを検出
+	// Detect the Git repository root
 	repoPath, err := git.FindGitRoot(".")
 	if err != nil {
 		log.Fatalf("Git repository not found: %v", err)
 	}
 
-	// 設定の読み込み
+	// Load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
@@ -57,19 +57,19 @@ func main() {
 
 	app := tview.NewApplication()
 
-	// アプリケーション構造体の作成
+	// Create the application struct
 	giffApp := &Application{
 		App:    app,
 		Config: cfg,
 	}
 
-	// SIGINT (Ctrl+c) シグナルハンドラ
+	// SIGINT (Ctrl+c) signal handler
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT)
 	go func() {
 		<-sigChan
 		log.Println("SIGINT received, cleaning up and exiting...")
-		// 設定から PatchFilePath を取得して削除
+		// Get PatchFilePath from config and remove it
 		if _, err := os.Stat(giffApp.Config.PatchFilePath); err == nil {
 			if err := os.Remove(giffApp.Config.PatchFilePath); err != nil {
 				log.Printf("Failed to remove %s: %v", giffApp.Config.PatchFilePath, err)
@@ -81,7 +81,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	// アプリケーションレベルでのキー入力捕捉 (Ctrl+c ワークアラウンド)
+	// Application-level key input capture (Ctrl+c workaround)
 	giffApp.App.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlC {
 			log.Println("Ctrl+c captured at application level, sending SIGINT...")
@@ -89,18 +89,18 @@ func main() {
 			if err == nil {
 				syscall.Kill(-gid, syscall.SIGINT)
 			}
-			return nil // イベントをこれ以上伝播させない
+			return nil // Stop propagating the event
 		}
-		return event // 他のイベントは通常通り処理
+		return event // Process other events normally
 	})
 
-	// 差分のあるファイルを取得
+	// Get files with changes
 	stagedFiles, modifiedFiles, untrackedFiles, err := git.GetChangedFiles(repoPath)
 	if err != nil {
 		log.Fatalf("Failed to get modified files: %v", err)
 	}
 
-	// ファイル選択時の処理を定義（再帰的に使用するため関数として定義）
+	// Define file selection handler (defined as a function for recursive use)
 	var updateFileList func()
 
 	updateFileList = func() {
@@ -121,12 +121,12 @@ func main() {
 		giffApp.App.SetRoot(rootEditor, true)
 	}
 
-	// 初期ビュー（ファイル一覧）を作成し、ルートに設定
-	// onSelect パラメータは現在使用されていないため nil を渡す
+	// Create the initial view (file list) and set it as root
+	// The onSelect parameter is currently unused, so nil is passed
 	initialView := ui.RootEditor(giffApp.App, stagedFiles, modifiedFiles, untrackedFiles, repoPath, giffApp.Config.PatchFilePath, updateFileList, autoRefresh)
 	giffApp.App.SetRoot(initialView, true)
 
-	// アプリケーションの実行は main で一度だけ
+	// Run the application only once in main
 	if err := giffApp.App.Run(); err != nil {
 		log.Fatalf("Error running application: %v", err)
 	}

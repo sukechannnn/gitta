@@ -21,7 +21,7 @@ type UnifiedViewUpdater struct {
 	foldState   *FoldState
 	filePath    *string
 	repoRoot    string
-	searchQuery *string // 検索クエリ（文字レベルハイライト用）
+	searchQuery *string // search query (for character-level highlighting)
 }
 
 // NewUnifiedViewUpdater creates a new UnifiedViewUpdater
@@ -169,7 +169,7 @@ func renderUnifiedView(diffView *tview.TextView, diffText string, cursorY int, s
 			lineNumFg = "dimgray"
 		}
 
-		// 検索クエリがある場合、文字レベルのハイライトを適用
+		// Apply character-level highlighting if search query exists
 		lineContent := line.Content
 		if searchQuery != "" {
 			lineContent = highlightSearchInTaggedText(lineContent, searchQuery)
@@ -189,15 +189,15 @@ func renderUnifiedView(diffView *tview.TextView, diffText string, cursorY int, s
 		}
 	}
 
-	// スクロール位置を調整（カーソルが見える範囲に）
+	// Adjust scroll position (keep cursor visible)
 	_, _, _, height := diffView.GetInnerRect()
 	currentRow, _ := diffView.GetScrollOffset()
 
-	// カーソルが画面より下にある場合
+	// If cursor is below the screen
 	if cursorY >= currentRow+height-1 {
 		diffView.ScrollTo(cursorY-height+2, 0)
 	}
-	// カーソルが画面より上にある場合
+	// If cursor is above the screen
 	if cursorY < currentRow {
 		diffView.ScrollTo(cursorY, 0)
 	}
@@ -262,24 +262,24 @@ func renderSplitView(beforeView, afterView *tview.TextView, diffText string, cur
 	beforeLineNums := content.BeforeLineNums
 	afterLineNums := content.AfterLineNums
 
-	// カーソル行の実際のインデックスを取得（単純化）
-	// cursorYは表示行のインデックスとして扱う
+	// Get actual index of cursor line (simplified)
+	// cursorY is treated as a display line index
 	cursorIndex := -1
 	if cursorY >= 0 && cursorY < len(beforeLines) {
 		cursorIndex = cursorY
 	}
 
-	// 表示を更新
+	// Update display
 	for i, line := range beforeLines {
-		// 行番号を追加
+		// Add line number
 		lineNum := beforeLineNums[i] + " │ "
 
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
-			// 選択行: 背景のみ dimgrey に差し替え
+			// Selected line: replace background with dimgrey
 			highlighted := util.ReplaceBackground(line, "dimgrey")
 			beforeView.Write([]byte("[white:dimgrey]" + lineNum + "[-:-]" + highlighted + "[-:-]\n"))
 		} else if cursorIndex >= 0 && i == cursorIndex {
-			// カーソル行: 背景のみ blue に差し替え
+			// Cursor line: replace background with blue
 			highlighted := util.ReplaceBackground(line, "blue")
 			beforeView.Write([]byte("[white:blue]" + lineNum + "[-:-]" + highlighted + "[-:-]\n"))
 		} else {
@@ -288,15 +288,15 @@ func renderSplitView(beforeView, afterView *tview.TextView, diffText string, cur
 	}
 
 	for i, line := range afterLines {
-		// 行番号を追加
+		// Add line number
 		lineNum := afterLineNums[i] + " │ "
 
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
-			// 選択行: 背景のみ dimgrey に差し替え
+			// Selected line: replace background with dimgrey
 			highlighted := util.ReplaceBackground(line, "dimgrey")
 			afterView.Write([]byte("[white:dimgrey]" + lineNum + "[-:-]" + highlighted + "[-:-]\n"))
 		} else if cursorIndex >= 0 && i == cursorIndex {
-			// カーソル行: 背景のみ blue に差し替え
+			// Cursor line: replace background with blue
 			highlighted := util.ReplaceBackground(line, "blue")
 			afterView.Write([]byte("[white:blue]" + lineNum + "[-:-]" + highlighted + "[-:-]\n"))
 		} else {
@@ -304,24 +304,24 @@ func renderSplitView(beforeView, afterView *tview.TextView, diffText string, cur
 		}
 	}
 
-	// スクロール位置を同期
+	// Synchronize scroll position
 	if cursorIndex >= 0 {
 		_, _, _, height := beforeView.GetInnerRect()
 		currentRow, _ := beforeView.GetScrollOffset()
 
-		// カーソルが画面より下にある場合
+		// If cursor is below the screen
 		if cursorIndex >= currentRow+height-1 {
 			scrollPos := cursorIndex - height + 2
 			beforeView.ScrollTo(scrollPos, 0)
 			afterView.ScrollTo(scrollPos, 0)
 		}
-		// カーソルが画面より上にある場合
+		// If cursor is above the screen
 		if cursorIndex < currentRow {
 			beforeView.ScrollTo(cursorIndex, 0)
 			afterView.ScrollTo(cursorIndex, 0)
 		}
 	} else {
-		// カーソルなしの場合は先頭に
+		// Without cursor, scroll to top
 		beforeView.ScrollTo(0, 0)
 		afterView.ScrollTo(0, 0)
 	}
@@ -353,13 +353,13 @@ func createLineNumberMapping(diffText string) (map[int]int, map[int]int) {
 	inHunk := false
 
 	for _, line := range lines {
-		// ヘッダー行をスキップ（ColorizeDiffと同じロジック）
+		// Skip header lines (same logic as ColorizeDiff)
 		if strings.HasPrefix(line, "diff --git") ||
 			strings.HasPrefix(line, "index ") ||
 			strings.HasPrefix(line, "--- ") ||
 			strings.HasPrefix(line, "+++ ") ||
 			strings.HasPrefix(line, "@@") {
-			// ハンクヘッダーから行番号を取得
+			// Get line numbers from hunk header
 			if strings.HasPrefix(line, "@@") {
 				// @@ -oldStart,oldCount +newStart,newCount @@
 				var oldStart, newStart int
@@ -379,7 +379,7 @@ func createLineNumberMapping(diffText string) (map[int]int, map[int]int) {
 			continue
 		}
 
-		// 実際の差分行（ColorizeDiffで表示される行のみカウント）
+		// Actual diff lines (only count lines displayed by ColorizeDiff)
 		if strings.HasPrefix(line, "-") {
 			oldLineMap[displayLine] = oldLineNum
 			oldLineNum++
@@ -387,7 +387,7 @@ func createLineNumberMapping(diffText string) (map[int]int, map[int]int) {
 			newLineMap[displayLine] = newLineNum
 			newLineNum++
 		} else {
-			// スペースで始まる行またはそれ以外の行（コンテキスト行）
+			// Lines starting with space or other lines (context lines)
 			oldLineMap[displayLine] = oldLineNum
 			newLineMap[displayLine] = newLineNum
 			oldLineNum++

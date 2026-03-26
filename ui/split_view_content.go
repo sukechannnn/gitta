@@ -30,10 +30,10 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 	var inHunk bool = false
 	displayLine := 0
 
-	// 行番号の最大桁数を計算
+	// Calculate max digits for line numbers
 	maxDigits := calculateMaxLineNumberDigits(oldLineMap, newLineMap)
 
-	// 削除行と追加行をペアリングするための前処理
+	// Pre-processing to pair deletion and addition lines
 	type diffLine struct {
 		content      string
 		displayIndex int
@@ -45,13 +45,13 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 	var diffLines []diffLine
 
 	for _, line := range lines {
-		// ヘッダー行を非表示にする
+		// Hide header lines
 		if isHeaderLine(line) {
 			continue
 		}
 
 		if strings.HasPrefix(line, "@@") {
-			// ハンクヘッダー（非表示にする）
+			// Hunk header (hidden)
 			inHunk = true
 			continue
 		} else if inHunk {
@@ -132,7 +132,7 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 		return escaped
 	}
 
-	// ペアリング処理：連続する-と+のグループをペアリング
+	// Pairing: group consecutive - and + lines together
 	i := 0
 	codeIdx := 0 // tracks index into codeLines/allTokens
 	for i < len(diffLines) {
@@ -140,7 +140,7 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 
 		switch line.lineType {
 		case "-":
-			// 連続する-行を収集
+			// Collect consecutive - lines
 			startIdx := codeIdx
 			deletions := []diffLine{line}
 			j := i + 1
@@ -151,7 +151,7 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 				codeIdx++
 			}
 
-			// 連続する+行を収集
+			// Collect consecutive + lines
 			addStartIdx := codeIdx
 			additions := []diffLine{}
 			for j < len(diffLines) && diffLines[j].lineType == "+" {
@@ -160,7 +160,7 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 				codeIdx++
 			}
 
-			// ペアリング：削除と追加をペアにする
+			// Pair deletions and additions together
 			maxLen := len(deletions)
 			if len(additions) > maxLen {
 				maxLen = len(additions)
@@ -210,7 +210,7 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 
 			i = j
 		case "+":
-			// ペアになっていない+行（-なしで+のみ）
+			// Unpaired + line (addition without deletion)
 			content.BeforeLines = append(content.BeforeLines, "[dimgray] [-]")
 			content.AfterLines = append(content.AfterLines, renderLine(codeIdx, '+', util.AddedLineBg, util.AddedLineFg, nil, ""))
 
@@ -223,7 +223,7 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 			i++
 			codeIdx++
 		case " ":
-			// 変更なし行
+			// Unchanged context line
 			contextLine := renderLine(codeIdx, ' ', "", "", nil, "")
 			content.BeforeLines = append(content.BeforeLines, contextLine)
 			content.AfterLines = append(content.AfterLines, contextLine)
@@ -241,7 +241,7 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 			i++
 			codeIdx++
 		default:
-			// その他の行
+			// Other lines
 			escapedLine := tview.Escape(line.content)
 			content.BeforeLines = append(content.BeforeLines, " "+escapedLine)
 			content.AfterLines = append(content.AfterLines, " "+escapedLine)

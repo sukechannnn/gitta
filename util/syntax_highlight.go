@@ -223,7 +223,7 @@ func ReplaceBackgroundPreserving(line string, newBg string, preserve []string) s
 			if len(parts) == 2 {
 				currentBg := parts[1]
 				if preserveSet[currentBg] {
-					// 保護対象の背景色はそのまま
+					// Preserve protected background colors as-is
 					sb.WriteString(line[i : i+end+1])
 				} else {
 					sb.WriteString("[" + parts[0] + ":" + newBg + "]")

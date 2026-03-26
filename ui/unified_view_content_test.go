@@ -128,7 +128,7 @@ index 123..456 789
 				2: 99,
 				3: 100,
 			},
-			// fold機能により、行番号1-97のfold indicatorが表示される
+			// Due to fold feature, a fold indicator is displayed for lines 1-97
 			wantContent: []string{
 				"[dimgray]... 97 lines hidden (press 'e' to expand) ...[-]",
 				" line98",

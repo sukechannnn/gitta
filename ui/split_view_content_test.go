@@ -157,7 +157,7 @@ index 123..456 789
 				2: 2,
 				3: 3,
 			},
-			// ペアリングロジック: 削除行と追加行が同じ行に表示される
+			// Pairing logic: deletion and addition lines are displayed on the same row
 			wantBefore: []string{
 				" line1",
 				"[#E7454E:#3A0000]-[-:-][#E7454E:#3A0000]line2[-:-]",
@@ -200,7 +200,7 @@ index 123..456 789
 				2: 99,
 				3: 100,
 			},
-			// ペアリングロジック: 削除行と追加行が同じ行に表示される
+			// Pairing logic: deletion and addition lines are displayed on the same row
 			wantBefore: []string{
 				" line98",
 				"[#E7454E:#3A0000]-[-:-][#E7454E:#3A0000]line99[-:-]",
@@ -237,7 +237,7 @@ index 123..456 789
 			newLineMap: map[int]int{
 				1: 1,
 			},
-			// ペアリングロジック: 削除行と追加行が同じ行に表示される
+			// Pairing logic: deletion and addition lines are displayed on the same row
 			wantBefore: []string{
 				"[#E7454E:#3A0000]-[-:-][#E7454E:#5C1A1A]old[-:-]",
 			},
@@ -266,7 +266,7 @@ index 123..456 789
 			newLineMap: map[int]int{
 				1: 1,
 			},
-			// ペアリングロジック: 削除行と追加行が同じ行に表示される
+			// Pairing logic: deletion and addition lines are displayed on the same row
 			wantBefore: []string{
 				"[#E7454E:#3A0000]-[-:-][#E7454E:#3A0000]var foo [i[-:-][#E7454E:#5C1A1A]n[-:-][#E7454E:#3A0000]t]string[-:-]",
 			},

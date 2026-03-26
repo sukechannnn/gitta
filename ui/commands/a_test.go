@@ -183,8 +183,8 @@ func TestCommandA_Integration(t *testing.T) {
 	t.Run("reports no changes when only context lines are selected", func(t *testing.T) {
 		statusMessages := []string{}
 		params := CommandAParams{
-			SelectStart:     0, // " line1" - コンテキスト行
-			SelectEnd:       0, // " line1" - コンテキスト行
+			SelectStart:     0, // " line1" - context line
+			SelectEnd:       0, // " line1" - context line
 			CurrentFile:     "test.txt",
 			CurrentStatus:   "unstaged",
 			CurrentDiffText: diffText,
@@ -517,7 +517,7 @@ func TestCommandA_UnstageIntegration(t *testing.T) {
 		// Try to unstage only context lines
 		statusMessages := []string{}
 		params := CommandAParams{
-			SelectStart:     0, // コンテキスト行
+			SelectStart:     0, // context line
 			SelectEnd:       0,
 			CurrentFile:     "test.txt",
 			CurrentStatus:   "staged",

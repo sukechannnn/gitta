@@ -10,13 +10,13 @@ import (
 
 // CalculateGitHash calculates the Git-style hash for a file.
 func CalculateGitHash(repoPath, filePath string) (string, error) {
-	// HEAD のハッシュ値を取得
+	// Get the hash value at HEAD
 	repo, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return "", err
 	}
 
-	// HEAD コミットを取得
+	// Get the HEAD commit
 	head, err := repo.Head()
 	if err != nil {
 		return "", err
@@ -38,14 +38,14 @@ func CalculateGitHash(repoPath, filePath string) (string, error) {
 		headHash = currentEntry.Hash.String()[:7]
 	}
 
-	// 取得した差分からハッシュ値を生成
+	// Generate a hash value from the retrieved diff
 	file, err := os.Open(filePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
-	// ファイルの内容を読み込む
+	// Read the file contents
 	stat, err := file.Stat()
 	if err != nil {
 		return "", fmt.Errorf("failed to stat file: %w", err)
@@ -58,14 +58,14 @@ func CalculateGitHash(repoPath, filePath string) (string, error) {
 		return "", fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// Git のフォーマットに従ってデータを準備
+	// Prepare data following Git's format
 	header := fmt.Sprintf("blob %d\000", fileSize) // `blob <size>\0`
 	data := append([]byte(header), content...)
 
-	// SHA-1 ハッシュを計算
+	// Calculate SHA-1 hash
 	hash := sha1.Sum(data)
 
-	// ハッシュを文字列に変換して返す
+	// Convert hash to string and return
 	currentHash := fmt.Sprintf("%x", hash)
 
 	fileMode := stat.Mode()

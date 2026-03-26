@@ -6,21 +6,21 @@ import (
 	"github.com/sukechannnn/giff/util"
 )
 
-// ColorizeDiff は Diff を色付けします
+// ColorizeDiff colorizes a diff string
 func ColorizeDiff(diff string) string {
 	var result string
 	lines := util.SplitLines(diff)
 	for _, line := range lines {
-		// 🎯 ここでスキップしたいヘッダー行を除外
+		// Filter out header lines to skip
 		if strings.HasPrefix(line, "diff --git") ||
 			strings.HasPrefix(line, "index ") ||
 			strings.HasPrefix(line, "--- ") ||
 			strings.HasPrefix(line, "+++ ") ||
 			strings.HasPrefix(line, "@@") {
-			continue // ← 表示しない
+			continue // Skip display
 		}
 
-		// 色付け処理（+/-）
+		// Colorize lines (+/-)
 		if len(line) > 0 {
 			switch line[0] {
 			case '-':

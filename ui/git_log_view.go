@@ -19,7 +19,7 @@ type GitLogEntry struct {
 	Message  string
 	Author   string
 	Date     string
-	FullLine string // 元の表示用行
+	FullLine string // original display line
 }
 
 // GitLogView manages the git log display and navigation
@@ -34,7 +34,7 @@ type GitLogView struct {
 	onExit       func()
 	scrollOffset int
 	commitFiles  []FileEntry
-	// ggコマンド用の状態
+	// State for gg command
 	gPressed  *bool
 	lastGTime *time.Time
 }
@@ -304,7 +304,7 @@ func (glv *GitLogView) showCommitDetails() {
 	commitHash := entry.Hash
 	glv.loadCommitFiles(commitHash)
 
-	// UI コンポーネント作成（root_editor.go と同じパターン）
+	// Create UI components (same pattern as root_editor.go)
 	fileListView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetRegions(true).
@@ -343,7 +343,7 @@ func (glv *GitLogView) showCommitDetails() {
 		AddItem(afterView, 0, 1, false)
 	splitViewFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
-	// ステータスバー
+	// Status bar
 	statusView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft).
@@ -360,13 +360,13 @@ func (glv *GitLogView) showCommitDetails() {
 		AddItem(fileListView, 0, FileListFlexRatio, true).
 		AddItem(unifiedViewFlex, 0, DiffViewFlexRatio, false)
 
-	// ステータスバー + コンテンツの縦レイアウト
+	// Vertical layout with status bar + content
 	commitMainFlex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(statusView, 3, 0, false).
 		AddItem(contentFlex, 0, 1, true)
 	commitMainFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
-	// 状態変数
+	// State variables
 	var fileList []FileEntry
 	lineNumberMap := make(map[int]int)
 	dirCollapseState := NewDirCollapseState()
@@ -392,7 +392,7 @@ func (glv *GitLogView) showCommitDetails() {
 	var searchCursorYBeforeSearch int
 	foldState := NewFoldState()
 
-	// diff 取得コールバック (git show)
+	// Diff retrieval callback (git show)
 	updateDiffText := func(filePath, status, repo string, out *string, _ bool) {
 		cmd := exec.Command("git", "show", "--format=", commitHash, "--", filePath)
 		cmd.Dir = glv.repoRoot
@@ -404,7 +404,7 @@ func (glv *GitLogView) showCommitDetails() {
 		*out = strings.TrimLeft(string(output), "\n")
 	}
 
-	// ファイルリスト構築
+	// Build file list
 	buildFileListContent := func(focusedPane bool) string {
 		return BuildFileListContentForCommit(
 			glv.commitFiles,
@@ -502,7 +502,7 @@ func (glv *GitLogView) showCommitDetails() {
 
 	updateFileListView()
 
-	// 初期選択がディレクトリの場合は最初のファイルを選択
+	// If initial selection is a directory, select the first file
 	if currentSelection < len(fileList) && fileList[currentSelection].IsDirectory {
 		for i, entry := range fileList {
 			if !entry.IsDirectory {
@@ -515,7 +515,7 @@ func (glv *GitLogView) showCommitDetails() {
 
 	updateSelectedFileDiff()
 
-	// DiffViewContext 構築
+	// Build DiffViewContext
 	diffViewContext := &DiffViewContext{
 		diffView:        diffView,
 		fileListView:    fileListView,
@@ -586,7 +586,7 @@ func (glv *GitLogView) showCommitDetails() {
 	}
 	SetupDiffViewKeyBindings(diffViewContext)
 
-	// FileListKeyContext 構築
+	// Build FileListKeyContext
 	fileListKeyContext := &FileListKeyContext{
 		fileListView:    fileListView,
 		diffView:        diffView,
@@ -634,7 +634,7 @@ func (glv *GitLogView) showCommitDetails() {
 	}
 	SetupFileListKeyBindings(fileListKeyContext)
 
-	// 表示切り替え
+	// Switch display
 	glv.flex.Clear()
 	glv.flex.AddItem(commitMainFlex, 0, 1, true)
 	glv.showingCommit = true

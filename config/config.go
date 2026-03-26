@@ -5,15 +5,15 @@ import (
 	"path/filepath"
 )
 
-// AppConfig はアプリケーション全体の設定を保持します
+// AppConfig holds the overall application configuration
 type AppConfig struct {
 	PatchFilePath string
 }
 
-// LoadConfig はアプリケーションの設定を読み込みます
+// LoadConfig loads the application configuration
 func LoadConfig() (*AppConfig, error) {
 	tempDir := os.TempDir()
-	// アプリケーション固有のファイル名を生成して衝突を避ける
+	// Generate an application-specific filename to avoid conflicts
 	patchFileName := "giff_selected.patch"
 	patchFilePath := filepath.Join(tempDir, patchFileName)
 

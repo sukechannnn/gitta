@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2"
@@ -88,14 +89,7 @@ func detectFoldableRanges(oldLineMap, newLineMap map[int]int, minGap int, totalL
 		displayIndices = append(displayIndices, idx)
 	}
 
-	// Simple bubble sort
-	for i := 0; i < len(displayIndices)-1; i++ {
-		for j := i + 1; j < len(displayIndices); j++ {
-			if displayIndices[i] > displayIndices[j] {
-				displayIndices[i], displayIndices[j] = displayIndices[j], displayIndices[i]
-			}
-		}
-	}
+	sort.Ints(displayIndices)
 
 	var ranges []FoldableRange
 

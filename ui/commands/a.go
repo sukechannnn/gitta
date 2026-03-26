@@ -29,7 +29,7 @@ type CommandAResult struct {
 	ColoredDiff  string
 	DiffLines    []string
 	ShouldUpdate bool
-	NewCursorPos int // ステージング後の推奨カーソル位置
+	NewCursorPos int // Recommended cursor position after staging
 }
 
 // CommandA handles the 'a' command for staging/unstaging selected lines
@@ -39,15 +39,15 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 		return nil, nil
 	}
 
-	// Staged ファイルの場合は unstage 処理
+	// Unstage if the file is staged
 	if params.CurrentStatus == "staged" {
 		return commandAUnstage(params)
 	}
 
-	// ファイルパスを構築
+	// Build file path
 	filePath := filepath.Join(params.RepoRoot, params.CurrentFile)
 
-	// 現在のファイル内容を保存
+	// Save current file content
 	originalContent, err := os.ReadFile(filePath)
 	if err != nil {
 		if params.UpdateGlobalStatus != nil {
@@ -56,13 +56,13 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 		return nil, err
 	}
 
-	// 選択した変更のみを適用したファイル内容を取得
+	// Get file content with only selected changes applied
 	mapping := MapDisplayToOriginalIdx(params.CurrentDiffText)
 	start := mapping[params.SelectStart]
 	end := mapping[params.SelectEnd]
 
-	// 選択範囲に実際の変更が含まれているかチェック
-	// 表示されている行を作成（ヘッダーを除外）
+	// Check if the selection contains actual changes
+	// Create display lines (excluding headers)
 	coloredDiff := ColorizeDiff(params.CurrentDiffText)
 	displayLines := util.SplitLines(coloredDiff)
 
@@ -70,7 +70,7 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 	diffLines := strings.Split(params.CurrentDiffText, "\n")
 
 	for i := params.SelectStart; i <= params.SelectEnd && i < len(displayLines); i++ {
-		// 元の差分行を直接チェック（色付け前）
+		// Check original diff line directly (before colorization)
 		if originalIdx, ok := mapping[i]; ok {
 			if originalIdx < len(diffLines) {
 				originalLine := diffLines[originalIdx]
@@ -82,19 +82,19 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 		}
 	}
 
-	// 変更が含まれていない場合は早期リターン
+	// Early return if no changes are included
 	if !hasChanges {
 		if params.UpdateGlobalStatus != nil {
 			params.UpdateGlobalStatus("No changes were staged", "yellow")
 		}
-		// 成功として扱うが、変更はなし
+		// Treat as success but with no changes
 		result := &CommandAResult{
 			Success:      true,
 			NewDiffText:  params.CurrentDiffText,
 			ColoredDiff:  coloredDiff,
 			DiffLines:    displayLines,
 			ShouldUpdate: false,
-			NewCursorPos: params.SelectStart, // 変更がない場合は元の位置を保持
+			NewCursorPos: params.SelectStart, // Keep original position when there are no changes
 		}
 		return result, nil
 	}
@@ -107,7 +107,7 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 		return nil, err
 	}
 
-	// 一時的に選択した変更のみのファイルに書き換え
+	// Temporarily overwrite file with only selected changes
 	err = os.WriteFile(filePath, []byte(modifiedContent), 0644)
 	if err != nil {
 		if params.UpdateGlobalStatus != nil {
@@ -116,13 +116,13 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 		return nil, err
 	}
 
-	// git add を実行
-	// -c core.quotepath=false でマルチバイトファイル名をエスケープしないようにする
+	// Run git add
+	// -c core.quotepath=false prevents escaping of multibyte filenames
 	cmd := exec.Command("git", "-c", "core.quotepath=false", "add", params.CurrentFile)
 	cmd.Dir = params.RepoRoot
 	_, gitErr := cmd.CombinedOutput()
 
-	// 元のファイル内容に戻す（選択されなかった変更も含む）
+	// Restore original file content (including unselected changes)
 	restoreErr := os.WriteFile(filePath, originalContent, 0644)
 
 	if gitErr != nil {
@@ -142,22 +142,22 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 		return nil, restoreErr
 	}
 
-	// 差分を再取得
+	// Re-fetch the diff
 	newDiffText, _ := git.GetFileDiff(params.CurrentFile, params.RepoRoot)
 
-	// 成功した場合の処理
+	// Handle success
 	if params.UpdateGlobalStatus != nil {
 		params.UpdateGlobalStatus("Selected lines staged successfully!", "forestgreen")
 	}
 
-	// ColorizeDiffで色付け
+	// Colorize the diff
 	newColoredDiff := ColorizeDiff(newDiffText)
 	newDiffLines := util.SplitLines(newColoredDiff)
 
-	// ステージング後の推奨カーソル位置を計算
+	// Calculate recommended cursor position after staging
 	newCursorPos := calculateNewCursorPosition(params.CurrentDiffText, newDiffText, params.SelectStart, params.SelectEnd)
 
-	// 結果を返す
+	// Return result
 	result := &CommandAResult{
 		Success:      true,
 		NewDiffText:  newDiffText,
@@ -173,21 +173,21 @@ func CommandA(params CommandAParams) (*CommandAResult, error) {
 // calculateNewCursorPosition calculates the recommended cursor position after staging
 func calculateNewCursorPosition(oldDiffText, newDiffText string, selectStart, selectEnd int) int {
 	if len(strings.TrimSpace(newDiffText)) == 0 {
-		return 0 // 差分がなくなった場合は先頭
+		return 0 // Return to the beginning if diff is empty
 	}
 
 	newLines := strings.Split(newDiffText, "\n")
 	maxLines := len(newLines) - 1
 
-	// 基本的に元のカーソル位置（選択開始位置）を維持
+	// Basically keep the original cursor position (selection start)
 	newCursorPos := selectStart
 
-	// 新しい差分の行数が減った場合は調整
+	// Adjust if the new diff has fewer lines
 	if newCursorPos > maxLines {
 		newCursorPos = maxLines
 	}
 
-	// 負の値にならないよう調整
+	// Ensure non-negative value
 	if newCursorPos < 0 {
 		newCursorPos = 0
 	}
@@ -197,10 +197,10 @@ func calculateNewCursorPosition(oldDiffText, newDiffText string, selectStart, se
 
 // commandAUnstage handles unstaging selected lines from staged diff
 func commandAUnstage(params CommandAParams) (*CommandAResult, error) {
-	// ファイルパスを構築
+	// Build file path
 	filePath := filepath.Join(params.RepoRoot, params.CurrentFile)
 
-	// 現在のファイル内容を保存
+	// Save current file content
 	originalContent, err := os.ReadFile(filePath)
 	if err != nil {
 		if params.UpdateGlobalStatus != nil {
@@ -209,12 +209,12 @@ func commandAUnstage(params CommandAParams) (*CommandAResult, error) {
 		return nil, err
 	}
 
-	// 選択範囲のマッピングを取得
+	// Get mapping for the selection range
 	mapping := MapDisplayToOriginalIdx(params.CurrentDiffText)
 	start := mapping[params.SelectStart]
 	end := mapping[params.SelectEnd]
 
-	// 選択範囲に実際の変更が含まれているかチェック
+	// Check if the selection contains actual changes
 	coloredDiff := ColorizeDiff(params.CurrentDiffText)
 	displayLines := util.SplitLines(coloredDiff)
 
@@ -233,7 +233,7 @@ func commandAUnstage(params CommandAParams) (*CommandAResult, error) {
 		}
 	}
 
-	// 変更が含まれていない場合は早期リターン
+	// Early return if no changes are included
 	if !hasChanges {
 		if params.UpdateGlobalStatus != nil {
 			params.UpdateGlobalStatus("No changes were unstaged", "yellow")
@@ -249,7 +249,7 @@ func commandAUnstage(params CommandAParams) (*CommandAResult, error) {
 		return result, nil
 	}
 
-	// 選択した変更を除外したファイル内容を取得
+	// Get file content with selected changes excluded
 	modifiedContent, err := git.RevertSelectedChangesFromStaged(params.CurrentFile, params.RepoRoot, params.CurrentDiffText, start, end)
 	if err != nil {
 		if params.UpdateGlobalStatus != nil {
@@ -258,7 +258,7 @@ func commandAUnstage(params CommandAParams) (*CommandAResult, error) {
 		return nil, err
 	}
 
-	// 一時的に選択した変更を除外したファイルに書き換え
+	// Temporarily overwrite file with selected changes excluded
 	err = os.WriteFile(filePath, []byte(modifiedContent), 0644)
 	if err != nil {
 		if params.UpdateGlobalStatus != nil {
@@ -267,12 +267,12 @@ func commandAUnstage(params CommandAParams) (*CommandAResult, error) {
 		return nil, err
 	}
 
-	// git add を実行（選択されていない変更のみが staged される = 選択した変更が unstaged される）
+	// Run git add (only unselected changes remain staged = selected changes become unstaged)
 	cmd := exec.Command("git", "-c", "core.quotepath=false", "add", params.CurrentFile)
 	cmd.Dir = params.RepoRoot
 	_, gitErr := cmd.CombinedOutput()
 
-	// 元のファイル内容に戻す
+	// Restore original file content
 	restoreErr := os.WriteFile(filePath, originalContent, 0644)
 
 	if gitErr != nil {
@@ -292,22 +292,22 @@ func commandAUnstage(params CommandAParams) (*CommandAResult, error) {
 		return nil, restoreErr
 	}
 
-	// staged な差分を再取得
+	// Re-fetch the staged diff
 	newDiffText, _ := git.GetStagedDiff(params.CurrentFile, params.RepoRoot)
 
-	// 成功した場合の処理
+	// Handle success
 	if params.UpdateGlobalStatus != nil {
 		params.UpdateGlobalStatus("Selected lines unstaged successfully!", "forestgreen")
 	}
 
-	// ColorizeDiffで色付け
+	// Colorize the diff
 	newColoredDiff := ColorizeDiff(newDiffText)
 	newDiffLines := util.SplitLines(newColoredDiff)
 
-	// unstage後の推奨カーソル位置を計算
+	// Calculate recommended cursor position after unstaging
 	newCursorPos := calculateNewCursorPosition(params.CurrentDiffText, newDiffText, params.SelectStart, params.SelectEnd)
 
-	// 結果を返す
+	// Return result
 	result := &CommandAResult{
 		Success:      true,
 		NewDiffText:  newDiffText,
