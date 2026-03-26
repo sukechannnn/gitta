@@ -34,7 +34,7 @@ func moveFileListSelection(ctx *FileListKeyContext, direction int) {
 		entry := (*ctx.fileList)[next]
 		if entry.IsDirectory == onDirectory {
 			// Skip entries that don't match filter
-			if ctx.filterQuery != "" && !matchesFilter(entry, ctx.filterQuery) {
+			if *ctx.filterQuery != "" && !matchesFilter(entry, *ctx.filterQuery) {
 				next += direction
 				continue
 			}
@@ -184,6 +184,7 @@ func BuildFileListContent(
 	fileList *[]FileEntry,
 	lineNumberMap map[int]int,
 	collapseState *DirCollapseState,
+	filterQuery string,
 ) string {
 	// Rebuild fileList
 	// Clear slice contents (keep the reference)
@@ -192,39 +193,57 @@ func BuildFileListContent(
 		delete(lineNumberMap, k)
 	}
 
+	// Filter files if query is set
+	filterFn := func(files []git.FileInfo) []git.FileInfo {
+		if filterQuery == "" {
+			return files
+		}
+		q := strings.ToLower(filterQuery)
+		var filtered []git.FileInfo
+		for _, f := range files {
+			if strings.Contains(strings.ToLower(f.Path), q) {
+				filtered = append(filtered, f)
+			}
+		}
+		return filtered
+	}
+	filteredStaged := filterFn(stagedFiles)
+	filteredModified := filterFn(modifiedFiles)
+	filteredUntracked := filterFn(untrackedFiles)
+
 	var coloredContent strings.Builder
 	regionIndex := 0
 	currentLine := 0
 
 	// Staged files
-	if len(stagedFiles) > 0 {
+	if len(filteredStaged) > 0 {
 		coloredContent.WriteString("[green]Changes to be committed:[white]\n")
 		currentLine++
-		tree := buildFileTree(stagedFiles)
+		tree := buildFileTree(filteredStaged)
 		renderFileTree(tree, 1, &coloredContent, fileList,
-			"staged", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, stagedFiles, collapseState)
+			"staged", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, filteredStaged, collapseState)
 		coloredContent.WriteString("\n")
 		currentLine++
 	}
 
 	// Modified files (unstaged)
-	if len(modifiedFiles) > 0 {
+	if len(filteredModified) > 0 {
 		coloredContent.WriteString("[yellow]Changes not staged for commit:[white]\n")
 		currentLine++
-		tree := buildFileTree(modifiedFiles)
+		tree := buildFileTree(filteredModified)
 		renderFileTree(tree, 1, &coloredContent, fileList,
-			"unstaged", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, modifiedFiles, collapseState)
+			"unstaged", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, filteredModified, collapseState)
 		coloredContent.WriteString("\n")
 		currentLine++
 	}
 
 	// Untracked files
-	if len(untrackedFiles) > 0 {
+	if len(filteredUntracked) > 0 {
 		coloredContent.WriteString("[red]Untracked files:[white]\n")
 		currentLine++
-		tree := buildFileTree(untrackedFiles)
+		tree := buildFileTree(filteredUntracked)
 		renderFileTree(tree, 1, &coloredContent, fileList,
-			"untracked", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, untrackedFiles, collapseState)
+			"untracked", &regionIndex, currentSelection, focusedPane, lineNumberMap, &currentLine, filteredUntracked, collapseState)
 	}
 
 	return coloredContent.String()
@@ -324,7 +343,7 @@ type FileListKeyContext struct {
 	// File filter state
 	isFilterMode bool
 	filterInput  string
-	filterQuery  string // active filter (empty = no filter)
+	filterQuery  *string // active filter (empty = no filter)
 
 	// Callbacks
 	updateFileListView     func()
@@ -342,14 +361,14 @@ type FileListKeyContext struct {
 func applyFileFilter(ctx *FileListKeyContext) {
 	if ctx.filterInput == "" {
 		// Clear filter: reset to show all and select first file
-		ctx.filterQuery = ""
+		*ctx.filterQuery = ""
 		ctx.updateFileListView()
 		if ctx.setGlobalStatusText != nil {
 			ctx.setGlobalStatusText("[white]/[-]")
 		}
 		return
 	}
-	ctx.filterQuery = ctx.filterInput
+	*ctx.filterQuery = ctx.filterInput
 	// Find first matching file
 	query := strings.ToLower(ctx.filterInput)
 	matched := 0
@@ -384,23 +403,23 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 			switch event.Key() {
 			case tcell.KeyEnter:
 				// Confirm filter
-				ctx.filterQuery = ctx.filterInput
+				*ctx.filterQuery = ctx.filterInput
 				ctx.isFilterMode = false
-				if ctx.filterQuery != "" && ctx.setGlobalStatusText != nil {
-					query := strings.ToLower(ctx.filterQuery)
+				if *ctx.filterQuery != "" && ctx.setGlobalStatusText != nil {
+					query := strings.ToLower(*ctx.filterQuery)
 					matched := 0
 					for _, entry := range *ctx.fileList {
 						if !entry.IsDirectory && strings.Contains(strings.ToLower(entry.Path), query) {
 							matched++
 						}
 					}
-					ctx.setGlobalStatusText(fmt.Sprintf("[white]/%s [%d matched][-]", tview.Escape(ctx.filterQuery), matched))
+					ctx.setGlobalStatusText(fmt.Sprintf("[white]/%s [%d matched][-]", tview.Escape(*ctx.filterQuery), matched))
 				}
 			case tcell.KeyEsc:
 				// Cancel filter
 				ctx.isFilterMode = false
 				ctx.filterInput = ""
-				ctx.filterQuery = ""
+				*ctx.filterQuery = ""
 				ctx.updateFileListView()
 				if ctx.setGlobalStatusText != nil {
 					ctx.setGlobalStatusText(fileListKeyMessage)
@@ -421,8 +440,8 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 		switch event.Key() {
 		case tcell.KeyEsc:
 			// If filter is active, clear it first
-			if ctx.filterQuery != "" {
-				ctx.filterQuery = ""
+			if *ctx.filterQuery != "" {
+				*ctx.filterQuery = ""
 				ctx.filterInput = ""
 				*ctx.currentSelection = 0
 				ctx.updateFileListView()
@@ -545,6 +564,17 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					}
 				}
 			}
+			return nil
+		case tcell.KeyCtrlL:
+			if ctx.readOnly {
+				return nil
+			}
+			// Create Git Log View
+			gitLogView := NewGitLogView(ctx.app, ctx.repoRoot, func() {
+				ctx.app.SetRoot(ctx.mainView, true)
+				ctx.app.SetFocus(ctx.fileListView)
+			})
+			ctx.app.SetRoot(gitLogView.GetView(), true)
 			return nil
 		case tcell.KeyCtrlA:
 			if ctx.readOnly {
@@ -917,20 +947,6 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 						}
 					}
 				}
-				return nil
-			case 'l': // 'l' to show git log view
-				if ctx.readOnly {
-					return nil
-				}
-				// Create Git Log View
-				gitLogView := NewGitLogView(ctx.app, ctx.repoRoot, func() {
-					// Exit Git Log View and return to original view
-					ctx.app.SetRoot(ctx.mainView, true)
-					ctx.app.SetFocus(ctx.fileListView)
-				})
-
-				// Switch to Git Log View
-				ctx.app.SetRoot(gitLogView.GetView(), true)
 				return nil
 			case 't': // 't' to open terminal command input
 				if ctx.openTerminal != nil {

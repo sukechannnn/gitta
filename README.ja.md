@@ -56,7 +56,7 @@ $ giff -v         # バージョン表示
 | `/` | ファイル絞り込み |
 | `v` | $EDITOR で開く |
 | `c` | VS Code で開く |
-| `l` | Git ログ |
+| `Ctrl+L` | Git ログ |
 | `t` | ターミナルを開く（tmux split） |
 | `Enter` | 差分ビューに切替 |
 | `q` | 終了 |

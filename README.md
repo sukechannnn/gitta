@@ -58,7 +58,7 @@ $ giff -v         # show version
 | `/` | Filter files |
 | `v` | Open in $EDITOR |
 | `c` | Open in VS Code |
-| `l` | Git log |
+| `Ctrl+L` | Git log |
 | `t` | Open terminal (tmux split) |
 | `Enter` | Switch to diff view |
 | `q` | Quit |

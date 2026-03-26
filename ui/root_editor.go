@@ -20,7 +20,7 @@ var preferUnstagedSection bool = false
 
 // globalStatusView defined globally
 var globalStatusView *tview.TextView
-var fileListKeyMessage = "a:stage  A:stage file  d:discard  C-a:stage all  C-k:commit  C-j:amend  H/L:dir  s:split  w:ws  /:filter  v:editor  c:code  l:log  t:terminal  Y:copy  C-e/C-y:scroll  Enter:switch  q:quit"
+var fileListKeyMessage = "a:stage  A:stage file  d:discard  C-a:stage all  C-k:commit  C-j:amend  H/L:dir  s:split  w:ws  /:filter  v:editor  c:code  C-l:log  t:terminal  Y:copy  C-e/C-y:scroll  Enter:switch  q:quit"
 var diffViewKeyMessage = "a:stage lines  A:stage file  V:select  g/G:top/end  /:search  e:fold  s:split  w:ws  y:yank  Y:copy path  C-e/C-y:scroll  Esc:back  q:quit"
 
 // restoreStatusFunc is called to restore the default status message (set by SetupRootEditor)
@@ -102,6 +102,9 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	var lastGTime time.Time
 	var isSplitView bool = false      // split view mode flag
 	var ignoreWhitespace bool = false // ignore whitespace mode flag
+
+	// File list filter state
+	var fileFilterQuery string
 
 	// Search state
 	var searchQuery string
@@ -274,6 +277,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			&fileList,
 			lineNumberMap,
 			dirCollapseState,
+			fileFilterQuery,
 		)
 	}
 
@@ -556,6 +560,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		currentDiffText:   &currentDiffText,
 		preserveScrollRow: &preserveScrollRow,
 		ignoreWhitespace:  &ignoreWhitespace,
+		filterQuery:       &fileFilterQuery,
 
 		// Collections
 		fileList: &fileList,
