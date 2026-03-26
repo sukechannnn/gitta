@@ -26,11 +26,10 @@ type Application struct {
 }
 
 func main() {
-	var debug bool
 	var autoRefresh bool
 	var showVersion bool
-	flag.BoolVar(&debug, "debug", false, "Enable debug mode")
 	flag.BoolVar(&autoRefresh, "watch", false, "Watch for file changes and auto-refresh")
+	flag.BoolVar(&autoRefresh, "w", false, "Watch for file changes and auto-refresh (shorthand)")
 	flag.BoolVar(&showVersion, "v", false, "Show version")
 	flag.Parse()
 

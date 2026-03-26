@@ -39,6 +39,7 @@ $ go build -o giff
 ```console
 $ giff            # view current changes
 $ giff --watch    # watch mode: auto-refresh on file changes
+$ giff -v         # show version
 ```
 
 ### File List

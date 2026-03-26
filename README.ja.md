@@ -37,6 +37,7 @@ $ go build -o giff
 ```console
 $ giff            # 現在の変更を表示
 $ giff --watch    # ウォッチモード: ファイル変更時に自動更新
+$ giff -v         # バージョン表示
 ```
 
 ### ファイルリスト

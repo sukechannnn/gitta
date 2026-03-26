@@ -37,9 +37,6 @@ go build -o giff && ./giff
 
 # Run with file watching (auto-refresh)
 ./giff --watch
-
-# Run with debug mode (output logs to `tmp/`)
-./giff --debug
 ```
 
 ## Architecture Overview
@@ -49,8 +46,7 @@ go build -o giff && ./giff
 ### Core Components
 
 1. **Main Entry Point** (`main.go`)
-   - Handles CLI flags (`--debug`, `--watch`)
-     - `--debug` is not implemented yet
+   - Handles CLI flags (`--watch`)
    - Initializes the tview application
    - Sets up signal handlers for graceful shutdown
    - Manages the application lifecycle
