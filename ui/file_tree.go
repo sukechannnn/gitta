@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -14,6 +15,14 @@ import (
 
 // moveFileListSelection moves the file list selection.
 // If currently on a directory, moves between directories. If on a file, moves between files.
+// matchesFilter checks if a file entry matches the current filter query
+func matchesFilter(entry FileEntry, filterQuery string) bool {
+	if filterQuery == "" {
+		return true
+	}
+	return !entry.IsDirectory && strings.Contains(strings.ToLower(entry.Path), strings.ToLower(filterQuery))
+}
+
 func moveFileListSelection(ctx *FileListKeyContext, direction int) {
 	if *ctx.currentSelection < 0 || *ctx.currentSelection >= len(*ctx.fileList) {
 		return
@@ -22,7 +31,13 @@ func moveFileListSelection(ctx *FileListKeyContext, direction int) {
 
 	next := *ctx.currentSelection + direction
 	for next >= 0 && next < len(*ctx.fileList) {
-		if (*ctx.fileList)[next].IsDirectory == onDirectory {
+		entry := (*ctx.fileList)[next]
+		if entry.IsDirectory == onDirectory {
+			// Skip entries that don't match filter
+			if ctx.filterQuery != "" && !matchesFilter(entry, ctx.filterQuery) {
+				next += direction
+				continue
+			}
 			*ctx.currentSelection = next
 			ctx.updateFileListView()
 			if !onDirectory {
@@ -306,6 +321,11 @@ type FileListKeyContext struct {
 	// Mode
 	readOnly bool // if true, disable staging/discard operations
 
+	// File filter state
+	isFilterMode bool
+	filterInput  string
+	filterQuery  string // active filter (empty = no filter)
+
 	// Callbacks
 	updateFileListView     func()
 	updateSelectedFileDiff func()
@@ -313,14 +333,105 @@ type FileListKeyContext struct {
 	updateCurrentDiffText  func(string, string, string, *string, bool)
 	updateGlobalStatus     func(string, string)
 	updateStatusTitle      func()
+	setGlobalStatusText    func(string)
 	onEsc                  func() // if non-nil, called on Esc key
+	openTerminal           func() // if non-nil, opens terminal command input
+}
+
+// applyFileFilter updates the file list selection to match the filter query
+func applyFileFilter(ctx *FileListKeyContext) {
+	if ctx.filterInput == "" {
+		// Clear filter: reset to show all and select first file
+		ctx.filterQuery = ""
+		ctx.updateFileListView()
+		if ctx.setGlobalStatusText != nil {
+			ctx.setGlobalStatusText("[white]/[-]")
+		}
+		return
+	}
+	ctx.filterQuery = ctx.filterInput
+	// Find first matching file
+	query := strings.ToLower(ctx.filterInput)
+	matched := 0
+	firstMatch := -1
+	for i, entry := range *ctx.fileList {
+		if !entry.IsDirectory && strings.Contains(strings.ToLower(entry.Path), query) {
+			matched++
+			if firstMatch < 0 {
+				firstMatch = i
+			}
+		}
+	}
+	if firstMatch >= 0 {
+		*ctx.currentSelection = firstMatch
+	}
+	ctx.updateFileListView()
+	ctx.updateSelectedFileDiff()
+	if ctx.setGlobalStatusText != nil {
+		if matched > 0 {
+			ctx.setGlobalStatusText(fmt.Sprintf("[white]/%s [%d matched][-]", tview.Escape(ctx.filterInput), matched))
+		} else {
+			ctx.setGlobalStatusText(fmt.Sprintf("[tomato]/%s [no match][-]", tview.Escape(ctx.filterInput)))
+		}
+	}
 }
 
 // SetupFileListKeyBindings sets up key bindings for file list view
 func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 	ctx.fileListView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// Filter mode input handling
+		if ctx.isFilterMode {
+			switch event.Key() {
+			case tcell.KeyEnter:
+				// Confirm filter
+				ctx.filterQuery = ctx.filterInput
+				ctx.isFilterMode = false
+				if ctx.filterQuery != "" && ctx.setGlobalStatusText != nil {
+					query := strings.ToLower(ctx.filterQuery)
+					matched := 0
+					for _, entry := range *ctx.fileList {
+						if !entry.IsDirectory && strings.Contains(strings.ToLower(entry.Path), query) {
+							matched++
+						}
+					}
+					ctx.setGlobalStatusText(fmt.Sprintf("[white]/%s [%d matched][-]", tview.Escape(ctx.filterQuery), matched))
+				}
+			case tcell.KeyEsc:
+				// Cancel filter
+				ctx.isFilterMode = false
+				ctx.filterInput = ""
+				ctx.filterQuery = ""
+				ctx.updateFileListView()
+				if ctx.setGlobalStatusText != nil {
+					ctx.setGlobalStatusText(fileListKeyMessage)
+				}
+			case tcell.KeyBackspace, tcell.KeyBackspace2:
+				if len(ctx.filterInput) > 0 {
+					runes := []rune(ctx.filterInput)
+					ctx.filterInput = string(runes[:len(runes)-1])
+				}
+				applyFileFilter(ctx)
+			case tcell.KeyRune:
+				ctx.filterInput += string(event.Rune())
+				applyFileFilter(ctx)
+			}
+			return nil
+		}
+
 		switch event.Key() {
 		case tcell.KeyEsc:
+			// If filter is active, clear it first
+			if ctx.filterQuery != "" {
+				ctx.filterQuery = ""
+				ctx.filterInput = ""
+				*ctx.currentSelection = 0
+				ctx.updateFileListView()
+				ctx.updateSelectedFileDiff()
+				if ctx.setGlobalStatusText != nil {
+					ctx.setGlobalStatusText(fileListKeyMessage)
+				}
+				return nil
+			}
 			if ctx.onEsc != nil {
 				ctx.onEsc()
 				return nil
@@ -524,6 +635,14 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 							ctx.updateGlobalStatus("Failed to copy path to clipboard", "tomato")
 						}
 					}
+				}
+				return nil
+			case '/':
+				// Start file filter mode
+				ctx.isFilterMode = true
+				ctx.filterInput = ""
+				if ctx.setGlobalStatusText != nil {
+					ctx.setGlobalStatusText("[white]/[-]")
 				}
 				return nil
 			case 'w':
@@ -799,7 +918,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					}
 				}
 				return nil
-			case 't': // 't' to show git log view
+			case 'l': // 'l' to show git log view
 				if ctx.readOnly {
 					return nil
 				}
@@ -812,6 +931,11 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 
 				// Switch to Git Log View
 				ctx.app.SetRoot(gitLogView.GetView(), true)
+				return nil
+			case 't': // 't' to open terminal command input
+				if ctx.openTerminal != nil {
+					ctx.openTerminal()
+				}
 				return nil
 			case 'q': // 'q' to quit application
 				go func() {

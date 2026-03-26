@@ -20,7 +20,7 @@ var preferUnstagedSection bool = false
 
 // globalStatusView defined globally
 var globalStatusView *tview.TextView
-var fileListKeyMessage = "a:stage  A:stage file  d:discard  C-a:stage all  C-k:commit  C-j:amend  H/L:dir  s:split  w:ws  v:vim  t:log  Y:copy  C-e/C-y:scroll  Enter:switch  q:quit"
+var fileListKeyMessage = "a:stage  A:stage file  d:discard  C-a:stage all  C-k:commit  C-j:amend  H/L:dir  s:split  w:ws  /:filter  v:editor  c:code  l:log  t:terminal  Y:copy  C-e/C-y:scroll  Enter:switch  q:quit"
 var diffViewKeyMessage = "a:stage lines  A:stage file  V:select  g/G:top/end  /:search  e:fold  s:split  w:ws  y:yank  Y:copy path  C-e/C-y:scroll  Esc:back  q:quit"
 
 // restoreStatusFunc is called to restore the default status message (set by SetupRootEditor)
@@ -84,6 +84,10 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	var isAmendMode bool = false
 	var commitMessage string = ""
 	var focusBeforeCommit tview.Primitive = nil // focus position before commit mode
+
+	// Terminal command mode state
+	var isTerminalMode bool = false
+	var focusBeforeTerminal tview.Primitive = nil
 	// Keep current file info
 	var currentFile string
 	var currentStatus string
@@ -222,6 +226,33 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	commitTextArea.SetTitle("Commit Message")
 	commitTextArea.SetTitleAlign(tview.AlignLeft)
 	commitTextArea.SetTitleColor(tcell.ColorWhite)
+
+	// Terminal command input
+	terminalInput := tview.NewInputField().
+		SetLabel("[giff] $ ").
+		SetFieldBackgroundColor(util.BackgroundColor.ToTcellColor()).
+		SetLabelColor(tcell.ColorAqua)
+	terminalInput.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+	terminalInput.SetBorder(false)
+
+	// Terminal output display
+	terminalOutput := tview.NewTextView().
+		SetDynamicColors(true).
+		SetWrap(true).
+		SetScrollable(true)
+	terminalOutput.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+	terminalOutput.SetBorder(false)
+
+	// Terminal flex container (input + output)
+	terminalFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(terminalInput, 1, 0, true).
+		AddItem(terminalOutput, 0, 1, false)
+	terminalFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
+	terminalFlex.SetBorder(true)
+	terminalFlex.SetBorderColor(util.CommitAreaBorderColor.ToTcellColor())
+	terminalFlex.SetTitle(" Terminal (Esc to close) ")
+	terminalFlex.SetTitleAlign(tview.AlignLeft)
+	terminalFlex.SetTitleColor(tcell.ColorWhite)
 
 	// Left-right split flex
 	contentFlex := tview.NewFlex()
@@ -524,6 +555,29 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		updateCurrentDiffText:  updateCurrentDiffText,
 		updateGlobalStatus:     updateGlobalStatus,
 		updateStatusTitle:      updateStatusTitle,
+		setGlobalStatusText: func(text string) {
+			if globalStatusView != nil {
+				globalStatusView.SetText(text)
+			}
+		},
+		openTerminal: func() {
+			if isTerminalMode {
+				app.SetFocus(terminalInput)
+				return
+			}
+			isTerminalMode = true
+			if leftPaneFocused {
+				focusBeforeTerminal = fileListView
+			} else if isSplitView {
+				focusBeforeTerminal = splitViewFlex
+			} else {
+				focusBeforeTerminal = diffView
+			}
+			terminalOutput.Clear()
+			terminalInput.SetText("")
+			mainFlex.AddItem(terminalFlex, 12, 0, true)
+			app.SetFocus(terminalInput)
+		},
 	}
 	SetupFileListKeyBindings(fileListKeyContext)
 
@@ -731,6 +785,67 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		mainFlex.RemoveItem(commitTextArea)
 		app.SetFocus(fileListView)
 	}
+
+	exitTerminalMode := func() {
+		isTerminalMode = false
+		mainFlex.RemoveItem(terminalFlex)
+		if focusBeforeTerminal != nil {
+			app.SetFocus(focusBeforeTerminal)
+		} else {
+			app.SetFocus(fileListView)
+		}
+	}
+
+	terminalInput.SetDoneFunc(func(key tcell.Key) {
+		switch key {
+		case tcell.KeyEnter:
+			cmdText := terminalInput.GetText()
+			if cmdText == "" {
+				return
+			}
+			terminalInput.SetText("")
+
+			// Execute command via shell (with snapshot for aliases)
+			shell := os.Getenv("SHELL")
+			if shell == "" {
+				shell = "sh"
+			}
+			var cmdScript string
+			if snapPath := util.GetSnapshotPath(); snapPath != "" {
+				cmdScript = fmt.Sprintf("source %q 2>/dev/null; %s", snapPath, cmdText)
+			} else {
+				cmdScript = cmdText
+			}
+			cmd := exec.Command(shell, "-c", cmdScript)
+			cmd.Dir = repoRoot
+			output, err := cmd.CombinedOutput()
+
+			// Append command and output to terminal view
+			fmt.Fprintf(terminalOutput, "[aqua]$ %s[-]\n", tview.Escape(cmdText))
+			if err != nil {
+				fmt.Fprintf(terminalOutput, "[red]%s[-]", tview.Escape(string(output)))
+				if len(output) == 0 || output[len(output)-1] != '\n' {
+					fmt.Fprintln(terminalOutput)
+				}
+				fmt.Fprintf(terminalOutput, "[red]exit: %s[-]\n", err.Error())
+			} else {
+				if len(output) > 0 {
+					fmt.Fprintf(terminalOutput, "%s", tview.Escape(string(output)))
+					if output[len(output)-1] != '\n' {
+						fmt.Fprintln(terminalOutput)
+					}
+				}
+			}
+			terminalOutput.ScrollToEnd()
+
+			// Refresh file list in case git state changed
+			refreshFileList()
+			updateFileListView()
+			updateSelectedFileDiff()
+		case tcell.KeyEscape:
+			exitTerminalMode()
+		}
+	})
 
 	commitTextArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {

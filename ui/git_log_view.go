@@ -629,8 +629,11 @@ func (glv *GitLogView) showCommitDetails() {
 				statusView.SetText(commitStatusMessage)
 			}()
 		},
-		updateStatusTitle:      func() {},
-		onEsc:                  glv.backToLog,
+		updateStatusTitle: func() {},
+		setGlobalStatusText: func(text string) {
+			statusView.SetText(text)
+		},
+		onEsc: glv.backToLog,
 	}
 	SetupFileListKeyBindings(fileListKeyContext)
 
