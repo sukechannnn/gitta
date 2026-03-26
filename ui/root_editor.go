@@ -436,6 +436,26 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	globalStatusView.SetText(fileListKeyMessage)
 	updateStatusTitle()
 
+	// Terminal open callback (shared between diff view and file list)
+	openTerminalFunc := func() {
+		if isTerminalMode {
+			app.SetFocus(terminalInput)
+			return
+		}
+		isTerminalMode = true
+		if leftPaneFocused {
+			focusBeforeTerminal = fileListView
+		} else if isSplitView {
+			focusBeforeTerminal = splitViewFlex
+		} else {
+			focusBeforeTerminal = diffView
+		}
+		terminalOutput.Clear()
+		terminalInput.SetText("")
+		mainFlex.AddItem(terminalFlex, 12, 0, true)
+		app.SetFocus(terminalInput)
+	}
+
 	// Set up key input handling for right pane (same behavior as file_view.go)
 	// Set up diff view key bindings
 	diffViewContext := &DiffViewContext{
@@ -506,6 +526,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		onUpdate:              onUpdate,
 		updateCurrentDiffText: updateCurrentDiffText,
 		updateStatusTitle:     updateStatusTitle,
+		openTerminal:          openTerminalFunc,
 	}
 	SetupDiffViewKeyBindings(diffViewContext)
 
@@ -560,24 +581,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 				globalStatusView.SetText(text)
 			}
 		},
-		openTerminal: func() {
-			if isTerminalMode {
-				app.SetFocus(terminalInput)
-				return
-			}
-			isTerminalMode = true
-			if leftPaneFocused {
-				focusBeforeTerminal = fileListView
-			} else if isSplitView {
-				focusBeforeTerminal = splitViewFlex
-			} else {
-				focusBeforeTerminal = diffView
-			}
-			terminalOutput.Clear()
-			terminalInput.SetText("")
-			mainFlex.AddItem(terminalFlex, 12, 0, true)
-			app.SetFocus(terminalInput)
-		},
+		openTerminal: openTerminalFunc,
 	}
 	SetupFileListKeyBindings(fileListKeyContext)
 

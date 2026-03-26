@@ -78,6 +78,7 @@ type DiffViewContext struct {
 	updateCurrentDiffText func(string, string, string, *string, bool)
 	updateStatusTitle     func()
 	onEsc                 func() // if non-nil, call this instead of returning to left pane on Esc
+	openTerminal          func() // if non-nil, opens terminal command input
 }
 
 // scrollDiffView scrolls the diff view by the specified direction and handles cursor following
@@ -635,6 +636,12 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					if err := cmd.Start(); err != nil {
 						ctx.updateGlobalStatus("Failed to open VSCode", "tomato")
 					}
+				}
+				return nil
+			case 't':
+				// Open terminal command input
+				if ctx.openTerminal != nil {
+					ctx.openTerminal()
 				}
 				return nil
 			case 'e':
