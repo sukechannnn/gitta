@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Background: dark terminal -->
+  <rect width="128" height="128" rx="12" fill="#1a1a2e"/>
+
+  <!-- Terminal top bar -->
+  <rect x="8" y="8" width="112" height="12" rx="4" fill="#2d2d44"/>
+  <circle cx="16" cy="14" r="2.5" fill="#e74c4e"/>
+  <circle cx="24" cy="14" r="2.5" fill="#f1c40f"/>
+  <circle cx="32" cy="14" r="2.5" fill="#2ecc71"/>
+
+  <!-- Diff lines area -->
+  <!-- Line 1: context (gray) -->
+  <rect x="12" y="28" width="4" height="6" fill="#666"/>
+  <rect x="20" y="28" width="28" height="6" fill="#555"/>
+
+  <!-- Line 2: deleted (red) -->
+  <rect x="12" y="38" width="4" height="6" fill="#e74c4e"/>
+  <rect x="20" y="38" width="40" height="6" fill="#3a0000"/>
+  <rect x="20" y="38" width="16" height="6" fill="#5c1a1a"/>
+
+  <!-- Line 3: deleted (red) -->
+  <rect x="12" y="48" width="4" height="6" fill="#e74c4e"/>
+  <rect x="20" y="48" width="32" height="6" fill="#3a0000"/>
+  <rect x="28" y="48" width="12" height="6" fill="#5c1a1a"/>
+
+  <!-- Line 4: added (green) -->
+  <rect x="12" y="58" width="4" height="6" fill="#2ecc71"/>
+  <rect x="20" y="58" width="44" height="6" fill="#002500"/>
+  <rect x="20" y="58" width="20" height="6" fill="#1a4d1a"/>
+
+  <!-- Line 5: added (green) -->
+  <rect x="12" y="68" width="4" height="6" fill="#2ecc71"/>
+  <rect x="20" y="68" width="36" height="6" fill="#002500"/>
+  <rect x="32" y="68" width="16" height="6" fill="#1a4d1a"/>
+
+  <!-- Line 6: context (gray) -->
+  <rect x="12" y="78" width="4" height="6" fill="#666"/>
+  <rect x="20" y="78" width="24" height="6" fill="#555"/>
+
+  <!-- Pixel art "giff" text at bottom -->
+  <!-- g -->
+  <rect x="20" y="96" width="4" height="4" fill="#00AC37"/>
+  <rect x="24" y="96" width="4" height="4" fill="#00AC37"/>
+  <rect x="28" y="96" width="4" height="4" fill="#00AC37"/>
+  <rect x="16" y="100" width="4" height="4" fill="#00AC37"/>
+  <rect x="16" y="104" width="4" height="4" fill="#00AC37"/>
+  <rect x="16" y="108" width="4" height="4" fill="#00AC37"/>
+  <rect x="20" y="108" width="4" height="4" fill="#00AC37"/>
+  <rect x="24" y="108" width="4" height="4" fill="#00AC37"/>
+  <rect x="28" y="108" width="4" height="4" fill="#00AC37"/>
+  <rect x="28" y="104" width="4" height="4" fill="#00AC37"/>
+  <rect x="24" y="104" width="4" height="4" fill="#00AC37"/>
+
+  <!-- i -->
+  <rect x="40" y="92" width="4" height="4" fill="#00AC37"/>
+  <rect x="40" y="100" width="4" height="4" fill="#00AC37"/>
+  <rect x="40" y="104" width="4" height="4" fill="#00AC37"/>
+  <rect x="40" y="108" width="4" height="4" fill="#00AC37"/>
+
+  <!-- f -->
+  <rect x="52" y="92" width="4" height="4" fill="#E7454E"/>
+  <rect x="56" y="92" width="4" height="4" fill="#E7454E"/>
+  <rect x="48" y="96" width="4" height="4" fill="#E7454E"/>
+  <rect x="48" y="100" width="4" height="4" fill="#E7454E"/>
+  <rect x="52" y="100" width="4" height="4" fill="#E7454E"/>
+  <rect x="56" y="100" width="4" height="4" fill="#E7454E"/>
+  <rect x="48" y="104" width="4" height="4" fill="#E7454E"/>
+  <rect x="48" y="108" width="4" height="4" fill="#E7454E"/>
+
+  <!-- f -->
+  <rect x="68" y="92" width="4" height="4" fill="#E7454E"/>
+  <rect x="72" y="92" width="4" height="4" fill="#E7454E"/>
+  <rect x="64" y="96" width="4" height="4" fill="#E7454E"/>
+  <rect x="64" y="100" width="4" height="4" fill="#E7454E"/>
+  <rect x="68" y="100" width="4" height="4" fill="#E7454E"/>
+  <rect x="72" y="100" width="4" height="4" fill="#E7454E"/>
+  <rect x="64" y="104" width="4" height="4" fill="#E7454E"/>
+  <rect x="64" y="108" width="4" height="4" fill="#E7454E"/>
+
+  <!-- Cursor blinking block -->
+  <rect x="80" y="78" width="6" height="6" fill="#fff" opacity="0.8"/>
+</svg>

@@ -1,116 +1,80 @@
+<p align="center">
+<br><br><br>
+<img src="./docs/images/giff_icon.svg" width="120" alt="giff">
+<br><br><br>
+</p>
+
 # giff
 
-**giff** is a terminal UI tool for interactively staging Git hunks and lines as minimal patches.
-It's like `git add -p`, but better — with a keyboard-driven interface and visual diff selection.
+English | [日本語](./README.ja.md)
 
-![demo](./docs/images/giff_demo.gif)
+`giff` is a terminal-based Git diff viewer. It watches your working tree and shows diffs in real-time.
 
-## Features
+![giff screenshot](./docs/images/preview_1.png)
 
-- Visual Git diff viewer with syntax highlighting and inline diff highlighting
-- Unified view (default) and split view (side-by-side) modes
-- Interactive line/hunk selection with Vim-like keys
-- Apply selected changes as minimal patches (`git apply --cached`)
-- File tree with directory folding and collapsing
-- Full-text search within diffs
-- Code folding for unchanged regions
-- Git log viewer with shared diff/file list components
-- Real-time file watching with `--watch` flag
-- Whitespace-change hiding toggle
+## Install
 
----
+**go install:**
+
+```console
+$ go install github.com/sukechannnn/giff@latest
+```
+
+**build from source:**
+
+```console
+$ git clone https://github.com/sukechannnn/giff.git
+$ cd giff
+$ go build -o giff
+```
 
 ## Usage
 
-```bash
-cd path/to/git/repository
-giff
+```console
+$ giff            # view current changes
+$ giff --watch    # watch mode: auto-refresh on file changes
 ```
 
-### Key Bindings — File List
+### File List
 
 | Key | Action |
 |-----|--------|
-| `j` / `k` | Move cursor up/down |
-| `H` / `L` | Navigate directories (collapse/expand) |
+| `j` / `k` | Move cursor |
+| `H` / `L` | Collapse/expand directory |
+| `a` | Stage/unstage file |
+| `d` | Discard changes |
+| `Ctrl+A` | Stage all |
+| `Ctrl+K` | Commit |
+| `Ctrl+J` | Amend |
+| `s` | Split view |
+| `w` | Hide whitespace |
+| `v` | Open in Vim |
+| `c` | Open in VS Code |
+| `t` | Git log |
 | `Enter` | Switch to diff view |
-| `a` | Stage/unstage selected file |
-| `A` | Stage/unstage entire file |
-| `d` | Discard changes (or delete untracked file) |
-| `Ctrl+A` | Stage all files |
-| `Ctrl+K` | Open commit message input |
-| `Ctrl+J` | Amend last commit |
-| `s` | Toggle split view |
-| `w` | Toggle whitespace hiding |
-| `v` | Open file in vim |
-| `t` | Open git log viewer |
-| `Y` | Copy file path to clipboard |
-| `Ctrl+E` / `Ctrl+Y` | Scroll diff view down/up |
 | `q` | Quit |
 
-### Key Bindings — Diff View
+### Diff View
 
 | Key | Action |
 |-----|--------|
-| `j` / `k` | Move cursor up/down |
-| `g` + `g` / `G` | Go to top / bottom |
-| `V` | Start/stop line selection mode |
+| `j` / `k` | Move cursor |
+| `gg` / `G` | Top / bottom |
+| `V` | Select lines |
 | `a` | Stage selected lines |
-| `A` | Stage/unstage entire file |
-| `/` | Search in diff |
-| `n` / `N` | Next/previous search match |
-| `e` | Expand/collapse fold |
-| `s` | Toggle split view |
-| `w` | Toggle whitespace hiding |
-| `y` | Yank (copy) current/selected lines |
-| `Y` | Copy file path to clipboard |
-| `Ctrl+L` | Copy file reference (path:line) to clipboard |
-| `Ctrl+E` / `Ctrl+Y` | Scroll down/up |
-| `Enter` / `Esc` | Return to file list |
+| `A` | Stage/unstage file |
+| `/` | Search |
+| `n` / `N` | Next / prev match |
+| `e` | Toggle fold |
+| `s` | Split view |
+| `w` | Hide whitespace |
+| `y` | Yank lines |
+| `Y` | Copy file path |
+| `Ctrl+L` | Copy `path:line` |
+| `Ctrl+E` / `Ctrl+Y` | Scroll |
+| `Esc` | Back to file list |
 | `q` | Quit |
-
-### Command Line Options
-
-```bash
-# Enable auto-refresh mode (watch for file changes)
-giff --watch
-
-# Enable debug mode (output logs to tmp/)
-giff --debug
-```
-
-With `--watch` enabled, giff will automatically refresh the file list and diff view as you edit files.
-
----
-
-## Installation
-
-```bash
-go install github.com/sukechannnn/giff@latest
-
-echo 'export PATH="$PATH:$HOME/go/bin"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-Or clone and build:
-
-```bash
-git clone https://github.com/sukechannnn/giff.git
-cd giff
-go build -o giff
-
-mv giff /usr/local/bin  # or any directory in your $PATH
-```
-
----
-
-## Why?
-
-Sometimes you want to commit just part of a change — a few lines, not the whole file.
-`giff` gives you full control over what gets staged, with a cleaner, more intuitive UI than `git add -p`.
-
----
 
 ## License
 
-MIT License
+MIT

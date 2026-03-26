@@ -1,0 +1,78 @@
+<p align="center">
+<img src="./docs/images/giff_icon.svg" width="120" alt="giff">
+</p>
+
+# giff
+
+[English](./README.md) | 日本語
+
+`giff` はターミナルで動く Git diff ビューアです。ワーキングツリーを監視して、差分をリアルタイムに表示します。
+
+![giff screenshot](./docs/images/giff_demo.gif)
+
+## インストール
+
+**go install:**
+
+```console
+$ go install github.com/sukechannnn/giff@latest
+```
+
+**ソースからビルド:**
+
+```console
+$ git clone https://github.com/sukechannnn/giff.git
+$ cd giff
+$ go build -o giff
+```
+
+## 使い方
+
+```console
+$ giff            # 現在の変更を表示
+$ giff --watch    # ウォッチモード: ファイル変更時に自動更新
+```
+
+### ファイルリスト
+
+| キー | 操作 |
+|------|------|
+| `j` / `k` | カーソル移動 |
+| `H` / `L` | ディレクトリの折りたたみ/展開 |
+| `a` | ステージ/アンステージ |
+| `d` | 変更を破棄 |
+| `Ctrl+A` | 全ファイルをステージ |
+| `Ctrl+K` | コミット |
+| `Ctrl+J` | amend |
+| `s` | Split View |
+| `w` | 空白変更を非表示 |
+| `v` | Vim で開く |
+| `c` | VS Code で開く |
+| `t` | Git ログ |
+| `Enter` | 差分ビューに切替 |
+| `q` | 終了 |
+
+### 差分ビュー
+
+| キー | 操作 |
+|------|------|
+| `j` / `k` | カーソル移動 |
+| `gg` / `G` | 先頭/末尾 |
+| `V` | 行選択 |
+| `a` | 選択行をステージ |
+| `A` | ファイル全体をステージ/アンステージ |
+| `/` | 検索 |
+| `n` / `N` | 次/前の検索結果 |
+| `e` | 折りたたみ切替 |
+| `s` | Split View |
+| `w` | 空白変更を非表示 |
+| `y` | 行をコピー |
+| `Y` | ファイルパスをコピー |
+| `Ctrl+L` | `path:行番号` をコピー |
+| `Ctrl+E` / `Ctrl+Y` | スクロール |
+| `Esc` | ファイルリストに戻る |
+| `q` | 終了 |
+
+## ライセンス
+
+MIT
