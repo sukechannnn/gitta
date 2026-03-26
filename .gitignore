@@ -22,6 +22,7 @@ go.work.sum
 giff
 /giff
 gitta
+dist/
 
 # IDE specific files
 .idea/
