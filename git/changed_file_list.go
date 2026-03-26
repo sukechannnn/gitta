@@ -13,7 +13,7 @@ type FileInfo struct {
 	ChangeStatus string // "added", "deleted", "modified", "untracked"
 }
 
-// FindGitRoot は現在のディレクトリから上位階層へ遡って .git ディレクトリを探します
+// FindGitRoot searches for the .git directory by traversing up from the current directory
 func FindGitRoot(startPath string) (string, error) {
 	dir, err := filepath.Abs(startPath)
 	if err != nil {
@@ -28,7 +28,7 @@ func FindGitRoot(startPath string) (string, error) {
 
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			// ルートディレクトリに達した
+			// Reached the root directory
 			break
 		}
 		dir = parent
@@ -38,13 +38,13 @@ func FindGitRoot(startPath string) (string, error) {
 }
 
 func GetChangedFiles(repoPath string) ([]FileInfo, []FileInfo, []FileInfo, error) {
-	// Git リポジトリのルートを検索
+	// Find the Git repository root
 	gitRoot, err := FindGitRoot(repoPath)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	// Git status --porcelain を実行してstaged/unstagedの両方のファイルを取得
-	// -c core.quotepath=false でマルチバイトファイル名をエスケープしないようにする
+	// Run git status --porcelain to get both staged and unstaged files
+	// -c core.quotepath=false prevents escaping of multibyte filenames
 	cmd := exec.Command("git", "-c", "core.quotepath=false", "status", "--porcelain")
 	cmd.Dir = gitRoot
 	output, err := cmd.Output()
@@ -56,9 +56,9 @@ func GetChangedFiles(repoPath string) ([]FileInfo, []FileInfo, []FileInfo, error
 	var modifiedFiles []FileInfo
 	var untrackedFiles []FileInfo
 
-	// 出力を解析 (TrimSpaceは使わず、空行のみ除去)
+	// Parse output (remove only empty lines, without using TrimSpace)
 	lines := strings.Split(string(output), "\n")
-	// 空行を除去
+	// Remove empty lines
 	var filteredLines []string
 	for _, line := range lines {
 		if len(line) > 0 {
@@ -71,59 +71,51 @@ func GetChangedFiles(repoPath string) ([]FileInfo, []FileInfo, []FileInfo, error
 			continue
 		}
 
-		// git status --porcelain の形式: XY filename
+		// git status --porcelain format: XY filename
 		// X = index status, Y = worktree status
 		indexStatus := line[0]
 		worktreeStatus := line[1]
-		filename := strings.TrimSpace(line[2:]) // 2文字目の後からファイル名
+		filename := strings.TrimSpace(line[2:]) // Filename starts after the 2nd character
 
-		// リネームの場合の処理 (R  old -> new)
+		// Handle rename case (R  old -> new)
 		if indexStatus == 'R' {
-			// " -> " で分割して古いファイル名と新しいファイル名を取得
+			// Split by " -> " to get old and new filenames
 			parts := strings.Split(filename, " -> ")
 			oldFile := parts[0]
 			newFile := parts[1]
-			// 古いファイルは削除として、新しいファイルは追加として扱う
+			// Treat old file as deleted, new file as added
 			stagedFiles = append(stagedFiles, FileInfo{Path: oldFile, ChangeStatus: "deleted"})
 			stagedFiles = append(stagedFiles, FileInfo{Path: newFile, ChangeStatus: "added"})
 		} else if worktreeStatus == 'R' {
-			// unstaged のリネーム
+			// Unstaged rename
 			parts := strings.Split(filename, " -> ")
 			oldFile := parts[0]
 			newFile := parts[1]
 			modifiedFiles = append(modifiedFiles, FileInfo{Path: oldFile, ChangeStatus: "deleted"})
 			modifiedFiles = append(modifiedFiles, FileInfo{Path: newFile, ChangeStatus: "added"})
 		} else if indexStatus == '?' && worktreeStatus == '?' {
-			// untrackedファイル
-			// ディレクトリかどうかをチェック
+			// Untracked file
+			// Check if it is a directory
 			fullPath := filepath.Join(gitRoot, filename)
 			fileInfo, statErr := os.Stat(fullPath)
 			if statErr == nil && fileInfo.IsDir() {
-				// ディレクトリの場合は配下のファイルを再帰的に取得
-				err := filepath.Walk(fullPath, func(path string, info os.FileInfo, err error) error {
-					if err != nil {
-						return err
-					}
-					if !info.IsDir() {
-						// 相対パスに変換
-						relPath, err := filepath.Rel(gitRoot, path)
-						if err != nil {
-							return err
+				// For directories, use git ls-files to quickly list untracked files
+				lsCmd := exec.Command("git", "-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", filename+"/")
+				lsCmd.Dir = gitRoot
+				lsOutput, lsErr := lsCmd.Output()
+				if lsErr == nil {
+					for _, f := range strings.Split(strings.TrimSpace(string(lsOutput)), "\n") {
+						if f != "" {
+							untrackedFiles = append(untrackedFiles, FileInfo{Path: f, ChangeStatus: "untracked"})
 						}
-						untrackedFiles = append(untrackedFiles, FileInfo{Path: relPath, ChangeStatus: "untracked"})
 					}
-					return nil
-				})
-				if err != nil {
-					// エラーが発生してもディレクトリ自体は追加しない
-					continue
 				}
 			} else {
-				// ファイルの場合はそのまま追加
+				// For files, add as-is
 				untrackedFiles = append(untrackedFiles, FileInfo{Path: filename, ChangeStatus: "untracked"})
 			}
 		} else {
-			// ステータスに応じて適切な情報を追加
+			// Add appropriate info based on status
 			if indexStatus == 'A' {
 				stagedFiles = append(stagedFiles, FileInfo{Path: filename, ChangeStatus: "added"})
 			} else if indexStatus == 'D' {
@@ -134,7 +126,7 @@ func GetChangedFiles(repoPath string) ([]FileInfo, []FileInfo, []FileInfo, error
 				stagedFiles = append(stagedFiles, FileInfo{Path: filename, ChangeStatus: "modified"})
 			}
 
-			// unstagedの変更
+			// Unstaged changes
 			if worktreeStatus == 'D' {
 				modifiedFiles = append(modifiedFiles, FileInfo{Path: filename, ChangeStatus: "deleted"})
 			} else if worktreeStatus == 'M' {
