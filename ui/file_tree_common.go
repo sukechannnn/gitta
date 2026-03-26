@@ -52,7 +52,7 @@ type TreeNode struct {
 	Name     string
 	IsFile   bool
 	Children map[string]*TreeNode
-	FullPath string // ファイルおよびディレクトリのパス
+	FullPath string // Path of file or directory
 }
 
 // buildFileTreeFromGitFiles converts a list of git.FileInfo into a tree structure
@@ -152,6 +152,7 @@ func renderFileTreeForGitFiles(
 	currentLine *int,
 	fileInfos []git.FileInfo,
 	collapseState *DirCollapseState,
+	statusMap map[string]string,
 ) {
 	// Sort children for consistent ordering
 	var sortedKeys []string
@@ -160,7 +161,7 @@ func renderFileTreeForGitFiles(
 	}
 	sort.Strings(sortedKeys)
 
-	// ディレクトリとファイルを分離
+	// Separate directories and files
 	var directories []string
 	var files []string
 
@@ -173,27 +174,27 @@ func renderFileTreeForGitFiles(
 		}
 	}
 
-	// 全ての要素（ディレクトリ＋ファイル）を処理
+	// Process all items (directories + files)
 	allItems := append(directories, files...)
 
 	for i, key := range allItems {
 		isLast := i == len(allItems)-1
 		child := node.Children[key]
 
-		// 現在の要素の接続記号
+		// Connector symbol for the current item
 		connector := "├─"
 		if isLast {
 			connector = "└─"
 		}
 
-		// 次の階層のためのプレフィックス
+		// Prefix for the next level
 		childPrefix := prefix + "│ "
 		if isLast {
 			childPrefix = prefix + "  "
 		}
 
 		if child.IsFile {
-			// ファイルの場合
+			// File node
 			regionID := fmt.Sprintf("file-%d", *regionIndex)
 			*fileList = append(*fileList, FileEntry{
 				ID:          regionID,
@@ -201,17 +202,13 @@ func renderFileTreeForGitFiles(
 				StageStatus: stageStatus,
 			})
 
-			// ファイル名に装飾を追加
+			// Add status decoration to filename
 			displayName := child.Name
-			// ファイルのステータスを検索して装飾を追加
-			for _, fileInfo := range fileInfos {
-				if fileInfo.Path == child.FullPath {
-					displayName = formatFileWithStatus(child.Name, fileInfo.ChangeStatus)
-					break
-				}
+			if status, ok := statusMap[child.FullPath]; ok {
+				displayName = formatFileWithStatus(child.Name, status)
 			}
 
-			// tviewの色タグをエスケープ
+			// Escape tview color tags
 			escapedDisplayName := escapeTviewTags(displayName)
 
 			if focusedPane && *regionIndex == currentSelection {
@@ -225,7 +222,7 @@ func renderFileTreeForGitFiles(
 			(*regionIndex)++
 			(*currentLine)++
 		} else {
-			// ディレクトリの場合
+			// Directory node
 			collapsed := collapseState != nil && collapseState.IsCollapsed(stageStatus, child.FullPath)
 			escapedDirName := escapeTviewTags(child.Name)
 			dirDisplay := escapedDirName + "/"
@@ -249,10 +246,10 @@ func renderFileTreeForGitFiles(
 			(*regionIndex)++
 			(*currentLine)++
 
-			// 折りたたまれていない場合のみ子要素を描画
+			// Only render children if not collapsed
 			if !collapsed {
 				renderFileTreeForGitFiles(child, depth+1, childPrefix, sb, fileList,
-					stageStatus, regionIndex, currentSelection, focusedPane, lineNumberMap, currentLine, fileInfos, collapseState)
+					stageStatus, regionIndex, currentSelection, focusedPane, lineNumberMap, currentLine, fileInfos, collapseState, statusMap)
 			}
 		}
 	}
@@ -273,6 +270,7 @@ func renderFileTreeForFileEntries(
 	currentLine *int,
 	fileEntries []FileEntry,
 	collapseState *DirCollapseState,
+	statusMap map[string]string,
 ) {
 	// Sort children for consistent ordering
 	var sortedKeys []string
@@ -281,7 +279,7 @@ func renderFileTreeForFileEntries(
 	}
 	sort.Strings(sortedKeys)
 
-	// ディレクトリとファイルを分離
+	// Separate directories and files
 	var directories []string
 	var files []string
 
@@ -294,40 +292,36 @@ func renderFileTreeForFileEntries(
 		}
 	}
 
-	// 全ての要素（ディレクトリ＋ファイル）を処理
+	// Process all items (directories + files)
 	allItems := append(directories, files...)
 
 	for i, key := range allItems {
 		isLast := i == len(allItems)-1
 		child := node.Children[key]
 
-		// 現在の要素の接続記号
+		// Connector symbol for the current item
 		connector := "├─"
 		if isLast {
 			connector = "└─"
 		}
 
-		// 次の階層のためのプレフィックス
+		// Prefix for the next level
 		childPrefix := prefix + "│ "
 		if isLast {
 			childPrefix = prefix + "  "
 		}
 
 		if child.IsFile {
-			// ファイルの場合
+			// File node
 			displayName := child.Name
 			var changeStatus string
 
-			// ファイルのステータスを検索して装飾を追加
-			for _, fileInfo := range fileEntries {
-				if fileInfo.Path == child.FullPath {
-					displayName = formatFileWithStatus(child.Name, fileInfo.ChangeStatus)
-					changeStatus = fileInfo.ChangeStatus
-					break
-				}
+			if status, ok := statusMap[child.FullPath]; ok {
+				displayName = formatFileWithStatus(child.Name, status)
+				changeStatus = status
 			}
 
-			// tviewの色タグをエスケープ
+			// Escape tview color tags
 			escapedDisplayName := escapeTviewTags(displayName)
 
 			regionID := fmt.Sprintf("file-%d", *regionIndex)
@@ -352,7 +346,7 @@ func renderFileTreeForFileEntries(
 			(*regionIndex)++
 			(*currentLine)++
 		} else {
-			// ディレクトリの場合
+			// Directory node
 			collapsed := collapseState != nil && collapseState.IsCollapsed(stageStatus, child.FullPath)
 			escapedDirName := escapeTviewTags(child.Name)
 			dirDisplay := escapedDirName + "/"
@@ -378,10 +372,10 @@ func renderFileTreeForFileEntries(
 			(*regionIndex)++
 			(*currentLine)++
 
-			// 折りたたまれていない場合のみ子要素を描画
+			// Only render children if not collapsed
 			if !collapsed {
 				renderFileTreeForFileEntries(child, depth+1, childPrefix, sb, fileList,
-					stageStatus, regionIndex, currentSelection, focusedPane, lineNumberMap, currentLine, fileEntries, collapseState)
+					stageStatus, regionIndex, currentSelection, focusedPane, lineNumberMap, currentLine, fileEntries, collapseState, statusMap)
 			}
 		}
 	}
@@ -416,7 +410,7 @@ func collectPathsInTreeOrder(node *TreeNode, collapseState *DirCollapseState, st
 			result = append(result, child.FullPath)
 		} else {
 			result = append(result, child.FullPath)
-			// 折りたたまれていない場合のみ子要素を追加
+			// Only add children if not collapsed
 			collapsed := collapseState != nil && collapseState.IsCollapsed(stageStatus, child.FullPath)
 			if !collapsed {
 				result = append(result, collectPathsInTreeOrder(child, collapseState, stageStatus)...)

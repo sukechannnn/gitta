@@ -41,8 +41,8 @@ type DiffViewContext struct {
 	preferUnstagedSection *bool
 	currentSelection      *int
 	fileList              *[]FileEntry
-	preserveScrollRow     *int  // ファイルリストのスクロール位置を保持
-	ignoreWhitespace      *bool // Whitespace無視モード
+	preserveScrollRow     *int  // preserve file list scroll position
+	ignoreWhitespace      *bool // ignore whitespace mode
 
 	// Paths
 	repoRoot  string
@@ -59,25 +59,25 @@ type DiffViewContext struct {
 	foldState *FoldState
 
 	// Search state
-	searchQuery               *string // 現在の検索クエリ（空 = 検索なし）
-	searchMatches             *[]int  // マッチした行インデックスのリスト
-	searchMatchIndex          *int    // 現在のマッチインデックス（searchMatches 内の位置）
-	isSearchMode              *bool   // 検索入力モード中か
-	searchInput               *string // 検索入力中の文字列（未確定）
-	searchCursorYBeforeSearch *int    // 検索開始前のカーソル位置
+	searchQuery               *string // current search query (empty = no search)
+	searchMatches             *[]int  // list of matched line indices
+	searchMatchIndex          *int    // current match index (position within searchMatches)
+	isSearchMode              *bool   // whether in search input mode
+	searchInput               *string // string being typed during search (uncommitted)
+	searchCursorYBeforeSearch *int    // cursor position before search started
 
 	// Mode
-	readOnly bool // true の場合、staging/discard 系を無効化
+	readOnly bool // if true, disable staging/discard operations
 
 	// Callbacks
 	updateFileListView    func()
 	updateGlobalStatus    func(string, string)
-	setGlobalStatusText   func(string) // 直接ステータステキストを設定（タイマーなし）
+	setGlobalStatusText   func(string) // set status text directly (no timer)
 	refreshFileList       func()
 	onUpdate              func()
 	updateCurrentDiffText func(string, string, string, *string, bool)
 	updateStatusTitle     func()
-	onEsc                 func() // nil でない場合、Esc で左ペインに戻る代わりにこれを呼ぶ
+	onEsc                 func() // if non-nil, call this instead of returning to left pane on Esc
 }
 
 // scrollDiffView scrolls the diff view by the specified direction and handles cursor following
@@ -87,20 +87,20 @@ func scrollDiffView(ctx *DiffViewContext, direction int) {
 		maxLines := getSplitViewLineCount(*ctx.currentDiffText)
 
 		nextRow := currentRow + direction
-		// スクロール位置を更新（範囲内に収める）
+		// Update scroll position (keep within range)
 		if nextRow >= 0 && nextRow < maxLines {
 			ctx.beforeView.ScrollTo(nextRow, 0)
 			ctx.afterView.ScrollTo(nextRow, 0)
 
-			// カーソルが画面外になったら追従
+			// Follow cursor if it goes off screen
 			if direction > 0 && *ctx.cursorY < nextRow {
-				// 下スクロール時：カーソルが画面最上部にある場合は追従
+				// Scrolling down: follow if cursor is at the top of the screen
 				*ctx.cursorY = nextRow
 				if ctx.viewUpdater != nil {
 					ctx.viewUpdater.UpdateWithSelection(*ctx.currentDiffText, *ctx.cursorY, *ctx.selectStart, *ctx.selectEnd, *ctx.isSelecting)
 				}
 			} else if direction < 0 && *ctx.cursorY > nextRow+20 {
-				// 上スクロール時：カーソルが画面最下部にある場合は追従（画面高さを20行と仮定）
+				// Scrolling up: follow if cursor is at the bottom of the screen (assuming 20 lines height)
 				*ctx.cursorY = nextRow + 20
 				if *ctx.cursorY >= maxLines {
 					*ctx.cursorY = maxLines - 1
@@ -111,24 +111,24 @@ func scrollDiffView(ctx *DiffViewContext, direction int) {
 			}
 		}
 	} else {
-		// Unified Viewの場合
+		// Unified view case
 		currentRow, _ := ctx.diffView.GetScrollOffset()
 		maxLines := GetUnifiedViewLineCount(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
 
 		nextRow := currentRow + direction
-		// スクロール位置を更新（範囲内に収める）
+		// Update scroll position (keep within range)
 		if nextRow >= 0 && nextRow < maxLines {
 			ctx.diffView.ScrollTo(nextRow, 0)
 
-			// カーソルが画面外になったら追従
+			// Follow cursor if it goes off screen
 			if direction > 0 && *ctx.cursorY < nextRow {
-				// 下スクロール時：カーソルが画面最上部にある場合は追従
+				// Scrolling down: follow if cursor is at the top of the screen
 				*ctx.cursorY = nextRow
 				if ctx.viewUpdater != nil {
 					ctx.viewUpdater.UpdateWithSelection(*ctx.currentDiffText, *ctx.cursorY, *ctx.selectStart, *ctx.selectEnd, *ctx.isSelecting)
 				}
 			} else if direction < 0 && *ctx.cursorY > nextRow+20 {
-				// 上スクロール時：カーソルが画面最下部にある場合は追従（画面高さを20行と仮定）
+				// Scrolling up: follow if cursor is at the bottom of the screen (assuming 20 lines height)
 				*ctx.cursorY = nextRow + 20
 				if *ctx.cursorY >= maxLines {
 					*ctx.cursorY = maxLines - 1
@@ -143,7 +143,7 @@ func scrollDiffView(ctx *DiffViewContext, direction int) {
 
 // SetupDiffViewKeyBindings sets up key bindings for diff view
 func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
-	// 初期状態でviewUpdaterを設定
+	// Set viewUpdater in initial state
 	if ctx.viewUpdater == nil {
 		if *ctx.isSplitView {
 			ctx.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView, ctx.currentFile)
@@ -158,13 +158,13 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 		}
 	}
 
-	// 共通のキーハンドラー関数
+	// Common key handler function
 	keyHandler := func(event *tcell.EventKey) *tcell.EventKey {
-		// 検索モード中のキーハンドリング
+		// Key handling during search mode
 		if *ctx.isSearchMode {
 			switch event.Key() {
 			case tcell.KeyEnter:
-				// 検索確定
+				// Confirm search
 				*ctx.searchQuery = *ctx.searchInput
 				*ctx.isSearchMode = false
 				if ctx.viewUpdater != nil {
@@ -176,7 +176,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					ctx.setGlobalStatusText(fmt.Sprintf("[tomato]/%s [no match][-]", tview.Escape(*ctx.searchQuery)))
 				}
 			case tcell.KeyEsc:
-				// 検索キャンセル: カーソルを元の位置に戻す
+				// Cancel search: restore cursor to original position
 				*ctx.isSearchMode = false
 				*ctx.searchInput = ""
 				*ctx.searchQuery = ""
@@ -189,7 +189,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				ctx.setGlobalStatusText(diffViewKeyMessage)
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
 				if len(*ctx.searchInput) > 0 {
-					// 1文字削除
+					// Delete one character
 					runes := []rune(*ctx.searchInput)
 					*ctx.searchInput = string(runes[:len(runes)-1])
 				}
@@ -203,7 +203,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 
 		switch event.Key() {
 		case tcell.KeyEsc:
-			// 検索結果がある場合、最初の Esc でクリア
+			// If search results exist, first Esc clears them
 			if *ctx.searchQuery != "" {
 				*ctx.searchQuery = ""
 				*ctx.searchMatches = nil
@@ -213,7 +213,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			}
-			// 選択モード中なら解除
+			// If in selection mode, deselect
 			if *ctx.isSelecting {
 				*ctx.isSelecting = false
 				*ctx.selectEnd = -1
@@ -223,7 +223,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			}
-			// 左ペインに戻る
+			// Return to left pane
 			*ctx.leftPaneFocused = true
 			if restoreStatusFunc != nil {
 				restoreStatusFunc()
@@ -237,7 +237,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			ctx.app.SetFocus(ctx.fileListView)
 			return nil
 		case tcell.KeyEnter:
-			// 左ペインに戻る
+			// Return to left pane
 			*ctx.isSelecting = false
 			*ctx.selectStart = -1
 			*ctx.selectEnd = -1
@@ -245,7 +245,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			if restoreStatusFunc != nil {
 				restoreStatusFunc()
 			}
-			// diff view をカーソルなしで再描画
+			// Redraw diff view without cursor
 			if *ctx.isSplitView {
 				updateSplitViewWithoutCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, *ctx.currentFile)
 			} else {
@@ -255,104 +255,31 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			ctx.app.SetFocus(ctx.fileListView)
 			return nil
 		case tcell.KeyCtrlE:
-			// Ctrl+E: 1行下にスクロール（カーソルは最上部になったら追従）
+			// Ctrl+E: scroll down one line (cursor follows when at top)
 			scrollDiffView(ctx, 1)
 			return nil
 		case tcell.KeyCtrlY:
-			// Ctrl+Y: 1行上にスクロール
+			// Ctrl+Y: scroll up one line
 			scrollDiffView(ctx, -1)
-			return nil
-		case tcell.KeyCtrlL:
-			// Ctrl+L: 選択中は file/path:XX-YY をコピー、非選択中はファイルパスをコピー
-			if *ctx.isSelecting && *ctx.currentFile != "" {
-				start := *ctx.selectStart
-				end := *ctx.selectEnd
-
-				// Unified viewの場合、fold indicatorを除外
-				if !*ctx.isSplitView {
-					displayMapping := MapUnifiedDisplayToOriginalIdx(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
-					if ms, ok := displayMapping[start]; ok {
-						start = ms
-					}
-					if me, ok := displayMapping[end]; ok {
-						end = me
-					}
-				}
-
-				if start > end {
-					start, end = end, start
-				}
-
-				oldLineMap, newLineMap := createLineNumberMapping(*ctx.currentDiffText)
-
-				// 選択範囲内のファイル行番号を収集（newLineMap優先、なければoldLineMap）
-				startLine := -1
-				endLine := -1
-				for i := start; i <= end; i++ {
-					num := -1
-					if n, ok := newLineMap[i]; ok {
-						num = n
-					} else if n, ok := oldLineMap[i]; ok {
-						num = n
-					}
-					if num >= 0 {
-						if startLine == -1 || num < startLine {
-							startLine = num
-						}
-						if num > endLine {
-							endLine = num
-						}
-					}
-				}
-
-				if startLine >= 0 {
-					var ref string
-					if startLine == endLine {
-						ref = fmt.Sprintf("%s:%d", *ctx.currentFile, startLine)
-					} else {
-						ref = fmt.Sprintf("%s:%d-%d", *ctx.currentFile, startLine, endLine)
-					}
-					if err := commands.CopyToClipboard(ref); err == nil {
-						ctx.updateGlobalStatus("Copied reference to clipboard", "forestgreen")
-					} else {
-						ctx.updateGlobalStatus("Failed to copy reference", "tomato")
-					}
-				}
-
-				// 選択解除
-				*ctx.isSelecting = false
-				*ctx.selectStart = -1
-				*ctx.selectEnd = -1
-				if ctx.viewUpdater != nil {
-					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
-				}
-			} else if *ctx.currentFile != "" {
-				err := commands.CopyFilePath(*ctx.currentFile)
-				if err == nil {
-					ctx.updateGlobalStatus("Copied path to clipboard", "forestgreen")
-				} else {
-					ctx.updateGlobalStatus("Failed to copy path to clipboard", "tomato")
-				}
-			}
 			return nil
 		case tcell.KeyRune:
 			switch event.Rune() {
 			case 's':
-				// Split Viewのトグル
+				// Toggle split view
 				*ctx.isSplitView = !*ctx.isSplitView
 
 				if *ctx.isSplitView {
-					// Split Viewを表示（現在のカーソル位置を維持）
+					// Show split view (maintain current cursor position)
 					ctx.viewUpdater = NewSplitViewUpdater(ctx.beforeView, ctx.afterView, ctx.currentFile)
 					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 					ctx.contentFlex.RemoveItem(ctx.unifiedViewFlex)
 					ctx.contentFlex.AddItem(ctx.splitViewFlex, 0, DiffViewFlexRatio, false)
-					// フォーカスがdiffViewにある場合、splitViewFlexに移動
+					// Move focus from diffView to splitViewFlex
 					if !*ctx.leftPaneFocused {
 						ctx.app.SetFocus(ctx.splitViewFlex)
 					}
 				} else {
-					// 通常の差分表示に戻す
+					// Return to normal diff view
 					ctx.viewUpdater = &UnifiedViewUpdater{
 						diffView:    ctx.diffView,
 						foldState:   ctx.foldState,
@@ -363,23 +290,23 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					ctx.contentFlex.RemoveItem(ctx.splitViewFlex)
 					ctx.contentFlex.AddItem(ctx.unifiedViewFlex, 0, DiffViewFlexRatio, false)
 					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
-					// フォーカスがsplitViewFlexにある場合、diffViewに移動
+					// Move focus from splitViewFlex to diffView
 					if !*ctx.leftPaneFocused {
 						ctx.app.SetFocus(ctx.diffView)
 					}
 				}
 				return nil
 			case 'w':
-				// Whitespace無視モードのトグル
+				// Toggle ignore-whitespace mode
 				*ctx.ignoreWhitespace = !*ctx.ignoreWhitespace
 
-				// 差分を再取得
+				// Re-fetch the diff
 				ctx.updateCurrentDiffText(*ctx.currentFile, *ctx.currentStatus, ctx.repoRoot, ctx.currentDiffText, *ctx.ignoreWhitespace)
 
-				// カーソル位置をリセット
+				// Reset cursor position
 				*ctx.cursorY = 0
 
-				// 差分が空の場合のメッセージ表示
+				// Show message when diff is empty
 				if len(strings.TrimSpace(*ctx.currentDiffText)) == 0 {
 					if *ctx.isSplitView {
 						ctx.beforeView.SetText("")
@@ -391,12 +318,12 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 				}
 
-				// ステータスタイトルを更新
+				// Update status title
 				if ctx.updateStatusTitle != nil {
 					ctx.updateStatusTitle()
 				}
 
-				// ステータス表示
+				// Display status
 				if *ctx.ignoreWhitespace {
 					ctx.updateGlobalStatus("Whitespace changes hidden", "forestgreen")
 				} else {
@@ -406,7 +333,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			case 'g':
 				now := time.Now()
 				if *ctx.gPressed && now.Sub(*ctx.lastGTime) < 500*time.Millisecond {
-					// gg → 最上部
+					// gg -> go to top
 					*ctx.cursorY = 0
 					if *ctx.isSelecting {
 						*ctx.selectEnd = *ctx.cursorY
@@ -416,21 +343,21 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					}
 					*ctx.gPressed = false
 				} else {
-					// 1回目のg
+					// First g press
 					*ctx.gPressed = true
 					*ctx.lastGTime = now
 				}
 				return nil
-			case 'G': // 大文字G → 最下部へ
+			case 'G': // Shift+G -> go to bottom
 				maxLines := 0
 				if *ctx.isSplitView {
-					// Split Viewの場合は有効な行数を取得
+					// For split view, get valid line count
 					splitViewLines := getSplitViewLineCount(*ctx.currentDiffText)
 					if splitViewLines > 0 {
 						maxLines = splitViewLines - 1
 					}
 				} else {
-					// 通常ビューの場合は表示行数を取得（折りたたみを含む）
+					// For normal view, get display line count (including folds)
 					lineCount := GetUnifiedViewLineCount(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
 					if lineCount > 0 {
 						maxLines = lineCount - 1
@@ -445,16 +372,16 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			case 'j':
-				// 下移動
+				// Move down
 				maxLines := 0
 				if *ctx.isSplitView {
-					// Split Viewの場合は有効な行数を取得
+					// For split view, get valid line count
 					splitViewLines := getSplitViewLineCount(*ctx.currentDiffText)
 					if splitViewLines > 0 {
 						maxLines = splitViewLines - 1
 					}
 				} else {
-					// 通常ビューの場合は表示行数を取得（折りたたみを含む）
+					// For normal view, get display line count (including folds)
 					if len(strings.TrimSpace(*ctx.currentDiffText)) > 0 {
 						lineCount := GetUnifiedViewLineCount(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
 						if lineCount > 0 {
@@ -474,7 +401,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			case 'k':
-				// 上移動
+				// Move up
 				if *ctx.cursorY > 0 {
 					(*ctx.cursorY)--
 					if *ctx.isSelecting {
@@ -486,7 +413,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			case 'V':
-				// Shift + V で選択モード開始
+				// Shift+V to start selection mode
 				if !*ctx.isSelecting {
 					*ctx.isSelecting = true
 					*ctx.selectStart = *ctx.cursorY
@@ -510,7 +437,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					end = *ctx.selectEnd
 				}
 
-				// Unified viewの場合、fold indicatorを除外した実際の差分行インデックスに変換
+				// For unified view, convert to actual diff line indices excluding fold indicators
 				if !*ctx.isSplitView {
 					displayMapping := MapUnifiedDisplayToOriginalIdx(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
 					if mappedStart, ok := displayMapping[start]; ok {
@@ -567,7 +494,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 
 				return nil
 			case 'Y':
-				// Shift+Y: ファイルパスをコピー
+				// Shift+Y: copy file path
 				if *ctx.currentFile != "" {
 					err := commands.CopyFilePath(*ctx.currentFile)
 					if err == nil {
@@ -577,21 +504,94 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					}
 				}
 				return nil
+			case 'L':
+				// Shift+L: copy file/path:XX-YY if selecting, or file path if not selecting
+				if *ctx.isSelecting && *ctx.currentFile != "" {
+					start := *ctx.selectStart
+					end := *ctx.selectEnd
+
+					// For unified view, exclude fold indicators
+					if !*ctx.isSplitView {
+						displayMapping := MapUnifiedDisplayToOriginalIdx(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
+						if ms, ok := displayMapping[start]; ok {
+							start = ms
+						}
+						if me, ok := displayMapping[end]; ok {
+							end = me
+						}
+					}
+
+					if start > end {
+						start, end = end, start
+					}
+
+					oldLineMap, newLineMap := createLineNumberMapping(*ctx.currentDiffText)
+
+					// Collect file line numbers within selection range (prefer newLineMap, fall back to oldLineMap)
+					startLine := -1
+					endLine := -1
+					for i := start; i <= end; i++ {
+						num := -1
+						if n, ok := newLineMap[i]; ok {
+							num = n
+						} else if n, ok := oldLineMap[i]; ok {
+							num = n
+						}
+						if num >= 0 {
+							if startLine == -1 || num < startLine {
+								startLine = num
+							}
+							if num > endLine {
+								endLine = num
+							}
+						}
+					}
+
+					if startLine >= 0 {
+						var ref string
+						if startLine == endLine {
+							ref = fmt.Sprintf("%s:%d", *ctx.currentFile, startLine)
+						} else {
+							ref = fmt.Sprintf("%s:%d-%d", *ctx.currentFile, startLine, endLine)
+						}
+						if err := commands.CopyToClipboard(ref); err == nil {
+							ctx.updateGlobalStatus("Copied reference to clipboard", "forestgreen")
+						} else {
+							ctx.updateGlobalStatus("Failed to copy reference", "tomato")
+						}
+					}
+
+					// Deselect
+					*ctx.isSelecting = false
+					*ctx.selectStart = -1
+					*ctx.selectEnd = -1
+					if ctx.viewUpdater != nil {
+						ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
+					}
+				} else if *ctx.currentFile != "" {
+					err := commands.CopyFilePath(*ctx.currentFile)
+					if err == nil {
+						ctx.updateGlobalStatus("Copied path to clipboard", "forestgreen")
+					} else {
+						ctx.updateGlobalStatus("Failed to copy path to clipboard", "tomato")
+					}
+				}
+				return nil
 			case '/':
-				// 検索モード開始
+				// Start search mode
 				*ctx.isSearchMode = true
 				*ctx.searchInput = ""
 				*ctx.searchCursorYBeforeSearch = *ctx.cursorY
 				ctx.setGlobalStatusText("[white]/[-]")
 				return nil
 			case 'n':
-				// 次のマッチに移動
+				// Move to next match
 				if *ctx.searchQuery != "" && len(*ctx.searchMatches) > 0 {
 					moveToNextMatch(ctx)
 				}
 				return nil
 			case 'N':
-				// 前のマッチに移動
+				// Move to previous match
 				if *ctx.searchQuery != "" && len(*ctx.searchMatches) > 0 {
 					moveToPrevMatch(ctx)
 				}
@@ -605,10 +605,14 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				if ctx.readOnly {
 					return nil
 				}
-				// vim でファイルを開く
+				// Open file in $EDITOR
 				if *ctx.currentFile != "" {
+					editor := os.Getenv("EDITOR")
+					if editor == "" {
+						editor = "vim"
+					}
 					ctx.app.Suspend(func() {
-						cmd := exec.Command("vim", "-c", "set title titlestring=[giff]\\ %f", *ctx.currentFile)
+						cmd := exec.Command(editor, *ctx.currentFile)
 						cmd.Dir = ctx.repoRoot
 						cmd.Stdin = os.Stdin
 						cmd.Stdout = os.Stdout
@@ -624,7 +628,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			case 'c':
-				// VSCode でファイルを開く
+				// Open file in VSCode
 				if *ctx.currentFile != "" {
 					cmd := exec.Command("code", *ctx.currentFile)
 					cmd.Dir = ctx.repoRoot
@@ -658,14 +662,14 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				if ctx.readOnly {
 					return nil
 				}
-				// commandA関数を呼び出す
-				// Unified viewの場合、fold indicatorを除外した実際の差分行インデックスに変換
+				// Call commandA function
+				// For unified view, convert to actual diff line indices excluding fold indicators
 				selectStart := *ctx.selectStart
 				selectEnd := *ctx.selectEnd
 				if !*ctx.isSplitView {
-					// Fold indicatorを除外したマッピングを取得
+					// Get mapping excluding fold indicators
 					displayMapping := MapUnifiedDisplayToOriginalIdx(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
-					// 選択範囲をfold indicatorを除外したインデックスに変換
+					// Convert selection range to indices excluding fold indicators
 					if mappedStart, ok := displayMapping[selectStart]; ok {
 						selectStart = mappedStart
 					}
@@ -693,15 +697,15 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					return nil
 				}
 
-				// 結果を反映
+				// Apply results
 				*ctx.currentDiffText = result.NewDiffText
 
-				// 選択を解除してカーソル位置を更新
+				// Deselect and update cursor position
 				*ctx.isSelecting = false
 				*ctx.selectStart = -1
 				*ctx.selectEnd = -1
 
-				// カーソル位置の境界チェック
+				// Cursor position boundary check
 				newCursorPos := result.NewCursorPos
 				if len(strings.TrimSpace(*ctx.currentDiffText)) > 0 {
 					coloredDiff := ColorizeDiff(*ctx.currentDiffText)
@@ -721,17 +725,17 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				*ctx.cursorY = newCursorPos
 
-				// 再描画
+				// Redraw
 				if ctx.viewUpdater != nil {
 					ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 				}
 
-				// ファイルリストを内部的に更新
+				// Internally update file list
 				ctx.refreshFileList()
 
-				// 差分が残っている場合
+				// If diff remains
 				if !result.ShouldUpdate {
-					// 現在の選択ファイルとステータスを保存
+					// Save currently selected file and status
 					var currentlySelectedFile string
 					var currentlySelectedStatus string
 					if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
@@ -740,10 +744,10 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 						currentlySelectedStatus = fileEntry.StageStatus
 					}
 
-					// ファイルリストを再描画
+					// Redraw file list
 					ctx.updateFileListView()
 
-					// 選択位置を復元（ファイル名とステータスの両方で検索）
+					// Restore selection position (search by both filename and status)
 					newSelection := -1
 					for i, fileEntry := range *ctx.fileList {
 						if fileEntry.Path == currentlySelectedFile && fileEntry.StageStatus == currentlySelectedStatus {
@@ -757,10 +761,10 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 						*ctx.currentSelection = len(*ctx.fileList) - 1
 					}
 
-					// 選択位置が変更された場合は再度ファイルリストを更新
+					// Update file list again if selection position changed
 					ctx.updateFileListView()
 				} else {
-					// 差分がなくなった場合は、完全に更新
+					// If diff is gone, fully update
 					if ctx.onUpdate != nil {
 						ctx.onUpdate()
 					}
@@ -770,7 +774,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				if ctx.readOnly {
 					return nil
 				}
-				// 現在のファイルをステージ/アンステージ
+				// Stage/unstage the current file
 				if *ctx.currentFile != "" {
 					var cmd *exec.Cmd
 					if *ctx.currentStatus == "staged" {
@@ -785,49 +789,49 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 						wasStaged := (*ctx.currentStatus == "staged")
 
 						if *ctx.currentStatus == "staged" {
-							// unstagedになったファイルの差分を表示
+							// Show diff of now-unstaged file
 							*ctx.currentStatus = "unstaged"
 							newDiffText, _ := git.GetFileDiff(*ctx.currentFile, ctx.repoRoot)
 							*ctx.currentDiffText = newDiffText
 						} else {
-							// stagedになったファイルの差分を表示
+							// Show diff of now-staged file
 							*ctx.currentStatus = "staged"
 							newDiffText, _ := git.GetStagedDiff(*ctx.currentFile, ctx.repoRoot)
 							*ctx.currentDiffText = newDiffText
 						}
 
-						// カーソルと選択をリセット
+						// Reset cursor and selection
 						*ctx.isSelecting = false
 						*ctx.selectStart = -1
 						*ctx.selectEnd = -1
 						*ctx.cursorY = 0
 
-						// 再描画
+						// Redraw
 						if ctx.viewUpdater != nil {
 							ctx.viewUpdater.UpdateWithCursor(*ctx.currentDiffText, *ctx.cursorY)
 						}
 
-						// ステータスを更新
+						// Update status
 						if wasStaged {
 							ctx.updateGlobalStatus("File unstaged successfully!", "forestgreen")
 						} else {
 							ctx.updateGlobalStatus("File staged successfully!", "forestgreen")
 						}
 
-						// refreshFileListを呼んで最新の状態を取得
+						// Call refreshFileList to get the latest state
 						ctx.refreshFileList()
 
-						// カーソル位置を保存
-						// 常にunstagedセクションの先頭を選択するように設定
+						// Save cursor position
+						// Set to always select the first item in the unstaged section
 						*ctx.preferUnstagedSection = true
 						*ctx.savedTargetFile = ""
 
-						// ファイルリストを更新
+						// Update file list
 						if ctx.onUpdate != nil {
 							ctx.onUpdate()
 						}
 					} else {
-						// エラーの場合
+						// Error case
 						if *ctx.currentStatus == "staged" {
 							ctx.updateGlobalStatus("Failed to unstage file", "tomato")
 						} else {
@@ -837,7 +841,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			case 'q':
-				// アプリ終了
+				// Quit application
 				go func() {
 					time.Sleep(100 * time.Millisecond)
 					os.Exit(0)
@@ -849,7 +853,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 		return event
 	}
 
-	// DiffViewとSplitViewFlexの両方に同じキーハンドラーを設定
+	// Set the same key handler for both DiffView and SplitViewFlex
 	ctx.diffView.SetInputCapture(keyHandler)
 	ctx.splitViewFlex.SetInputCapture(keyHandler)
 }
@@ -878,7 +882,7 @@ func stripDiffPrefix(line string) string {
 	}
 }
 
-// tview のカラータグを除去する正規表現
+// Regex to strip tview color tags
 var tviewTagRegex = regexp.MustCompile(`\[("[^"]*"|[^\[\]]*)\]`)
 
 // stripTviewTags removes tview color/region tags from text
@@ -901,7 +905,7 @@ func highlightSearchInTaggedText(tagged string, query string) string {
 		return tagged
 	}
 
-	// マッチする可視文字位置をマーク
+	// Mark matching visible character positions
 	highlight := make([]bool, len(plainRunes))
 	for i := 0; i <= len(plainRunes)-queryLen; i++ {
 		match := true
@@ -918,7 +922,7 @@ func highlightSearchInTaggedText(tagged string, query string) string {
 		}
 	}
 
-	// マッチがなければそのまま返す
+	// Return as-is if no matches
 	anyMatch := false
 	for _, h := range highlight {
 		if h {
@@ -939,7 +943,7 @@ func highlightSearchInTaggedText(tagged string, query string) string {
 	inHL := false
 
 	for i := 0; i < len(runes); {
-		// tview タグの検出
+		// Detect tview tags
 		if runes[i] == '[' {
 			j := i + 1
 			inQuote := false
@@ -954,7 +958,7 @@ func highlightSearchInTaggedText(tagged string, query string) string {
 				j++
 			}
 			if j < len(runes) && runes[j] == ']' {
-				// 有効なタグ: ハイライト中ならタグの前後で再適用
+				// Valid tag: if highlighting, re-apply around the tag
 				tagStr := string(runes[i : j+1])
 				if inHL {
 					result.WriteString(hlEnd)
@@ -968,7 +972,7 @@ func highlightSearchInTaggedText(tagged string, query string) string {
 			}
 		}
 
-		// 可視文字
+		// Visible character
 		shouldHL := visibleIdx < len(highlight) && highlight[visibleIdx]
 
 		if shouldHL && !inHL {
@@ -1018,7 +1022,7 @@ func performSearch(ctx *DiffViewContext) {
 		return
 	}
 
-	// リアルタイムで検索ハイライトを適用するため searchQuery も更新
+	// Also update searchQuery to apply real-time search highlighting
 	*ctx.searchQuery = query
 
 	content := getCachedUnifiedContent(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
@@ -1026,7 +1030,7 @@ func performSearch(ctx *DiffViewContext) {
 	*ctx.searchMatches = matches
 
 	if len(matches) > 0 {
-		// 現在のカーソル位置から最も近い前方のマッチを探す
+		// Find the nearest forward match from the current cursor position
 		matchIdx := 0
 		for i, m := range matches {
 			if m >= *ctx.searchCursorYBeforeSearch {
