@@ -54,9 +54,11 @@ $ giff --watch    # watch mode: auto-refresh on file changes
 | `Ctrl+J` | Amend |
 | `s` | Split view |
 | `w` | Hide whitespace |
-| `v` | Open in Vim |
+| `/` | Filter files |
+| `v` | Open in $EDITOR |
 | `c` | Open in VS Code |
-| `t` | Git log |
+| `l` | Git log |
+| `t` | Open terminal (tmux split) |
 | `Enter` | Switch to diff view |
 | `q` | Quit |
 

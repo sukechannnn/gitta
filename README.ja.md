@@ -52,9 +52,11 @@ $ giff --watch    # ウォッチモード: ファイル変更時に自動更新
 | `Ctrl+J` | amend |
 | `s` | Split View |
 | `w` | 空白変更を非表示 |
-| `v` | Vim で開く |
+| `/` | ファイル絞り込み |
+| `v` | $EDITOR で開く |
 | `c` | VS Code で開く |
-| `t` | Git ログ |
+| `l` | Git ログ |
+| `t` | ターミナルを開く（tmux split） |
 | `Enter` | 差分ビューに切替 |
 | `q` | 終了 |
 
