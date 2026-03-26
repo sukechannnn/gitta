@@ -18,11 +18,10 @@ builds:
       - -s -w -X main.version={{.Version}}
 
 archives:
-  - format: tar.gz
-    name_template: >-
+  - name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
 
-brews:
+homebrew_casks:
   - repository:
       owner: sukechannnn
       name: homebrew-tap
