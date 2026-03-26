@@ -12,6 +12,12 @@
 
 ## インストール
 
+**homebrew:**
+
+```console
+$ brew install sukechannnn/tap/giff
+```
+
 **go install:**
 
 ```console
