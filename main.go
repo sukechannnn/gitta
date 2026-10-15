@@ -45,6 +45,12 @@ func main() {
 		return
 	}
 
+	// Read-only git commands (status, diff) opportunistically take index.lock
+	// to refresh the index. In watch mode they run every few seconds and make
+	// the user's own git commands fail with "index.lock: File exists".
+	// Operations that really write the index (add, commit, read-tree) still lock it.
+	os.Setenv("GIT_OPTIONAL_LOCKS", "0")
+
 	// Create shell snapshot for terminal command aliases
 	util.CreateShellSnapshot()
 	defer util.CleanupShellSnapshot()
