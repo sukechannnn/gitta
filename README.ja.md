@@ -8,11 +8,13 @@
 
 `giff` はターミナルで動く Git diff ビューアです。ワーキングツリーを監視して、差分をリアルタイムに表示します。
 
-![giff screenshot](./docs/images/giff_demo.gif)
+![giff screenshot](./docs/images/preview_1.png)
 
 ## インストール
 
-**homebrew:**
+macOS と Linux（amd64 / arm64）で動作します。
+
+**homebrew (macOS / Linux):**
 
 ```console
 $ brew install --cask sukechannnn/tap/giff
@@ -22,6 +24,15 @@ $ brew install --cask sukechannnn/tap/giff
 
 ```console
 $ go install github.com/sukechannnn/giff@latest
+```
+
+**ビルド済みバイナリ:**
+
+[リリースページ](https://github.com/sukechannnn/giff/releases)から環境に合ったアーカイブをダウンロードして展開し、`giff` を `PATH` の通った場所に置いてください:
+
+```console
+$ tar -xzf giff_<version>_linux_amd64.tar.gz
+$ sudo mv giff /usr/local/bin/
 ```
 
 **ソースからビルド:**

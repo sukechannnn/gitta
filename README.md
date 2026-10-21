@@ -14,7 +14,9 @@ English | [日本語](./README.ja.md)
 
 ## Install
 
-**homebrew:**
+giff runs on macOS and Linux (amd64 / arm64).
+
+**homebrew (macOS / Linux):**
 
 ```console
 $ brew install --cask sukechannnn/tap/giff
@@ -24,6 +26,15 @@ $ brew install --cask sukechannnn/tap/giff
 
 ```console
 $ go install github.com/sukechannnn/giff@latest
+```
+
+**prebuilt binary:**
+
+Download the archive for your platform from the [releases page](https://github.com/sukechannnn/giff/releases), extract it, and put `giff` on your `PATH`:
+
+```console
+$ tar -xzf giff_<version>_linux_amd64.tar.gz
+$ sudo mv giff /usr/local/bin/
 ```
 
 **build from source:**
