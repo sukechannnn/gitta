@@ -1281,12 +1281,20 @@ func getCursorFileLineNumber(ctx *DiffViewContext) int {
 	if *ctx.isSplitView {
 		// Map the row to a diff line; fold rows fall back to the diff line next to them
 		content := getCachedSplitContent(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
+		// Expanded fold rows show file lines that are not in the diff
+		if cursorIdx >= 0 && cursorIdx < len(content.Rows) && content.Rows[cursorIdx].FileLine > 0 {
+			return content.Rows[cursorIdx].FileLine
+		}
 		mapped, ok := nearestInMap(content.RowToDiffIdx(), cursorIdx)
 		if !ok {
 			return 0
 		}
 		cursorIdx = mapped
 	} else if ctx.foldState != nil {
+		// Expanded fold lines show file lines that are not in the diff
+		if line, ok := unifiedFoldFileLine(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot, cursorIdx); ok {
+			return line
+		}
 		// For unified view, map display index to original diff index (excluding folds)
 		displayMapping := MapUnifiedDisplayToOriginalIdx(*ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
 		// Fold indicators and expanded fold content are not diff lines and are

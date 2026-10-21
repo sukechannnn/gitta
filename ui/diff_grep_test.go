@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -206,6 +209,44 @@ func TestGetCursorFileLineNumberAfterLargeDeletion(t *testing.T) {
 	}
 	if got := getCursorFileLineNumber(ctx); got != 2 {
 		t.Errorf("getCursorFileLineNumber() = %d, want 2 (the following context line in the new file)", got)
+	}
+}
+
+func TestGetCursorFileLineNumberOnExpandedFoldLines(t *testing.T) {
+	// Lines 1-30, with line 5 changed. Lines 1-4 sit in a gap too small to
+	// fold, so they are always shown expanded above the hunk; they are not
+	// diff lines, and the editor must still open on the line under the cursor.
+	repoRoot := t.TempDir()
+	var file strings.Builder
+	for i := 1; i <= 30; i++ {
+		if i == 5 {
+			file.WriteString("five\n")
+		} else {
+			fmt.Fprintf(&file, "%d\n", i)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, "f.txt"), []byte(file.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	diff := "diff --git a/f.txt b/f.txt\n--- a/f.txt\n+++ b/f.txt\n@@ -2,7 +2,7 @@\n 2\n 3\n 4\n-5\n+five\n 6\n 7\n 8\n"
+
+	// Row 0 is the expanded line 1 in both views
+	for _, split := range []bool{false, true} {
+		cursorY := 0
+		splitView := split
+		filePath := "f.txt"
+		diffText := diff
+		ctx := &DiffViewContext{
+			currentDiffText: &diffText,
+			currentFile:     &filePath,
+			cursorY:         &cursorY,
+			isSplitView:     &splitView,
+			foldState:       NewFoldState(),
+			repoRoot:        repoRoot,
+		}
+		if got := getCursorFileLineNumber(ctx); got != 1 {
+			t.Errorf("split=%v: getCursorFileLineNumber() = %d, want 1", split, got)
+		}
 	}
 }
 

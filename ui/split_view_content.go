@@ -27,6 +27,7 @@ type SplitViewRow struct {
 	FoldID    string // Fold identifier for fold indicator / expanded fold rows
 	FoldFixed bool   // True if the fold is always expanded and cannot be toggled
 	BgColor   string // Background color for the entire row (empty = default)
+	FileLine  int    // New-file line number of an expanded fold row (0 otherwise)
 
 	IsFoldIndicator bool // True for a collapsed fold's "... lines hidden" row
 }
@@ -269,6 +270,7 @@ func generateSplitViewContent(diffText string, oldLineMap, newLineMap map[int]in
 					FoldID:    fold.ID,
 					FoldFixed: fold.Fixed,
 					BgColor:   util.ExpandedFoldBg,
+					FileLine:  newNum,
 				})
 			}
 			return

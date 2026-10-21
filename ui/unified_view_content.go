@@ -25,6 +25,7 @@ type UnifiedViewLine struct {
 	FoldID          string // Fold identifier (empty if not a fold indicator)
 	FoldFixed       bool   // True if the fold is always expanded and cannot be toggled
 	BgColor         string // Background color for the entire line (empty = default)
+	FileLine        int    // New-file line number of an expanded fold line (0 otherwise)
 }
 
 // UnifiedViewContent represents the content for unified view
@@ -69,6 +70,17 @@ func MapUnifiedDisplayToOriginalIdx(diffText string, foldState *FoldState, fileP
 	}
 
 	return mapping
+}
+
+// unifiedFoldFileLine returns the new-file line number shown on an expanded
+// fold line at the display index, or false when the line is not one.
+func unifiedFoldFileLine(diffText string, foldState *FoldState, filePath, repoRoot string, displayIdx int) (int, bool) {
+	oldLineMap, newLineMap := createLineNumberMapping(diffText)
+	content := generateUnifiedViewContent(diffText, oldLineMap, newLineMap, foldState, filePath, repoRoot)
+	if displayIdx < 0 || displayIdx >= len(content.Lines) || content.Lines[displayIdx].FileLine == 0 {
+		return 0, false
+	}
+	return content.Lines[displayIdx].FileLine, true
 }
 
 // detectFoldableRanges detects ranges that can be folded based on new-file line numbers.
@@ -284,6 +296,7 @@ func appendFoldContent(content *UnifiedViewContent, fold *FoldableRange, foldSta
 				FoldID:          fold.ID,
 				FoldFixed:       fold.Fixed,
 				BgColor:         util.ExpandedFoldBg,
+				FileLine:        actualLineNum,
 			})
 		}
 	} else {
