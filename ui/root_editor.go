@@ -1443,7 +1443,15 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 					// Refresh file list in case git state changed
 					refreshFileList()
 					updateFileListView()
-					updateSelectedFileDiff()
+					if leftPaneFocused {
+						updateSelectedFileDiff()
+					} else if currentFile != "" {
+						// The terminal was opened from the diff view: keep its cursor
+						updateCurrentDiffText(currentFile, currentStatus, repoRoot, &currentDiffText, ignoreWhitespace)
+						if diffViewContext.viewUpdater != nil {
+							diffViewContext.viewUpdater.UpdateWithCursor(currentDiffText, cursorY)
+						}
+					}
 				})
 			}()
 		case tcell.KeyEscape:
