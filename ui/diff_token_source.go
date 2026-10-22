@@ -224,10 +224,12 @@ func (s *diffTokenSource) newFileLineTokens(lineNum int, lineText string) []chro
 func extractDiffCodeLines(diff string) ([]string, []byte) {
 	rawLines := util.SplitLines(diff)
 
+	headers := util.DiffHeaderMask(rawLines)
+
 	var codeLines []string
 	var lineTypes []byte
-	for _, line := range rawLines {
-		if isUnifiedHeaderLine(line) {
+	for i, line := range rawLines {
+		if headers[i] {
 			continue
 		}
 		if len(line) > 0 {

@@ -364,3 +364,41 @@ func TestMatchesFilterWithSeveralPatterns(t *testing.T) {
 		}
 	}
 }
+
+func TestGetCursorFileLineNumberInNewFile(t *testing.T) {
+	// A new file's diff carries a "new file mode" header line. It must not be
+	// shown, or every row below it opens the editor one line too far down.
+	diff := util.FormatAsAddedLines("one\ntwo\nthree", "new.txt")
+	oldLineMap, newLineMap := createLineNumberMapping(diff)
+	content := generateUnifiedViewContent(diff, oldLineMap, newLineMap, NewFoldState(), "new.txt", "")
+	want := map[string]int{"+one": 1, "+two": 2, "+three": 3}
+	found := 0
+	for row, line := range content.Lines {
+		text := stripTviewTags(line.Content)
+		if strings.Contains(text, "new file mode") {
+			t.Errorf("row %d shows the header line %q", row, text)
+		}
+		wantLine, ok := want[text]
+		if !ok {
+			continue
+		}
+		found++
+		cursorY := row
+		splitView := false
+		filePath := "new.txt"
+		diffText := diff
+		ctx := &DiffViewContext{
+			currentDiffText: &diffText,
+			currentFile:     &filePath,
+			cursorY:         &cursorY,
+			isSplitView:     &splitView,
+			foldState:       NewFoldState(),
+		}
+		if got := getCursorFileLineNumber(ctx); got != wantLine {
+			t.Errorf("cursor on %q: getCursorFileLineNumber() = %d, want %d", text, got, wantLine)
+		}
+	}
+	if found != len(want) {
+		t.Errorf("found %d of the %d added lines in %v", found, len(want), content.Lines)
+	}
+}
