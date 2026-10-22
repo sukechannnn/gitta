@@ -229,7 +229,7 @@ func renderFileTreeForGitFiles(
 			escapedDisplayName := escapeTviewTags(displayName)
 
 			if focusedPane && *regionIndex == currentSelection {
-				sb.WriteString(fmt.Sprintf(`%s[white:blue]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, escapedDisplayName))
+				sb.WriteString(fmt.Sprintf(`%s[%s:%s]["file-%d"]%s%s[""][-:-]`+"\n", prefix, util.MainTextColor, util.CursorLineColor, *regionIndex, connector, escapedDisplayName))
 			} else if !focusedPane && *regionIndex == currentSelection {
 				sb.WriteString(fmt.Sprintf(`%s[black:white]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, escapedDisplayName))
 			} else {
@@ -253,7 +253,7 @@ func renderFileTreeForGitFiles(
 			})
 
 			if focusedPane && *regionIndex == currentSelection {
-				sb.WriteString(fmt.Sprintf(`%s[white:blue]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, dirDisplay))
+				sb.WriteString(fmt.Sprintf(`%s[%s:%s]["file-%d"]%s%s[""][-:-]`+"\n", prefix, util.MainTextColor, util.CursorLineColor, *regionIndex, connector, dirDisplay))
 			} else if !focusedPane && *regionIndex == currentSelection {
 				sb.WriteString(fmt.Sprintf(`%s[black:white]["file-%d"]%s%s[""][-:-]`+"\n", prefix, *regionIndex, connector, dirDisplay))
 			} else {
@@ -353,7 +353,7 @@ func renderFileTreeForFileEntries(
 			}
 
 			if *regionIndex == currentSelection && focusedPane {
-				sb.WriteString(fmt.Sprintf(`%s[white:blue]%s%s[""][-:-]`+"\n", prefix, connector, escapedDisplayName))
+				sb.WriteString(fmt.Sprintf(`%s[%s:%s]%s%s[""][-:-]`+"\n", prefix, util.MainTextColor, util.CursorLineColor, connector, escapedDisplayName))
 			} else if *regionIndex == currentSelection {
 				sb.WriteString(fmt.Sprintf(`%s[black:white]%s%s[""][-:-]`+"\n", prefix, connector, escapedDisplayName))
 			} else {
@@ -379,7 +379,7 @@ func renderFileTreeForFileEntries(
 			}
 
 			if focusedPane && *regionIndex == currentSelection {
-				sb.WriteString(fmt.Sprintf(`%s[white:blue]%s%s[""][-:-]`+"\n", prefix, connector, dirDisplay))
+				sb.WriteString(fmt.Sprintf(`%s[%s:%s]%s%s[""][-:-]`+"\n", prefix, util.MainTextColor, util.CursorLineColor, connector, dirDisplay))
 			} else if !focusedPane && *regionIndex == currentSelection {
 				sb.WriteString(fmt.Sprintf(`%s[black:white]%s%s[""][-:-]`+"\n", prefix, connector, dirDisplay))
 			} else {

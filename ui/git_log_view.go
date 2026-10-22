@@ -205,7 +205,7 @@ func (glv *GitLogView) updateSelection() {
 		}
 		entry := glv.logEntries[i]
 		if i == glv.currentLine {
-			content.WriteString("[white:blue]" + entry.FullLine + "[-:-]\n")
+			content.WriteString("[" + string(util.MainTextColor) + ":" + string(util.CursorLineColor) + "]" + entry.FullLine + "[-:-]\n")
 		} else {
 			content.WriteString(entry.FullLine + "\n")
 		}

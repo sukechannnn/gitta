@@ -14,6 +14,7 @@ const (
 	MainTextColor            = ColorColde("#FFFFFF")
 	CommitAreaBorderColor    = ColorColde("#4A5568")
 	PlaceholderColor         = ColorColde("#808080")
+	CursorLineColor          = ColorColde("#6A71F7") // RGB, so the cursor looks the same in every terminal palette
 )
 
 func (c ColorColde) hex() string {

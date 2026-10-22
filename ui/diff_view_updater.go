@@ -182,10 +182,10 @@ func renderUnifiedView(diffView *tview.TextView, diffText string, cursorY int, s
 		var lineNumFg string
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
 			bg = "dimgrey"
-			lineNumFg = "white"
+			lineNumFg = string(util.MainTextColor)
 		} else if i == cursorY {
-			bg = "blue"
-			lineNumFg = "white"
+			bg = string(util.CursorLineColor)
+			lineNumFg = string(util.MainTextColor)
 		} else if line.BgColor != "" {
 			bg = line.BgColor
 			lineNumFg = "dimgray"
@@ -346,10 +346,11 @@ func writeSplitSide(view *tview.TextView, lines, lineNums []string, rows []Split
 
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
 			// Selected line: replace background with dimgrey
-			view.Write([]byte("[white:dimgrey]" + lineNum + "[-:-]" + fill(line, "dimgrey") + "[-:-]\n"))
+			view.Write([]byte("[" + string(util.MainTextColor) + ":dimgrey]" + lineNum + "[-:-]" + fill(line, "dimgrey") + "[-:-]\n"))
 		} else if cursorIndex >= 0 && i == cursorIndex {
-			// Cursor line: replace background with blue
-			view.Write([]byte("[white:blue]" + lineNum + "[-:-]" + fill(line, "blue") + "[-:-]\n"))
+			// Cursor line: replace background with the cursor color
+			cursorBg := string(util.CursorLineColor)
+			view.Write([]byte("[" + string(util.MainTextColor) + ":" + cursorBg + "]" + lineNum + "[-:-]" + fill(line, cursorBg) + "[-:-]\n"))
 		} else if bg := rows[i].BgColor; bg != "" {
 			// Expanded fold row: fill the whole row like unified view does
 			view.Write([]byte("[dimgray:" + bg + "]" + lineNum + "[-:-]" + fill(line, bg) + "[:" + bg + "]" + strings.Repeat(" ", 500) + "[-:-]\n"))
@@ -502,10 +503,10 @@ func renderFileView(diffView *tview.TextView, content string, cursorY int, selec
 		lineNumFg := "dimgray"
 		if isSelecting && isLineSelected(i, selectStart, selectEnd) {
 			bg = "dimgrey"
-			lineNumFg = "white"
+			lineNumFg = string(util.MainTextColor)
 		} else if cursorY >= 0 && i == cursorY {
-			bg = "blue"
-			lineNumFg = "white"
+			bg = string(util.CursorLineColor)
+			lineNumFg = string(util.MainTextColor)
 		}
 
 		if bg != "" {
