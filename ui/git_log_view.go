@@ -10,6 +10,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"github.com/sukechannnn/giff/git"
 	"github.com/sukechannnn/giff/util"
 )
 
@@ -373,7 +374,7 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 	statusView.SetBorderColor(borderColor)
 	statusView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
-	commitStatusMessage := "j/k:move  /:search  e:fold  s:split  w:ws  V:select  C-y:copy  t:terminal  Esc:back  q:quit"
+	commitStatusMessage := "j/k:move  /:grep  !:exclude  e:fold  s:split  w:ws  V:select  c/v:editor  C-y:copy  t:terminal  Esc:back  q:quit"
 	statusView.SetText(commitStatusMessage)
 
 	contentFlex := tview.NewFlex()
@@ -381,6 +382,10 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 	contentFlex.
 		AddItem(fileListView, 0, FileListFlexRatio, true).
 		AddItem(unifiedViewFlex, 0, DiffViewFlexRatio, false)
+
+	// '+' and '-' move the border between the file list and the diff
+	fileListRatio := FileListFlexRatio
+	diffViewRatio := DiffViewFlexRatio
 
 	// Vertical layout with status bar + content
 	commitMainFlex := tview.NewFlex().SetDirection(tview.FlexRow).
@@ -407,6 +412,8 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 	var fileFilterQuery string
 	var fileExcludeQuery string
 	var fileFilterMode bool
+	var diffGrepQuery string
+	var diffGrepHits map[string]int // per-path hit counts of the '/' grep
 	var gPressed bool
 	var lastGTime time.Time
 	var searchQuery string
@@ -436,13 +443,17 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 		}
 	}
 
-	// shownFiles narrows files by the Ctrl+F filter and the '!' exclusion
+	// shownFiles narrows files by the Ctrl+F filter, the '!' exclusion and the
+	// '/' grep
 	shownFiles := func() []FileEntry {
-		if fileFilterQuery == "" && fileExcludeQuery == "" {
+		if fileFilterQuery == "" && fileExcludeQuery == "" && diffGrepQuery == "" {
 			return files
 		}
 		var shown []FileEntry
 		for _, f := range files {
+			if diffGrepQuery != "" && diffGrepHits[f.Path] == 0 {
+				continue
+			}
 			if fileExcludeQuery != "" && matchesFilter(f, fileExcludeQuery) {
 				continue
 			}
@@ -457,6 +468,20 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 	// restoreStatus shows what is narrowing the list, or the key help
 	restoreStatus := func() {
 		var parts []string
+		if diffGrepQuery != "" {
+			shown := shownFiles()
+			hits := 0
+			for _, f := range shown {
+				hits += diffGrepHits[f.Path]
+			}
+			if len(shown) > 0 {
+				parts = append(parts, fmt.Sprintf("[white]%s%s [%d files, %d hits][-]",
+					diffGrepPrompt, tview.Escape(diffGrepQuery), len(shown), hits))
+			} else {
+				parts = append(parts, fmt.Sprintf("[tomato]%s%s [no match][-]",
+					diffGrepPrompt, tview.Escape(diffGrepQuery)))
+			}
+		}
 		if fileExcludeQuery != "" {
 			hidden := 0
 			for _, f := range files {
@@ -480,6 +505,9 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 			statusView.SetText(commitStatusMessage)
 			return
 		}
+		if diffGrepQuery != "" {
+			parts = append(parts, "[white]n/N:hit[-]")
+		}
 		if leftPaneFocused {
 			// Esc clears the narrowings only from the file list.
 			parts = append(parts, "[white]Esc:clear[-]")
@@ -494,6 +522,66 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 		} else {
 			statusView.SetTitle("")
 		}
+	}
+
+	// runDiffGrep greps the changed lines of every file at once and remembers
+	// the hits, so the file list can be narrowed to the matching files.
+	runDiffGrep := func(query string) error {
+		opts := []string{"--no-ext-diff", "-U0"}
+		if ignoreWhitespace {
+			opts = append(opts, "-w")
+		}
+		cmd := exec.Command("git", append(git.GrepDiffConfig(), diffArgs(opts)...)...)
+		cmd.Dir = repoRoot
+		output, err := cmd.Output()
+		if err != nil {
+			return err
+		}
+		diffGrepQuery = query
+		diffGrepHits = git.GrepDiffText(string(output), query)
+		return nil
+	}
+
+	// applyGrepSearchToDiff installs the active grep as the diff view's search
+	// query, so its matches stay highlighted and n/N can walk them.
+	applyGrepSearchToDiff := func() {
+		if diffGrepQuery == "" {
+			return
+		}
+		searchQuery = diffGrepQuery
+		searchMatches = nil
+		searchMatchIndex = -1
+		if currentDiffText == "" {
+			return
+		}
+		searchMatches = findSearchMatches(currentDiffText, isSplitView, foldState, currentFile, repoRoot, searchQuery)
+		if len(searchMatches) > 0 {
+			searchMatchIndex = 0
+			cursorY = searchMatches[0]
+			searchCursorYBeforeSearch = cursorY
+		}
+	}
+
+	rebuildContentFlex := func() {
+		contentFlex.Clear()
+		rightPane := unifiedViewFlex
+		if isSplitView {
+			rightPane = splitViewFlex
+		}
+		contentFlex.
+			AddItem(fileListView, 0, fileListRatio, leftPaneFocused).
+			AddItem(rightPane, 0, diffViewRatio, !leftPaneFocused)
+	}
+
+	resizeFileList := func(delta int) {
+		newFileRatio := fileListRatio + delta
+		newDiffRatio := diffViewRatio - delta
+		if newFileRatio < 1 || newDiffRatio < 1 {
+			return
+		}
+		fileListRatio = newFileRatio
+		diffViewRatio = newDiffRatio
+		rebuildContentFlex()
 	}
 
 	updateGlobalStatus := func(message string, color string) {
@@ -610,9 +698,15 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 		selectEnd = -1
 
 		updateDiffText(currentFile, currentStatus, repoRoot, &currentDiffText, ignoreWhitespace)
+		applyGrepSearchToDiff()
 
-		if isSplitView {
+		if isSplitView && diffGrepQuery != "" {
+			// Show where the grep matched, scrolling to the first match.
+			updateSplitViewHighlighted(beforeView, afterView, currentDiffText, cursorY, foldState, currentFile, repoRoot, searchQuery)
+		} else if isSplitView {
 			updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText, foldState, currentFile, repoRoot)
+		} else if diffGrepQuery != "" {
+			updateDiffViewHighlighted(diffView, currentDiffText, cursorY, foldState, currentFile, repoRoot, searchQuery)
 		} else {
 			updateDiffViewWithoutCursor(diffView, currentDiffText, foldState, currentFile, repoRoot)
 		}
@@ -676,6 +770,8 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 
 		foldState: foldState,
 
+		diffGrepQuery: &diffGrepQuery,
+
 		searchQuery:               &searchQuery,
 		searchMatches:             &searchMatches,
 		searchMatchIndex:          &searchMatchIndex,
@@ -697,6 +793,7 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 		onEsc:                 onEsc,
 		openTerminal:          openTerminal,
 		restoreStatus:         restoreStatus,
+		resizeFileList:        resizeFileList,
 	}
 	SetupDiffViewKeyBindings(diffViewContext)
 
@@ -727,6 +824,9 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 		isFilterMode:      &fileFilterMode,
 		filterQuery:       &fileFilterQuery,
 		excludeQuery:      &fileExcludeQuery,
+		diffGrepQuery:     &diffGrepQuery,
+		diffGrepHits:      &diffGrepHits,
+		runDiffGrep:       runDiffGrep,
 
 		fileList:         &fileList,
 		dirCollapseState: dirCollapseState,
@@ -744,11 +844,53 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 		setGlobalStatusText: func(text string) {
 			statusView.SetText(text)
 		},
-		onEsc:         onEsc,
-		openTerminal:  openTerminal,
-		restoreStatus: restoreStatus,
+		onEsc:          onEsc,
+		openTerminal:   openTerminal,
+		restoreStatus:  restoreStatus,
+		resizeFileList: resizeFileList,
 	}
 	SetupFileListKeyBindings(fileListKeyContext)
+
+	// advanceGrepFile opens the next (direction > 0) or previous file of the
+	// grep-narrowed list and puts the cursor on its first or last match. It
+	// returns false, leaving the selection untouched, when no further file has
+	// a match to jump to.
+	diffViewContext.advanceGrepFile = func(direction int) bool {
+		if diffGrepQuery == "" || direction == 0 {
+			return false
+		}
+		startSelection := currentSelection
+		for i := currentSelection + direction; i >= 0 && i < len(fileList); i += direction {
+			if fileList[i].IsDirectory {
+				continue
+			}
+			currentSelection = i
+			updateFileListView()
+			updateSelectedFileDiff() // reinstalls the grep search for this file
+			if len(searchMatches) == 0 {
+				continue
+			}
+			if direction > 0 {
+				searchMatchIndex = 0
+			} else {
+				searchMatchIndex = len(searchMatches) - 1
+			}
+			cursorY = searchMatches[searchMatchIndex]
+			if diffViewContext.viewUpdater != nil {
+				diffViewContext.viewUpdater.UpdateWithCursor(currentDiffText, cursorY)
+			}
+			return true
+		}
+		if currentSelection != startSelection {
+			currentSelection = startSelection
+			updateFileListView()
+			updateSelectedFileDiff()
+			if diffViewContext.viewUpdater != nil {
+				diffViewContext.viewUpdater.UpdateWithCursor(currentDiffText, cursorY)
+			}
+		}
+		return false
+	}
 
 	// Switch display
 	host.Clear()

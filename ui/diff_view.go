@@ -743,7 +743,8 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				applyUndoRedoInDiffView(ctx, ctx.undoStack.Undo, "undo")
 				return nil
 			case 'v':
-				if ctx.readOnly {
+				if ctx.readOnly && missingFromWorkTree(ctx.repoRoot, *ctx.currentFile) {
+					ctx.updateGlobalStatus("Not in the working tree: "+*ctx.currentFile, "tomato")
 					return nil
 				}
 				// Open file in $EDITOR at current line
@@ -780,6 +781,10 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 				}
 				return nil
 			case 'c':
+				if ctx.readOnly && missingFromWorkTree(ctx.repoRoot, *ctx.currentFile) {
+					ctx.updateGlobalStatus("Not in the working tree: "+*ctx.currentFile, "tomato")
+					return nil
+				}
 				// Open file in VSCode at current line
 				if *ctx.currentFile != "" {
 					lineNum := getCursorFileLineNumber(ctx)

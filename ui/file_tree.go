@@ -1369,9 +1369,9 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				}
 				return nil
 			case '/':
-				// Grep the pending diffs. The file browser shows plain files and
-				// the git log view has no working tree changes, so '/' keeps
-				// filtering by file name there.
+				// Grep the diffs: the pending ones, or those of the commit or
+				// pull request being viewed. The file browser shows plain files,
+				// so '/' keeps filtering by file name there.
 				inBrowser := ctx.isFileBrowserMode != nil && *ctx.isFileBrowserMode
 				kind := filterInputDiffGrep
 				if ctx.runDiffGrep == nil || inBrowser {
@@ -1621,9 +1621,6 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				}
 				return nil
 			case 'v': // 'v' to open file in vim
-				if ctx.readOnly {
-					return nil
-				}
 				if *ctx.currentSelection >= 0 && *ctx.currentSelection < len(*ctx.fileList) {
 					fileEntry := (*ctx.fileList)[*ctx.currentSelection]
 
@@ -1632,6 +1629,10 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 						if ctx.updateGlobalStatus != nil {
 							ctx.updateGlobalStatus("Cannot open directory in vim. Select a file.", "tomato")
 						}
+						return nil
+					}
+					if ctx.readOnly && missingFromWorkTree(ctx.repoRoot, fileEntry.Path) {
+						ctx.updateGlobalStatus("Not in the working tree: "+fileEntry.Path, "tomato")
 						return nil
 					}
 
@@ -1684,6 +1685,10 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 						if ctx.updateGlobalStatus != nil {
 							ctx.updateGlobalStatus("Cannot open directory in VSCode. Select a file.", "tomato")
 						}
+						return nil
+					}
+					if ctx.readOnly && missingFromWorkTree(ctx.repoRoot, fileEntry.Path) {
+						ctx.updateGlobalStatus("Not in the working tree: "+fileEntry.Path, "tomato")
 						return nil
 					}
 					arg := fileEntry.Path

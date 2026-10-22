@@ -41,10 +41,8 @@ func GrepDiff(repoRoot, query string, untrackedFiles []FileInfo, ignoreWhitespac
 		if err != nil {
 			return err
 		}
-		for path, lines := range parseChangedLines(output) {
-			if n := countMatches(lines, needle); n > 0 {
-				hits[DiffGrepKey(stage, path)] = n
-			}
+		for path, n := range GrepDiffText(output, query) {
+			hits[DiffGrepKey(stage, path)] = n
 		}
 		return nil
 	}
@@ -73,16 +71,39 @@ func GrepDiff(repoRoot, query string, untrackedFiles []FileInfo, ignoreWhitespac
 	return hits, nil
 }
 
+// GrepDiffText counts, per file path, how many added and removed lines of
+// diffText contain query, compared case-insensitively. diffText must have the
+// a/ b/ path prefixes that GrepDiffConfig asks for. Files without a hit are left
+// out, and an empty query yields an empty map.
+func GrepDiffText(diffText, query string) map[string]int {
+	hits := make(map[string]int)
+	if query == "" {
+		return hits
+	}
+	needle := strings.ToLower(query)
+	for path, lines := range parseChangedLines(diffText) {
+		if n := countMatches(lines, needle); n > 0 {
+			hits[path] = n
+		}
+	}
+	return hits
+}
+
+// GrepDiffConfig returns the git options, placed before the subcommand, that
+// make a diff parseable by GrepDiffText whatever the user's settings.
+func GrepDiffConfig() []string {
+	return []string{
+		"-c", "core.quotepath=false",
+		"-c", "diff.noprefix=false",
+		"-c", "diff.mnemonicPrefix=false",
+	}
+}
+
 // runDiffForGrep runs git diff in a form meant to be parsed: no external diff
 // driver, no context lines, and fixed a/ b/ path prefixes regardless of the
 // user's diff.noprefix / diff.mnemonicPrefix settings.
 func runDiffForGrep(repoRoot string, ignoreWhitespace bool, extraArgs ...string) (string, error) {
-	args := []string{
-		"-c", "core.quotepath=false",
-		"-c", "diff.noprefix=false",
-		"-c", "diff.mnemonicPrefix=false",
-		"diff", "--no-ext-diff", "-U0",
-	}
+	args := append(GrepDiffConfig(), "diff", "--no-ext-diff", "-U0")
 	if ignoreWhitespace {
 		args = append(args, "-w")
 	}

@@ -116,6 +116,36 @@ func TestCountMatches(t *testing.T) {
 	}
 }
 
+func TestGrepDiffText(t *testing.T) {
+	diffText := `diff --git a/a.go b/a.go
+--- a/a.go
++++ b/a.go
+@@ -1 +1,2 @@
+-old Needle
++new needle
++no hit
+diff --git a/gone.go b/gone.go
+deleted file mode 100644
+--- a/gone.go
++++ /dev/null
+@@ -1 +0,0 @@
+-needle here
+diff --git a/miss.go b/miss.go
+--- a/miss.go
++++ b/miss.go
+@@ -1 +1 @@
+-foo
++bar
+`
+	want := map[string]int{"a.go": 2, "gone.go": 1}
+	if got := GrepDiffText(diffText, "NEEDLE"); !reflect.DeepEqual(got, want) {
+		t.Errorf("GrepDiffText() = %v, want %v", got, want)
+	}
+	if got := GrepDiffText(diffText, ""); len(got) != 0 {
+		t.Errorf("GrepDiffText() with an empty query = %v, want no hits", got)
+	}
+}
+
 func TestGrepDiff(t *testing.T) {
 	repo := setupGrepRepo(t)
 

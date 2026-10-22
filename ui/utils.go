@@ -2,7 +2,17 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 )
+
+// missingFromWorkTree reports whether a file shown by a read-only view (a
+// commit or the pull request) is absent from the working tree, where an
+// editor would open an empty buffer instead.
+func missingFromWorkTree(repoRoot, path string) bool {
+	_, err := os.Stat(filepath.Join(repoRoot, path))
+	return err != nil
+}
 
 // calculateMaxLineNumberDigits calculates the maximum number of digits needed for line numbers
 // across both old and new line maps
