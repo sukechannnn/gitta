@@ -722,6 +722,8 @@ type FileListKeyContext struct {
 	setGlobalStatusText    func(string)
 	onEsc                  func()          // if non-nil, called on Esc key
 	openTerminal           func()          // if non-nil, opens terminal command input
+	openPRDiff             func()          // if non-nil, opens the pull request diff ('pr')
+	pPressedAt             time.Time       // when 'p' was pressed, for the 'pr' sequence
 	toggleFileBrowser      func()          // if non-nil, toggles file browser mode
 	isFileBrowserMode      *bool           // pointer to file browser mode flag
 	resizeFileList         func(delta int) // resize file list width
@@ -1260,6 +1262,16 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 					return nil
 				}
 				applyUndoRedoInFileList(ctx, ctx.undoStack.Undo, "undo")
+				return nil
+			case 'p':
+				ctx.pPressedAt = time.Now()
+				return nil
+			case 'r':
+				// pr -> pull request diff
+				if ctx.openPRDiff != nil && time.Since(ctx.pPressedAt) < 500*time.Millisecond {
+					ctx.pPressedAt = time.Time{}
+					ctx.openPRDiff()
+				}
 				return nil
 			case 'g':
 				now := time.Now()

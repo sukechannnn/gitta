@@ -90,6 +90,8 @@ type DiffViewContext struct {
 	updateStatusTitle     func()
 	onEsc                 func()          // if non-nil, call this instead of returning to left pane on Esc
 	openTerminal          func()          // if non-nil, opens terminal command input
+	openPRDiff            func()          // if non-nil, opens the pull request diff ('pr')
+	pPressedAt            time.Time       // when 'p' was pressed, for the 'pr' sequence
 	resizeFileList        func(delta int) // resize file list width
 }
 
@@ -454,6 +456,16 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 					ctx.updateGlobalStatus("Whitespace changes hidden", "forestgreen")
 				} else {
 					ctx.updateGlobalStatus("Whitespace changes shown", "forestgreen")
+				}
+				return nil
+			case 'p':
+				ctx.pPressedAt = time.Now()
+				return nil
+			case 'r':
+				// pr -> pull request diff
+				if ctx.openPRDiff != nil && time.Since(ctx.pPressedAt) < 500*time.Millisecond {
+					ctx.pPressedAt = time.Time{}
+					ctx.openPRDiff()
 				}
 				return nil
 			case 'g':

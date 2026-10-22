@@ -238,11 +238,13 @@ func (glv *GitLogView) loadCommitFiles(commitHash string) {
 		glv.commitFiles = []FileEntry{}
 		return
 	}
+	glv.commitFiles = parseNameStatus(string(output))
+}
 
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	glv.commitFiles = []FileEntry{}
-
-	for _, line := range lines {
+// parseNameStatus turns `git show/diff --name-status` output into file entries
+func parseNameStatus(output string) []FileEntry {
+	files := []FileEntry{}
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		if line == "" {
 			continue
 		}
@@ -263,8 +265,9 @@ func (glv *GitLogView) loadCommitFiles(commitHash string) {
 			StageStatus:  "commit",
 			ChangeStatus: normalizeCommitStatus(rawStatus),
 		}
-		glv.commitFiles = append(glv.commitFiles, fileInfo)
+		files = append(files, fileInfo)
 	}
+	return files
 }
 
 // normalizeCommitStatus converts git show status codes to descriptive labels
@@ -304,7 +307,16 @@ func (glv *GitLogView) showCommitDetails() {
 
 	commitHash := entry.Hash
 	glv.loadCommitFiles(commitHash)
+	showReadOnlyDiff(glv.app, glv.flex, glv.repoRoot, "Changed Files", glv.commitFiles, func(filePath string) []string {
+		return []string{"show", "--format=", commitHash, "--", filePath}
+	}, glv.backToLog)
+	glv.showingCommit = true
+}
 
+// showReadOnlyDiff fills host with a file list and diff view for browsing
+// files without staging. diffArgs returns the git arguments that print one
+// file's diff, and onEsc leaves the view.
+func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string, title string, files []FileEntry, diffArgs func(filePath string) []string, onEsc func()) {
 	// Create UI components (same pattern as root_editor.go)
 	fileListView := tview.NewTextView().
 		SetDynamicColors(true).
@@ -312,7 +324,7 @@ func (glv *GitLogView) showCommitDetails() {
 		SetWrap(false)
 	borderColor := util.CommitAreaBorderColor.ToTcellColor()
 
-	fileListView.SetBorder(true).SetTitle("Changed Files")
+	fileListView.SetBorder(true).SetTitle(title)
 	fileListView.SetBorderColor(borderColor)
 	fileListView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
@@ -403,8 +415,8 @@ func (glv *GitLogView) showCommitDetails() {
 
 	// Diff retrieval callback (git show)
 	updateDiffText := func(filePath, status, repo string, out *string, _ bool) {
-		cmd := exec.Command("git", "show", "--format=", commitHash, "--", filePath)
-		cmd.Dir = glv.repoRoot
+		cmd := exec.Command("git", diffArgs(filePath)...)
+		cmd.Dir = repoRoot
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			*out = ""
@@ -419,7 +431,7 @@ func (glv *GitLogView) showCommitDetails() {
 	// Build file list
 	buildFileListContent := func(focusedPane bool) string {
 		return BuildFileListContentForCommit(
-			glv.commitFiles,
+			files,
 			currentSelection,
 			focusedPane,
 			&fileList,
@@ -503,12 +515,12 @@ func (glv *GitLogView) showCommitDetails() {
 		selectStart = -1
 		selectEnd = -1
 
-		updateDiffText(currentFile, currentStatus, glv.repoRoot, &currentDiffText, ignoreWhitespace)
+		updateDiffText(currentFile, currentStatus, repoRoot, &currentDiffText, ignoreWhitespace)
 
 		if isSplitView {
-			updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText, foldState, currentFile, glv.repoRoot)
+			updateSplitViewWithoutCursor(beforeView, afterView, currentDiffText, foldState, currentFile, repoRoot)
 		} else {
-			updateDiffViewWithoutCursor(diffView, currentDiffText, foldState, currentFile, glv.repoRoot)
+			updateDiffViewWithoutCursor(diffView, currentDiffText, foldState, currentFile, repoRoot)
 		}
 	}
 
@@ -536,7 +548,7 @@ func (glv *GitLogView) showCommitDetails() {
 		splitViewFlex:   splitViewFlex,
 		unifiedViewFlex: unifiedViewFlex,
 		contentFlex:     contentFlex,
-		app:             glv.app,
+		app:             app,
 
 		cursorY:               &cursorY,
 		selectStart:           &selectStart,
@@ -554,7 +566,7 @@ func (glv *GitLogView) showCommitDetails() {
 		preserveScrollRow:     &preserveScrollRow,
 		ignoreWhitespace:      &ignoreWhitespace,
 
-		repoRoot:  glv.repoRoot,
+		repoRoot:  repoRoot,
 		patchPath: "",
 
 		gPressed:  &gPressed,
@@ -564,7 +576,7 @@ func (glv *GitLogView) showCommitDetails() {
 			diffView:    diffView,
 			foldState:   foldState,
 			filePath:    &currentFile,
-			repoRoot:    glv.repoRoot,
+			repoRoot:    repoRoot,
 			searchQuery: &searchQuery,
 		},
 
@@ -594,7 +606,7 @@ func (glv *GitLogView) showCommitDetails() {
 		onUpdate:              nil,
 		updateCurrentDiffText: updateDiffText,
 		updateStatusTitle:     func() {},
-		onEsc:                 glv.backToLog,
+		onEsc:                 onEsc,
 	}
 	SetupDiffViewKeyBindings(diffViewContext)
 
@@ -607,8 +619,8 @@ func (glv *GitLogView) showCommitDetails() {
 		splitViewFlex:   splitViewFlex,
 		unifiedViewFlex: unifiedViewFlex,
 		contentFlex:     contentFlex,
-		app:             glv.app,
-		mainView:        glv.flex,
+		app:             app,
+		mainView:        host,
 
 		currentSelection:  &currentSelection,
 		cursorY:           &cursorY,
@@ -627,7 +639,7 @@ func (glv *GitLogView) showCommitDetails() {
 
 		fileList:         &fileList,
 		dirCollapseState: dirCollapseState,
-		repoRoot:         glv.repoRoot,
+		repoRoot:         repoRoot,
 		diffViewContext:  diffViewContext,
 
 		readOnly: true,
@@ -647,15 +659,14 @@ func (glv *GitLogView) showCommitDetails() {
 		setGlobalStatusText: func(text string) {
 			statusView.SetText(text)
 		},
-		onEsc: glv.backToLog,
+		onEsc: onEsc,
 	}
 	SetupFileListKeyBindings(fileListKeyContext)
 
 	// Switch display
-	glv.flex.Clear()
-	glv.flex.AddItem(commitMainFlex, 0, 1, true)
-	glv.showingCommit = true
-	glv.app.SetFocus(fileListView)
+	host.Clear()
+	host.AddItem(commitMainFlex, 0, 1, true)
+	app.SetFocus(fileListView)
 }
 
 // backToLog returns to the log view from commit details

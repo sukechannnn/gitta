@@ -73,6 +73,7 @@ $ giff -v         # show version
 | `c` | Open in VS Code (at the current hit while a `/` grep is active) |
 | `n` / `N` | Next / prev grep hit (while a `/` grep is active) |
 | `Ctrl+L` | Git log |
+| `pr` | PR diff — the branch's changes as GitHub shows them, even after they are committed and pushed |
 | `t` | Open a terminal pane — run a command, `Tab` scrolls its output |
 | `Enter` | Switch to diff view |
 | `q` | Quit |
@@ -95,6 +96,7 @@ $ giff -v         # show version
 | `y` | Yank lines |
 | `Y` | Copy file path |
 | `Ctrl+L` | Copy `path:line` |
+| `pr` | PR diff |
 | `Ctrl+E` / `Ctrl+Y` | Scroll |
 | `Esc` | Back to file list |
 | `q` | Quit |

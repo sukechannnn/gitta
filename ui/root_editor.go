@@ -20,8 +20,8 @@ var preferUnstagedSection bool = false
 
 // globalStatusView defined globally
 var globalStatusView *tview.TextView
-var fileListKeyMessage = "a:stage  A:stage file  d:discard  C-a:stage all  u:undo  C-r:redo  C-k:commit  C-j:amend  Tab:file  gg/G:top/end  H/L:dir  s:split  w:ws  /:grep  !:hide  C-f:filter  v:editor  c:code  C-l:log  t:terminal  Y:copy  C-e/C-y:scroll  Enter:switch  q:quit"
-var diffViewKeyMessage = "a:stage lines  d:discard lines  A:stage file  u:undo  C-r:redo  V:select  g/G:top/end  /:search  e:fold  s:split  w:ws  y:yank  Y:copy path  C-e/C-y:scroll  Esc:back  q:quit"
+var fileListKeyMessage = "a:stage  A:stage file  d:discard  C-a:stage all  u:undo  C-r:redo  C-k:commit  C-j:amend  Tab:file  gg/G:top/end  H/L:dir  s:split  w:ws  /:grep  !:hide  C-f:filter  v:editor  c:code  C-l:log  pr:PR diff  t:terminal  Y:copy  C-e/C-y:scroll  Enter:switch  q:quit"
+var diffViewKeyMessage = "a:stage lines  d:discard lines  A:stage file  u:undo  C-r:redo  V:select  g/G:top/end  /:search  e:fold  s:split  w:ws  y:yank  Y:copy path  pr:PR diff  C-e/C-y:scroll  Esc:back  q:quit"
 
 // restoreStatusFunc is called to restore the default status message (set by SetupRootEditor)
 var restoreStatusFunc func()
@@ -788,6 +788,42 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		focusTerminalInput()
 	}
 
+	// Pull request diff callback ('pr', shared between diff view and file list):
+	// shows the branch's changes as GitHub does, for when they are already
+	// committed and pushed and no longer show up as local changes
+	openPRDiffFunc := func() {
+		globalStatusView.SetText("[dimgray]Loading the pull request diff...[-]")
+		go func() {
+			base, err := git.PRBaseRef(repoRoot)
+			var output string
+			if err == nil {
+				output, err = git.GetPRChangedFiles(base, repoRoot)
+			}
+			app.QueueUpdateDraw(func() {
+				if err != nil {
+					updateGlobalStatus(err.Error(), "tomato")
+					return
+				}
+				files := parseNameStatus(output)
+				if len(files) == 0 {
+					updateGlobalStatus("No changes against "+base, "tomato")
+					return
+				}
+				restoreStatusFunc()
+
+				focusBefore := app.GetFocus()
+				prView := tview.NewFlex()
+				showReadOnlyDiff(app, prView, repoRoot, "PR: "+base+"...HEAD", files, func(filePath string) []string {
+					return git.PRDiffArgs(base, "--", filePath)
+				}, func() {
+					app.SetRoot(mainFlex, true)
+					app.SetFocus(focusBefore)
+				})
+				app.SetRoot(prView, true)
+			})
+		}()
+	}
+
 	undoStack := NewUndoStack(repoRoot)
 
 	// Set up key input handling for right pane (same behavior as file_view.go)
@@ -868,6 +904,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		updateCurrentDiffText: updateCurrentDiffText,
 		updateStatusTitle:     updateStatusTitle,
 		openTerminal:          openTerminalFunc,
+		openPRDiff:            openPRDiffFunc,
 		resizeFileList: func(delta int) {
 			newFileRatio := fileListRatio + delta
 			newDiffRatio := diffViewRatio - delta
@@ -946,6 +983,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 			}
 		},
 		openTerminal:      openTerminalFunc,
+		openPRDiff:        openPRDiffFunc,
 		isFileBrowserMode: &isFileBrowserMode,
 		resizeFileList: func(delta int) {
 			newFileRatio := fileListRatio + delta
