@@ -92,6 +92,7 @@ type DiffViewContext struct {
 	openTerminal          func()          // if non-nil, opens terminal command input
 	openPRDiff            func()          // if non-nil, opens the pull request diff ('pr')
 	pPressedAt            time.Time       // when 'p' was pressed, for the 'pr' sequence
+	restoreStatus         func()          // if non-nil, restores this view's status instead of the main view's
 	resizeFileList        func(delta int) // resize file list width
 }
 
@@ -340,9 +341,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			}
 			// Return to left pane
 			*ctx.leftPaneFocused = true
-			if restoreStatusFunc != nil {
-				restoreStatusFunc()
-			}
+			restoreStatus(ctx.restoreStatus)
 			if *ctx.isSplitView {
 				updateSplitViewWithoutCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)
 			} else {
@@ -357,9 +356,7 @@ func SetupDiffViewKeyBindings(ctx *DiffViewContext) {
 			*ctx.selectStart = -1
 			*ctx.selectEnd = -1
 			*ctx.leftPaneFocused = true
-			if restoreStatusFunc != nil {
-				restoreStatusFunc()
-			}
+			restoreStatus(ctx.restoreStatus)
 			// Redraw diff view without cursor
 			if *ctx.isSplitView {
 				updateSplitViewWithoutCursor(ctx.beforeView, ctx.afterView, *ctx.currentDiffText, ctx.foldState, *ctx.currentFile, ctx.repoRoot)

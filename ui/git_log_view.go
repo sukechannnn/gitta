@@ -402,6 +402,7 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 	var preserveScrollRow = -1
 	var ignoreWhitespace bool
 	var fileFilterQuery string
+	var fileExcludeQuery string
 	var fileFilterMode bool
 	var gPressed bool
 	var lastGTime time.Time
@@ -428,10 +429,69 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 		}
 	}
 
+	// shownFiles narrows files by the Ctrl+F filter and the '!' exclusion
+	shownFiles := func() []FileEntry {
+		if fileFilterQuery == "" && fileExcludeQuery == "" {
+			return files
+		}
+		var shown []FileEntry
+		for _, f := range files {
+			if fileExcludeQuery != "" && matchesFilter(f, fileExcludeQuery) {
+				continue
+			}
+			if fileFilterQuery != "" && !matchesFilter(f, fileFilterQuery) {
+				continue
+			}
+			shown = append(shown, f)
+		}
+		return shown
+	}
+
+	// restoreStatus shows what is narrowing the list, or the key help
+	restoreStatus := func() {
+		var parts []string
+		if fileExcludeQuery != "" {
+			hidden := 0
+			for _, f := range files {
+				if matchesFilter(f, fileExcludeQuery) {
+					hidden++
+				}
+			}
+			parts = append(parts, fmt.Sprintf("[white]%s%s [%d hidden][-]",
+				fileExcludePrompt, tview.Escape(fileExcludeQuery), hidden))
+		}
+		if fileFilterQuery != "" {
+			if matched := len(shownFiles()); matched > 0 {
+				parts = append(parts, fmt.Sprintf("[white]%s%s [%d matched][-]",
+					fileFilterPrompt, tview.Escape(fileFilterQuery), matched))
+			} else {
+				parts = append(parts, fmt.Sprintf("[tomato]%s%s [no match][-]",
+					fileFilterPrompt, tview.Escape(fileFilterQuery)))
+			}
+		}
+		if len(parts) == 0 {
+			statusView.SetText(commitStatusMessage)
+			return
+		}
+		if leftPaneFocused {
+			// Esc clears the narrowings only from the file list.
+			parts = append(parts, "[white]Esc:clear[-]")
+		}
+		statusView.SetText(strings.Join(parts, "  "))
+	}
+
+	updateGlobalStatus := func(message string, color string) {
+		statusView.SetText(fmt.Sprintf("[%s]%s[-]", color, message))
+		go func() {
+			time.Sleep(5 * time.Second)
+			app.QueueUpdateDraw(restoreStatus)
+		}()
+	}
+
 	// Build file list
 	buildFileListContent := func(focusedPane bool) string {
 		return BuildFileListContentForCommit(
-			files,
+			shownFiles(),
 			currentSelection,
 			focusedPane,
 			&fileList,
@@ -592,13 +652,7 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 		readOnly: true,
 
 		updateFileListView: updateFileListView,
-		updateGlobalStatus: func(message string, color string) {
-			statusView.SetText(fmt.Sprintf("[%s]%s[-]", color, message))
-			go func() {
-				time.Sleep(5 * time.Second)
-				statusView.SetText(commitStatusMessage)
-			}()
-		},
+		updateGlobalStatus: updateGlobalStatus,
 		setGlobalStatusText: func(text string) {
 			statusView.SetText(text)
 		},
@@ -607,6 +661,7 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 		updateCurrentDiffText: updateDiffText,
 		updateStatusTitle:     func() {},
 		onEsc:                 onEsc,
+		restoreStatus:         restoreStatus,
 	}
 	SetupDiffViewKeyBindings(diffViewContext)
 
@@ -636,6 +691,7 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 		ignoreWhitespace:  &ignoreWhitespace,
 		isFilterMode:      &fileFilterMode,
 		filterQuery:       &fileFilterQuery,
+		excludeQuery:      &fileExcludeQuery,
 
 		fileList:         &fileList,
 		dirCollapseState: dirCollapseState,
@@ -648,18 +704,13 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 		updateSelectedFileDiff: updateSelectedFileDiff,
 		refreshFileList:        func() {},
 		updateCurrentDiffText:  updateDiffText,
-		updateGlobalStatus: func(message string, color string) {
-			statusView.SetText(fmt.Sprintf("[%s]%s[-]", color, message))
-			go func() {
-				time.Sleep(5 * time.Second)
-				statusView.SetText(commitStatusMessage)
-			}()
-		},
-		updateStatusTitle: func() {},
+		updateGlobalStatus:     updateGlobalStatus,
+		updateStatusTitle:      func() {},
 		setGlobalStatusText: func(text string) {
 			statusView.SetText(text)
 		},
-		onEsc: onEsc,
+		onEsc:         onEsc,
+		restoreStatus: restoreStatus,
 	}
 	SetupFileListKeyBindings(fileListKeyContext)
 

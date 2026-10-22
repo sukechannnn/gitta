@@ -724,6 +724,7 @@ type FileListKeyContext struct {
 	openTerminal           func()          // if non-nil, opens terminal command input
 	openPRDiff             func()          // if non-nil, opens the pull request diff ('pr')
 	pPressedAt             time.Time       // when 'p' was pressed, for the 'pr' sequence
+	restoreStatus          func()          // if non-nil, restores this view's status instead of the main view's
 	toggleFileBrowser      func()          // if non-nil, toggles file browser mode
 	isFileBrowserMode      *bool           // pointer to file browser mode flag
 	resizeFileList         func(delta int) // resize file list width
@@ -756,8 +757,8 @@ func startFilterInput(ctx *FileListKeyContext, kind filterInputKind) {
 // showNarrowingStatus puts whatever is narrowing the list back on the status
 // bar, where it stays until cleared so hidden files are never forgotten.
 func showNarrowingStatus(ctx *FileListKeyContext) {
-	if restoreStatusFunc != nil {
-		restoreStatusFunc()
+	if ctx.restoreStatus != nil || restoreStatusFunc != nil {
+		restoreStatus(ctx.restoreStatus)
 		return
 	}
 	if ctx.setGlobalStatusText != nil {
@@ -1077,9 +1078,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 				*ctx.currentSelection = newSel
 				ctx.updateFileListView()
 				ctx.updateSelectedFileDiff()
-				if ctx.setGlobalStatusText != nil {
-					ctx.setGlobalStatusText(fileListKeyMessage)
-				}
+				showNarrowingStatus(ctx)
 				return nil
 			}
 			if ctx.onEsc != nil {
@@ -1157,9 +1156,7 @@ func SetupFileListKeyBindings(ctx *FileListKeyContext) {
 
 				// Move focus to right pane
 				*ctx.leftPaneFocused = false
-				if restoreStatusFunc != nil {
-					restoreStatusFunc()
-				}
+				restoreStatus(ctx.restoreStatus)
 				ctx.updateFileListView()
 				if *ctx.isSplitView {
 					ctx.app.SetFocus(ctx.splitViewFlex)

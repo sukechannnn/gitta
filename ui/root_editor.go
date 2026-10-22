@@ -26,6 +26,16 @@ var diffViewKeyMessage = "a:stage lines  d:discard lines  A:stage file  u:undo  
 // restoreStatusFunc is called to restore the default status message (set by SetupRootEditor)
 var restoreStatusFunc func()
 
+// restoreStatus puts the default status message back, using override when a
+// view has a status bar of its own
+func restoreStatus(override func()) {
+	if override != nil {
+		override()
+	} else if restoreStatusFunc != nil {
+		restoreStatusFunc()
+	}
+}
+
 func updateGlobalStatus(message string, color string) {
 	if globalStatusView != nil {
 		globalStatusView.SetText(fmt.Sprintf("[%s]%s[-]", color, message))
