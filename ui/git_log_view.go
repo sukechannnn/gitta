@@ -307,16 +307,19 @@ func (glv *GitLogView) showCommitDetails() {
 
 	commitHash := entry.Hash
 	glv.loadCommitFiles(commitHash)
-	showReadOnlyDiff(glv.app, glv.flex, glv.repoRoot, "Changed Files", glv.commitFiles, func(filePath string) []string {
-		return []string{"show", "--format=", commitHash, "--", filePath}
+	showReadOnlyDiff(glv.app, glv.flex, glv.repoRoot, "Changed Files", glv.commitFiles, func(opts []string, paths ...string) []string {
+		args := append([]string{"show", "--format="}, opts...)
+		args = append(args, commitHash, "--")
+		return append(args, paths...)
 	}, glv.backToLog)
 	glv.showingCommit = true
 }
 
 // showReadOnlyDiff fills host with a file list and diff view for browsing
-// files without staging. diffArgs returns the git arguments that print one
-// file's diff, and onEsc leaves the view.
-func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string, title string, files []FileEntry, diffArgs func(filePath string) []string, onEsc func()) {
+// files without staging. diffArgs returns the git arguments that print the
+// diff of paths, or of every file when there are none, with opts such as "-w"
+// added as diff options. onEsc leaves the view.
+func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string, title string, files []FileEntry, diffArgs func(opts []string, paths ...string) []string, onEsc func()) {
 	// Create UI components (same pattern as root_editor.go)
 	fileListView := tview.NewTextView().
 		SetDynamicColors(true).
@@ -370,7 +373,7 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 	statusView.SetBorderColor(borderColor)
 	statusView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
-	commitStatusMessage := "j/k:move  /:search  e:fold  s:split  V:select  C-y:copy  t:terminal  Esc:back  q:quit"
+	commitStatusMessage := "j/k:move  /:search  e:fold  s:split  w:ws  V:select  C-y:copy  t:terminal  Esc:back  q:quit"
 	statusView.SetText(commitStatusMessage)
 
 	contentFlex := tview.NewFlex()
@@ -415,8 +418,12 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 	foldState := NewFoldState()
 
 	// Diff retrieval callback (git show)
-	updateDiffText := func(filePath, status, repo string, out *string, _ bool) {
-		cmd := exec.Command("git", diffArgs(filePath)...)
+	updateDiffText := func(filePath, status, repo string, out *string, ignoreWhitespace bool) {
+		var opts []string
+		if ignoreWhitespace {
+			opts = append(opts, "-w")
+		}
+		cmd := exec.Command("git", diffArgs(opts, filePath)...)
 		cmd.Dir = repoRoot
 		output, err := cmd.CombinedOutput()
 		if err != nil {
@@ -478,6 +485,15 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 			parts = append(parts, "[white]Esc:clear[-]")
 		}
 		statusView.SetText(strings.Join(parts, "  "))
+	}
+
+	updateStatusTitle := func() {
+		if ignoreWhitespace {
+			statusView.SetTitle(" Hide whitespace: on ")
+			statusView.SetTitleAlign(tview.AlignLeft)
+		} else {
+			statusView.SetTitle("")
+		}
 	}
 
 	updateGlobalStatus := func(message string, color string) {
@@ -677,7 +693,7 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 		refreshFileList:       func() {},
 		onUpdate:              nil,
 		updateCurrentDiffText: updateDiffText,
-		updateStatusTitle:     func() {},
+		updateStatusTitle:     updateStatusTitle,
 		onEsc:                 onEsc,
 		openTerminal:          openTerminal,
 		restoreStatus:         restoreStatus,
@@ -724,7 +740,7 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 		refreshFileList:        func() {},
 		updateCurrentDiffText:  updateDiffText,
 		updateGlobalStatus:     updateGlobalStatus,
-		updateStatusTitle:      func() {},
+		updateStatusTitle:      updateStatusTitle,
 		setGlobalStatusText: func(text string) {
 			statusView.SetText(text)
 		},
