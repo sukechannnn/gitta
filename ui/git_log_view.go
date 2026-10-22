@@ -370,7 +370,7 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 	statusView.SetBorderColor(borderColor)
 	statusView.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
 
-	commitStatusMessage := "j/k:move  /:search  e:fold  s:split  V:select  C-y:copy  Esc:back  q:quit"
+	commitStatusMessage := "j/k:move  /:search  e:fold  s:split  V:select  C-y:copy  t:terminal  Esc:back  q:quit"
 	statusView.SetText(commitStatusMessage)
 
 	contentFlex := tview.NewFlex()
@@ -486,6 +486,24 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 			time.Sleep(5 * time.Second)
 			app.QueueUpdateDraw(restoreStatus)
 		}()
+	}
+
+	// The terminal ('t') is made on first use. What it shows is fixed, so
+	// there is nothing to refresh after a command.
+	var terminal *terminalPane
+	openTerminal := func() {
+		if terminal == nil {
+			terminal = newTerminalPane(app, repoRoot)
+		}
+		var focusBefore tview.Primitive = fileListView
+		if !leftPaneFocused {
+			if isSplitView {
+				focusBefore = splitViewFlex
+			} else {
+				focusBefore = diffView
+			}
+		}
+		terminal.Open(commitMainFlex, focusBefore, nil)
 	}
 
 	// Build file list
@@ -661,6 +679,7 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 		updateCurrentDiffText: updateDiffText,
 		updateStatusTitle:     func() {},
 		onEsc:                 onEsc,
+		openTerminal:          openTerminal,
 		restoreStatus:         restoreStatus,
 	}
 	SetupDiffViewKeyBindings(diffViewContext)
@@ -710,6 +729,7 @@ func showReadOnlyDiff(app *tview.Application, host *tview.Flex, repoRoot string,
 			statusView.SetText(text)
 		},
 		onEsc:         onEsc,
+		openTerminal:  openTerminal,
 		restoreStatus: restoreStatus,
 	}
 	SetupFileListKeyBindings(fileListKeyContext)

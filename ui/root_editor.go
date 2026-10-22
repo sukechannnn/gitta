@@ -107,13 +107,6 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	var commitMessage string = ""
 	var focusBeforeCommit tview.Primitive = nil // focus position before commit mode
 
-	// Terminal command mode state
-	var isTerminalMode bool = false
-	var focusBeforeTerminal tview.Primitive = nil
-	shellHistory := util.LoadShellHistory(1000)
-	var historyIndex int = -1    // -1 = not browsing history
-	var historyStash string = "" // stash current input when browsing
-
 	// File browser mode state
 	var isFileBrowserMode bool = false
 	var browserFiles []git.FileInfo
@@ -350,50 +343,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	commitTextArea.SetTitleAlign(tview.AlignLeft)
 	commitTextArea.SetTitleColor(tcell.ColorWhite)
 
-	// Terminal command input
-	terminalInput := tview.NewInputField().
-		SetLabel("(giff) $ ").
-		SetFieldBackgroundColor(util.BackgroundColor.ToTcellColor()).
-		SetLabelStyle(tcell.StyleDefault.
-			Foreground(tcell.ColorAqua).
-			Background(util.BackgroundColor.ToTcellColor()))
-	terminalInput.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
-	terminalInput.SetBorder(false)
-
-	// Terminal output display
-	terminalOutput := tview.NewTextView().
-		SetDynamicColors(true).
-		SetWrap(true).
-		SetScrollable(true)
-	terminalOutput.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
-	terminalOutput.SetBorder(false)
-
-	// Terminal flex container (input + output)
-	terminalFlex := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(terminalInput, 1, 0, true).
-		AddItem(terminalOutput, 0, 1, false)
-	terminalFlex.SetBackgroundColor(util.BackgroundColor.ToTcellColor())
-	terminalFlex.SetBorder(true)
-	terminalFlex.SetBorderColor(util.CommitAreaBorderColor.ToTcellColor())
-	terminalFlex.SetTitleAlign(tview.AlignLeft)
-	terminalFlex.SetTitleColor(tcell.ColorWhite)
-
-	// The output pane can only be scrolled while it holds the focus, so Tab
-	// moves between typing and reading and the title says which one is active.
-	const (
-		terminalInputTitle  = " Terminal (Tab: scroll output, Esc: close) "
-		terminalOutputTitle = " Terminal output (j/k: scroll, Tab: back to input, Esc: close) "
-	)
-	terminalFlex.SetTitle(terminalInputTitle)
-
-	focusTerminalInput := func() {
-		terminalFlex.SetTitle(terminalInputTitle)
-		app.SetFocus(terminalInput)
-	}
-	focusTerminalOutput := func() {
-		terminalFlex.SetTitle(terminalOutputTitle)
-		app.SetFocus(terminalOutput)
-	}
+	terminal := newTerminalPane(app, repoRoot)
 
 	// Left-right split flex
 	contentFlex := tview.NewFlex()
@@ -779,23 +729,32 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 	updateStatusTitle()
 
 	// Terminal open callback (shared between diff view and file list)
+	// Set below; the terminal refreshes the diff view through it
+	var diffViewContext *DiffViewContext
+
 	openTerminalFunc := func() {
-		if isTerminalMode {
-			focusTerminalInput()
-			return
+		var focusBefore tview.Primitive = fileListView
+		if !leftPaneFocused {
+			if isSplitView {
+				focusBefore = splitViewFlex
+			} else {
+				focusBefore = diffView
+			}
 		}
-		isTerminalMode = true
-		if leftPaneFocused {
-			focusBeforeTerminal = fileListView
-		} else if isSplitView {
-			focusBeforeTerminal = splitViewFlex
-		} else {
-			focusBeforeTerminal = diffView
-		}
-		terminalOutput.Clear()
-		terminalInput.SetText("")
-		mainFlex.AddItem(terminalFlex, 12, 0, true)
-		focusTerminalInput()
+		// Refresh after each command in case it changed the git state
+		terminal.Open(mainFlex, focusBefore, func() {
+			refreshFileList()
+			updateFileListView()
+			if leftPaneFocused {
+				updateSelectedFileDiff()
+			} else if currentFile != "" {
+				// The terminal was opened from the diff view: keep its cursor
+				updateCurrentDiffText(currentFile, currentStatus, repoRoot, &currentDiffText, ignoreWhitespace)
+				if diffViewContext.viewUpdater != nil {
+					diffViewContext.viewUpdater.UpdateWithCursor(currentDiffText, cursorY)
+				}
+			}
+		})
 	}
 
 	// Pull request diff callback ('pr', shared between diff view and file list):
@@ -838,7 +797,7 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 
 	// Set up key input handling for right pane (same behavior as file_view.go)
 	// Set up diff view key bindings
-	diffViewContext := &DiffViewContext{
+	diffViewContext = &DiffViewContext{
 		// UI Components
 		diffView:        diffView,
 		fileListView:    fileListView,
@@ -1363,149 +1322,6 @@ func RootEditor(app *tview.Application, stagedFiles, modifiedFiles, untrackedFil
 		mainFlex.RemoveItem(commitTextArea)
 		app.SetFocus(fileListView)
 	}
-
-	exitTerminalMode := func() {
-		isTerminalMode = false
-		mainFlex.RemoveItem(terminalFlex)
-		if focusBeforeTerminal != nil {
-			app.SetFocus(focusBeforeTerminal)
-		} else {
-			app.SetFocus(fileListView)
-		}
-	}
-
-	// The output pane borrows the focus only to be scrolled: Tab hands it back
-	// and Esc closes the terminal, the same as from the input line.
-	terminalOutput.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch event.Key() {
-		case tcell.KeyTab, tcell.KeyBacktab:
-			focusTerminalInput()
-			return nil
-		case tcell.KeyEsc:
-			exitTerminalMode()
-			return nil
-		}
-		return event
-	})
-
-	// Handle up/down arrow for shell history browsing
-	terminalInput.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch event.Key() {
-		case tcell.KeyTab, tcell.KeyBacktab:
-			// Move to the output so it can be scrolled; typing resumes on Tab.
-			focusTerminalOutput()
-			return nil
-		case tcell.KeyUp:
-			if len(shellHistory) == 0 {
-				return nil
-			}
-			if historyIndex == -1 {
-				// Start browsing: stash current input as prefix filter
-				historyStash = terminalInput.GetText()
-			}
-			// Find next matching entry
-			prefix := strings.ToLower(historyStash)
-			for next := historyIndex + 1; next < len(shellHistory); next++ {
-				if prefix == "" || strings.HasPrefix(strings.ToLower(shellHistory[next]), prefix) {
-					historyIndex = next
-					terminalInput.SetText(shellHistory[next])
-					return nil
-				}
-			}
-			return nil
-		case tcell.KeyDown:
-			if historyIndex < 0 {
-				return nil
-			}
-			// Find previous matching entry
-			prefix := strings.ToLower(historyStash)
-			for next := historyIndex - 1; next >= 0; next-- {
-				if prefix == "" || strings.HasPrefix(strings.ToLower(shellHistory[next]), prefix) {
-					historyIndex = next
-					terminalInput.SetText(shellHistory[next])
-					return nil
-				}
-			}
-			// No more matches: back to stashed input
-			historyIndex = -1
-			terminalInput.SetText(historyStash)
-			return nil
-		}
-		return event
-	})
-
-	terminalInput.SetDoneFunc(func(key tcell.Key) {
-		switch key {
-		case tcell.KeyEnter:
-			cmdText := terminalInput.GetText()
-			if cmdText == "" {
-				return
-			}
-			terminalInput.SetText("")
-			historyIndex = -1
-			historyStash = ""
-
-			// Show running state
-			terminalOutput.Clear()
-			terminalOutput.SetText("[dimgray]running...[-]")
-			terminalOutput.ScrollToBeginning()
-
-			// Execute command asynchronously to avoid UI freeze
-			go func() {
-				shell := os.Getenv("SHELL")
-				if shell == "" {
-					shell = "sh"
-				}
-				var cmdScript string
-				if snapPath := util.GetSnapshotPath(); snapPath != "" {
-					cmdScript = fmt.Sprintf("source %q 2>/dev/null; eval %q", snapPath, cmdText)
-				} else {
-					cmdScript = cmdText
-				}
-				cmd := exec.Command(shell, "-c", cmdScript)
-				cmd.Dir = repoRoot
-				output, err := cmd.CombinedOutput()
-
-				app.QueueUpdateDraw(func() {
-					// Clear and show result
-					terminalOutput.Clear()
-					var result strings.Builder
-					result.WriteString("[#50E88A]$ " + tview.Escape(cmdText) + "[-]\n")
-					if err != nil {
-						if len(output) > 0 {
-							result.WriteString("[red]" + tview.Escape(string(output)) + "[-]")
-							if output[len(output)-1] != '\n' {
-								result.WriteString("\n")
-							}
-						}
-						result.WriteString("[red]exit: " + err.Error() + "[-]")
-					} else if len(output) > 0 {
-						result.WriteString(tview.Escape(string(output)))
-						if output[len(output)-1] != '\n' {
-							result.WriteString("\n")
-						}
-					}
-					terminalOutput.SetText(result.String())
-					terminalOutput.ScrollToBeginning()
-
-					// Refresh file list in case git state changed
-					refreshFileList()
-					updateFileListView()
-					if leftPaneFocused {
-						updateSelectedFileDiff()
-					} else if currentFile != "" {
-						// The terminal was opened from the diff view: keep its cursor
-						updateCurrentDiffText(currentFile, currentStatus, repoRoot, &currentDiffText, ignoreWhitespace)
-						if diffViewContext.viewUpdater != nil {
-							diffViewContext.viewUpdater.UpdateWithCursor(currentDiffText, cursorY)
-						}
-					}
-				})
-			}()
-		case tcell.KeyEscape:
-			exitTerminalMode()
-		}
-	})
 
 	commitTextArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
